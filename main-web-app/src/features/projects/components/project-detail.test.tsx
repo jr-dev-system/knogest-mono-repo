@@ -18,6 +18,7 @@ vi.mock("../projects.actions", () => ({
   activateProjectAction: vi.fn(),
   createProjectWorkFrontAction: vi.fn(),
   getProjectMobilizationHistoryAction: vi.fn(),
+  getProjectTeamCandidatesAction: vi.fn(),
   saveProjectEmployeeMobilizationAction: vi.fn(),
   saveProjectMachineMobilizationAction: vi.fn(),
   saveProjectQuantityBaselineAction: vi.fn(),
@@ -66,6 +67,7 @@ import {
   activateProjectAction,
   createProjectWorkFrontAction,
   getProjectMobilizationHistoryAction,
+  getProjectTeamCandidatesAction,
   saveProjectQuantityBaselineAction,
   saveProjectReadinessAction,
   saveProjectWorkFrontMobilizationAction,
@@ -1329,6 +1331,68 @@ describe("Project active work-front mobilization", () => {
       frontId: undefined,
       cursor: undefined,
     });
+  });
+
+  it("debounces team search and protects a dirty shift draft", async () => {
+    const getCandidates = vi.mocked(getProjectTeamCandidatesAction);
+    getCandidates.mockResolvedValue({
+      data: [
+        {
+          id: employee.id,
+          label: employee.name,
+          detail: employee.jobRole,
+          jobRoleId: null,
+          jobRolePeriodId: null,
+          allocatedShift: "day",
+        },
+      ],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    });
+    const user = userEvent.setup();
+    renderProjectDetail(activeProject);
+
+    await user.click(screen.getByRole("tab", { name: /Equipe/u }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const modal = await screen.findByRole("dialog", {
+      name: "Editar equipe operacional",
+    });
+    expect(
+      within(modal).getByRole("tab", { name: "Funcionários" }),
+    ).toBeTruthy();
+    expect(
+      within(modal).getByRole("tab", { name: "Jornada e intervalos" }),
+    ).toBeTruthy();
+
+    await user.type(
+      within(modal).getByLabelText("Buscar por nome ou função"),
+      "operador",
+    );
+    await waitFor(() =>
+      expect(getCandidates).toHaveBeenLastCalledWith(
+        expect.objectContaining({ search: "operador", shift: "day" }),
+      ),
+    );
+
+    await user.click(
+      within(modal).getByRole("button", {
+        name: `Editar condições de ${employee.name}`,
+      }),
+    );
+    await user.selectOptions(
+      within(modal).getByLabelText("Carga mensal"),
+      "180",
+    );
+    await user.click(
+      within(modal).getByRole("button", { name: "Confirmar funcionário" }),
+    );
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+    await user.click(within(modal).getByRole("tab", { name: "Noturno" }));
+    expect(confirm).toHaveBeenCalled();
+    expect(
+      within(modal)
+        .getByRole("tab", { name: "Diurno" })
+        .getAttribute("aria-selected"),
+    ).toBe("true");
   });
 });
 

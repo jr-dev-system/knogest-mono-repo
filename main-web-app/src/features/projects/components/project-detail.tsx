@@ -41,7 +41,10 @@ import { OperationsModal } from "@/components/ui/operations-modal";
 import { Button } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
-import { OperationTabs } from "@/components/ui/operation-tabs";
+import {
+  OperationTabPanel,
+  OperationTabs,
+} from "@/components/ui/operation-tabs";
 import { useDebouncer } from "@/hooks/useDebouncer";
 import {
   canonicalDecimalToBrazilian,
@@ -57,6 +60,7 @@ import {
   activateProjectAction,
   createProjectWorkFrontAction,
   getProjectMobilizationHistoryAction,
+  getProjectTeamCandidatesAction,
   saveProjectEmployeeMobilizationAction,
   saveProjectMachineMobilizationAction,
   saveProjectQuantityBaselineAction,
@@ -78,6 +82,7 @@ import type {
   ProjectReadinessOptions,
   ProjectSuppliedItemOfferOption,
   ProjectSuppliedItemOffersPage,
+  ProjectTeamCandidatesPage,
   SupplierOfferOption,
   SuppliedItemSelectorOption,
   SuppliedItemSelectorPage,
@@ -2011,6 +2016,24 @@ export function ProjectDetail({
     | "mobilizationHistory"
     | null
   >(null);
+  const [teamShift, setTeamShift] = React.useState<"day" | "night">("day");
+  const [teamEditorTab, setTeamEditorTab] = React.useState<
+    "employees" | "schedule"
+  >("employees");
+  const [teamSearch, setTeamSearch] = React.useState("");
+  const debouncedTeamSearch = useDebouncer(teamSearch, 300);
+  const [teamPages, setTeamPages] = React.useState<ProjectTeamCandidatesPage[]>(
+    [],
+  );
+  const [teamPageIndex, setTeamPageIndex] = React.useState(0);
+  const [teamCandidatesLoading, setTeamCandidatesLoading] =
+    React.useState(false);
+  const [teamCandidatesError, setTeamCandidatesError] = React.useState<
+    string | null
+  >(null);
+  const [teamHasEmployeeDraft, setTeamHasEmployeeDraft] =
+    React.useState(false);
+  const teamCandidateRequestId = React.useRef(0);
   const readinessForm = useForm<ProjectCommand>({
     defaultValues: projectToCommand(project),
   });
@@ -2030,6 +2053,52 @@ export function ProjectDetail({
     control: readinessForm.control,
     name: "technicalResponsibilityEmploymentIds",
   });
+  const activeTeamPage = teamPages[teamPageIndex] ?? {
+    data: [],
+    pageInfo: { hasNextPage: false, nextCursor: null },
+  };
+
+  const loadTeamCandidatePage = React.useCallback(
+    (cursor?: string | null, append = false) => {
+      const requestId = teamCandidateRequestId.current + 1;
+      teamCandidateRequestId.current = requestId;
+      setTeamCandidatesLoading(true);
+      setTeamCandidatesError(null);
+      void getProjectTeamCandidatesAction({
+        projectId: project.id,
+        shift: teamShift,
+        search: debouncedTeamSearch,
+        cursor,
+      })
+        .then((page) => {
+          if (teamCandidateRequestId.current !== requestId) return;
+          if (append) {
+            setTeamPages((current) => [...current, page]);
+            setTeamPageIndex((current) => current + 1);
+          } else {
+            setTeamPages([page]);
+            setTeamPageIndex(0);
+          }
+        })
+        .catch(() => {
+          if (teamCandidateRequestId.current !== requestId) return;
+          setTeamPages([]);
+          setTeamPageIndex(0);
+          setTeamCandidatesError(
+            "Não foi possível consultar os funcionários agora.",
+          );
+        })
+        .finally(() => {
+          if (teamCandidateRequestId.current === requestId)
+            setTeamCandidatesLoading(false);
+        });
+    }, [debouncedTeamSearch, project.id, teamShift]);
+
+  /* eslint-disable react-hooks/set-state-in-effect -- Debounced server lookup resets the cursor page when the modal context changes. */
+  React.useEffect(() => {
+    if (openModal === "team") loadTeamCandidatePage();
+  }, [loadTeamCandidatePage, openModal]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   /* eslint-disable react-hooks/set-state-in-effect -- ProjectDetail synchronizes the authoritative server snapshot and resets edit buffers when it changes. */
   React.useEffect(() => {
@@ -2112,6 +2181,20 @@ export function ProjectDetail({
       })),
     }),
     [options],
+  );
+  const teamEditorOptions = React.useMemo<ProjectWizardOptions>(
+    () => ({
+      ...modalOptions,
+      employees: activeTeamPage.data.map((option) => ({
+        id: option.id,
+        label: option.label,
+        detail: option.detail ?? undefined,
+        jobRolePeriodId: option.jobRolePeriodId ?? undefined,
+        jobRoleId: option.jobRoleId ?? undefined,
+        allocatedShift: option.allocatedShift,
+      })),
+    }),
+    [activeTeamPage.data, modalOptions],
   );
 
   const paymentModes = React.useMemo(() => {
@@ -2790,18 +2873,29 @@ export function ProjectDetail({
 
   const saveTeam = () => {
     const values = readinessForm.getValues();
+    const shiftAllocations = values.initialEmployeeAllocations.filter(
+      (allocation) => allocation.shift === teamShift,
+    );
     startTransition(async () => {
       const result = await saveProjectEmployeeMobilizationAction(
         project.id,
-        values.initialEmployeeAllocations,
+        shiftAllocations,
         {
-          weeklySchedule: values.weeklySchedule,
-          breakTemplates: values.breakTemplates,
+          weeklySchedule: values.weeklySchedule.filter(
+            (day) => day.shift === teamShift,
+          ),
+          breakTemplates: values.breakTemplates.filter(
+            (item) => item.shift === teamShift,
+          ),
         },
+        teamShift,
       );
       if (result.kind === "success") {
-        toast.success("Equipe e turnos atualizados.");
-        readinessForm.reset(values);
+        toast.success(
+          `Turno ${teamShift === "day" ? "Diurno" : "Noturno"} atualizado.`,
+        );
+        setProject(result.project);
+        readinessForm.reset(projectToCommand(result.project));
         setOpenModal(null);
         router.refresh();
         return;
@@ -3245,6 +3339,74 @@ export function ProjectDetail({
   const closeTeamOrMachineModal = () => {
     readinessForm.reset(projectToCommand(project));
     setOpenModal(null);
+  };
+
+  const openTeamModal = (shift: "day" | "night" = "day") => {
+    const command = projectToCommand(project);
+    if (shift === "night" && !command.weeklySchedule.some((day) => day.shift === "night")) {
+      command.weeklySchedule.push(
+        ...command.weeklySchedule
+          .filter((day) => day.shift === "day")
+          .map((day) => ({
+            ...day,
+            shift: "night" as const,
+            startTime: day.isWorking ? "18:00" : null,
+            endTime: day.isWorking ? "06:00" : null,
+            endDayOffset: day.isWorking ? 1 : 0,
+          })),
+      );
+      command.breakTemplates.push(
+        ...command.breakTemplates
+          .filter((item) => item.shift === "day")
+          .map((item) => ({ ...item, shift: "night" as const })),
+      );
+    }
+    readinessForm.reset(command);
+    setTeamShift(shift);
+    setTeamEditorTab("employees");
+    setTeamSearch("");
+    setTeamPages([]);
+    setTeamPageIndex(0);
+    setTeamCandidatesError(null);
+    setTeamHasEmployeeDraft(false);
+    setOpenModal("team");
+  };
+
+  const changeTeamShift = (shift: "day" | "night") => {
+    if (shift === teamShift) return;
+    if (
+      (readinessForm.formState.isDirty || teamHasEmployeeDraft) &&
+      !window.confirm(
+        "Há alterações não salvas neste turno. Descartar o rascunho e trocar de turno?",
+      )
+    )
+      return;
+    const command = projectToCommand(project);
+    if (shift === "night" && !command.weeklySchedule.some((day) => day.shift === "night")) {
+      command.weeklySchedule.push(
+        ...command.weeklySchedule
+          .filter((day) => day.shift === "day")
+          .map((day) => ({
+            ...day,
+            shift: "night" as const,
+            startTime: day.isWorking ? "18:00" : null,
+            endTime: day.isWorking ? "06:00" : null,
+            endDayOffset: day.isWorking ? 1 : 0,
+          })),
+      );
+      command.breakTemplates.push(
+        ...command.breakTemplates
+          .filter((item) => item.shift === "day")
+          .map((item) => ({ ...item, shift: "night" as const })),
+      );
+    }
+    readinessForm.reset(command);
+    setTeamShift(shift);
+    setTeamEditorTab("employees");
+    setTeamSearch("");
+    setTeamPages([]);
+    setTeamPageIndex(0);
+    setTeamHasEmployeeDraft(false);
   };
 
   const closePaymentsModal = () => {
@@ -4038,7 +4200,7 @@ export function ProjectDetail({
                       type="button"
                       variant="outline"
                       className="min-h-10"
-                      onClick={() => setOpenModal("team")}
+                      onClick={() => openTeamModal("day")}
                     >
                       <Pencil className="size-4" />
                       Editar
@@ -5351,7 +5513,7 @@ export function ProjectDetail({
         }}
         size="xl"
         title="Editar equipe operacional"
-        description="Mobilize funcionários que entram na obra com função, jornada e remuneração confirmadas."
+        description="Edite funcionários, jornada e intervalos de um turno por vez."
         footer={
           <>
             <Button
@@ -5363,26 +5525,106 @@ export function ProjectDetail({
             </Button>
             <Button type="button" disabled={isPending} onClick={saveTeam}>
               <Check className="size-4" />
-              Salvar equipe
+              Salvar turno
             </Button>
           </>
         }
       >
         <div className="grid gap-4">
-          <div className="rounded-md border border-border bg-secondary/30 px-4 py-3">
-            <p className="text-sm font-bold">Mobilização inicial</p>
-            <p className="mt-1 text-sm leading-5 text-muted-foreground">
-              Esta lista define quem pode operar máquinas e quais modalidades
-              precisam de prazo de pagamento. Responsáveis técnicos ficam no
-              modal de responsáveis da obra.
-            </p>
-          </div>
-          <Schedule form={readinessForm} />
-          <EmployeeMobilization
-            form={readinessForm}
-            options={modalOptions}
-            sessionKey={project.id}
+          <OperationTabs
+            ariaLabel="Turno da equipe"
+            idPrefix="team-shift"
+            value={teamShift}
+            onValueChange={changeTeamShift}
+            tabs={(["day", "night"] as const).map((shift) => ({
+              value: shift,
+              label: shift === "day" ? "Diurno" : "Noturno",
+            }))}
           />
+          <OperationTabs
+            ariaLabel="Seção do editor de equipe"
+            idPrefix="team-editor"
+            value={teamEditorTab}
+            onValueChange={setTeamEditorTab}
+            tabs={[
+              { value: "employees", label: "Funcionários" },
+              { value: "schedule", label: "Jornada e intervalos" },
+            ]}
+          />
+          <OperationTabPanel
+            idPrefix="team-editor"
+            value="employees"
+            activeValue={teamEditorTab}
+            className="grid gap-4"
+          >
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Buscar por nome ou função</span>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  className="h-11 pl-9"
+                  value={teamSearch}
+                  onChange={(event) => setTeamSearch(event.target.value)}
+                  placeholder="Ex.: Maria ou Operador"
+                />
+              </div>
+            </label>
+            {teamCandidatesError ? (
+              <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm font-semibold text-destructive">
+                {teamCandidatesError}
+              </div>
+            ) : teamCandidatesLoading && activeTeamPage.data.length === 0 ? (
+              <div role="status" className="flex min-h-24 items-center justify-center gap-2 text-sm font-semibold text-muted-foreground">
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                Carregando funcionários…
+              </div>
+            ) : (
+              <EmployeeMobilization
+                fixedShift={teamShift}
+                form={readinessForm}
+                onDraftStateChange={setTeamHasEmployeeDraft}
+                options={teamEditorOptions}
+                sessionKey={`${project.id}-${teamShift}`}
+              />
+            )}
+            <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+              <Button
+                type="button"
+                variant="outline"
+                disabled={teamPageIndex === 0 || teamCandidatesLoading}
+                onClick={() => setTeamPageIndex((index) => index - 1)}
+              >
+                Anterior
+              </Button>
+              <span className="text-sm font-semibold text-muted-foreground">
+                Página {teamPageIndex + 1}
+              </span>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={
+                  !activeTeamPage.pageInfo.hasNextPage || teamCandidatesLoading
+                }
+                onClick={() =>
+                  teamPages[teamPageIndex + 1]
+                    ? setTeamPageIndex((index) => index + 1)
+                    : loadTeamCandidatePage(
+                        activeTeamPage.pageInfo.nextCursor,
+                        true,
+                      )
+                }
+              >
+                Próxima
+              </Button>
+            </div>
+          </OperationTabPanel>
+          <OperationTabPanel
+            idPrefix="team-editor"
+            value="schedule"
+            activeValue={teamEditorTab}
+          >
+            <Schedule fixedShift={teamShift} form={readinessForm} />
+          </OperationTabPanel>
         </div>
       </OperationsModal>
 

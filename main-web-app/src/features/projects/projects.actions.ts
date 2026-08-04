@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { postApiV1Projects } from "@/generated/clients/postApiV1Projects";
+import { getApiV1ProjectsProjectidTeamCandidates } from "@/generated/clients/getApiV1ProjectsProjectidTeamCandidates";
 import client, { ApiClientError } from "@/lib/api/server-client";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import { projectCommandSchema, type ProjectCommand } from "./projects-schema";
@@ -12,6 +13,7 @@ import type {
   ProjectDetailSnapshot,
   ProjectMobilizationHistoryPage,
   ProjectSuppliedItemOffersPage,
+  ProjectTeamCandidatesPage,
   SuppliedItemSelectorPage,
 } from "./projects.types";
 
@@ -623,6 +625,7 @@ export async function saveProjectEmployeeMobilizationAction(
   projectId: string,
   allocations: NonNullable<ProjectReadinessActionInput["employeeAllocations"]>,
   schedule?: Pick<ProjectCommand, "weeklySchedule" | "breakTemplates">,
+  shift?: "day" | "night",
 ): Promise<ProjectReadinessMutationResult> {
   const id = z.string().uuid().parse(projectId);
   const parsed = projectReadinessActionSchema.parse({
@@ -633,7 +636,7 @@ export async function saveProjectEmployeeMobilizationAction(
       success: true;
       data: ProjectDetailSnapshot;
     }>({
-      url: `/api/v1/projects/${id}/mobilization/employees`,
+      url: `/api/v1/projects/${id}/mobilization/employees${shift ? `/${shift}` : ""}`,
       method: "PUT",
       data: {
         allocations: parsed,
@@ -651,6 +654,30 @@ export async function saveProjectEmployeeMobilizationAction(
   } catch (error) {
     return parseProjectError(error);
   }
+}
+
+export async function getProjectTeamCandidatesAction({
+  cursor,
+  projectId,
+  search,
+  shift,
+}: {
+  cursor?: string | null;
+  projectId: string;
+  search?: string;
+  shift: "day" | "night";
+}): Promise<ProjectTeamCandidatesPage> {
+  const id = z.string().uuid().parse(projectId);
+  const response = await getApiV1ProjectsProjectidTeamCandidates({
+    projectId: id,
+    params: {
+      shift,
+      limit: 15,
+      search: search?.trim() || undefined,
+      cursor: cursor || undefined,
+    },
+  });
+  return response.data;
 }
 
 export async function saveProjectMachineMobilizationAction(

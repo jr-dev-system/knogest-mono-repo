@@ -10,6 +10,8 @@ import {
   projectParamsSchema,
   projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
+  projectShiftParamsSchema,
+  projectTeamCandidatesQuerySchema,
   projectWorkFrontCommandSchema,
   projectWorkFrontMobilizationCommandSchema,
   projectWorkFrontParamsSchema,
@@ -742,6 +744,49 @@ const projectReadinessOptionsSchema = {
   },
 } as const;
 
+const projectTeamCandidatesPageSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["data", "pageInfo"],
+  properties: {
+    data: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "label",
+          "detail",
+          "jobRolePeriodId",
+          "jobRoleId",
+          "allocatedShift",
+        ],
+        properties: {
+          id: uuid,
+          label: { type: "string" },
+          detail: { type: "string", nullable: true },
+          jobRolePeriodId: { ...uuid, nullable: true },
+          jobRoleId: { ...uuid, nullable: true },
+          allocatedShift: {
+            enum: ["day", "night", null],
+            nullable: true,
+          },
+        },
+      },
+    },
+    pageInfo: {
+      type: "object",
+      additionalProperties: false,
+      required: ["hasNextPage", "nextCursor"],
+      properties: {
+        hasNextPage: { type: "boolean" },
+        nextCursor: { type: "string", nullable: true },
+      },
+    },
+  },
+} as const;
+
 function scope(request: FastifyRequest): ProjectScope {
   const auth = request.authContext;
   if (!auth?.companyId) throw new Error("Company scope middleware invariant");
@@ -952,6 +997,72 @@ export async function v1ProjectsController(app: FastifyInstance) {
         return jsonResponse.success({
           reply,
           data: await service.detail(scope(request), request.params.projectId),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string };
+    Querystring: {
+      shift?: string;
+      limit?: number;
+      cursor?: string;
+      search?: string;
+    };
+  }>(
+    "/projects/:projectId/team-candidates",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "List paginated employee candidates for one Project shift",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["projectId"],
+          properties: { projectId: uuid },
+        },
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          required: ["shift"],
+          properties: {
+            shift: { enum: ["day", "night"] },
+            limit: { type: "integer", minimum: 1, maximum: 15, default: 15 },
+            cursor: { type: "string", maxLength: 2048 },
+            search: { type: "string", maxLength: 120 },
+          },
+        },
+        response: {
+          200: successSchema(projectTeamCandidatesPageSchema),
+          400: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsedParams = projectParamsSchema.safeParse(request.params);
+      const parsedQuery = projectTeamCandidatesQuerySchema.safeParse(
+        request.query,
+      );
+      if (!parsedParams.success || !parsedQuery.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid Project team candidates query",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.teamCandidates(
+            scope(request),
+            parsedParams.data.projectId,
+            parsedQuery.data,
+          ),
         });
       } catch (error) {
         return jsonResponse.fromError({ reply, error });
@@ -1278,6 +1389,61 @@ export async function v1ProjectsController(app: FastifyInstance) {
           data: await service.saveEmployeeMobilization(
             scope(request),
             params.data.projectId,
+            body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.put<{ Params: { projectId: string; shift: string } }>(
+    "/projects/:projectId/mobilization/employees/:shift",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "Reconcile employees mobilized to one Project shift",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["projectId", "shift"],
+          properties: {
+            projectId: uuid,
+            shift: { enum: ["day", "night"] },
+          },
+        },
+        body: projectEmployeeMobilizationOpenApiSchema,
+        response: {
+          200: successSchema(projectDetailSchema),
+          400: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectShiftParamsSchema.safeParse(request.params);
+      const body = projectEmployeeMobilizationCommandSchema.safeParse(
+        request.body,
+      );
+      if (!params.success || !body.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid shift employee mobilization command",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.saveEmployeeMobilizationShift(
+            scope(request),
+            params.data.projectId,
+            params.data.shift,
             body.data,
           ),
         });

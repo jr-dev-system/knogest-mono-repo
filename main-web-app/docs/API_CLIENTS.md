@@ -61,6 +61,11 @@ reconsulta as opções antes de substituir responsáveis, frente e máquinas.
 Cada alocação envia `monthlyWorkloadHours` como inteiro entre 1 e 744. O RDO
 não recebe nem devolve snapshot dessa carga: `completedFullShift` faz a API
 resolver as horas normais pela janela efetiva do próprio relatório.
+O editor de equipe consulta
+`GET /projects/:projectId/team-candidates` em páginas de 15 e salva somente o
+turno ativo em `PUT /projects/:projectId/mobilization/employees/:shift`. A
+Server Action deve reiniciar a paginação quando turno ou busca mudar e nunca
+reutilizar cursores entre esses filtros.
 
 A linha de base e as distribuições usam strings decimais com três casas. A
 edição de serviços de uma frente ativa chama

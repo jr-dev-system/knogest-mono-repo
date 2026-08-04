@@ -5,6 +5,7 @@ import { OrganizationService } from "../../../src/modules/organization/organizat
 import type { ProjectCommand } from "../../../src/modules/projects/projects.dto";
 import { ProjectsService } from "../../../src/modules/projects/projects.service";
 import { resetIntegrationData } from "../reset-integration-data";
+import { encodeCursor } from "../../../src/lib/utils/cursor-pagination";
 
 import type { FastifyInstance } from "fastify";
 
@@ -294,6 +295,110 @@ describe("project work-front quantities", () => {
       "40.00",
     );
     expect(exactBalance.statusCode, exactBalance.body).toBe(200);
+  });
+
+  it("paginates team candidates by role and saves only the selected shift", async () => {
+    const scope = await setup();
+    const secondEmployee = await app.inject({
+      method: "POST",
+      url: "/api/v1/employees",
+      headers: { authorization: scope.authorization },
+      payload: {
+        document: syntheticFuelSupplierCpfFixture,
+        fullName: "Operador noturno",
+        companyRegistrationNumber: "ENG-002",
+        admissionDate: "2026-07-01",
+        jobRoleId: scope.jobRoleId,
+      },
+    });
+    expect(secondEmployee.statusCode, secondEmployee.body).toBe(201);
+    const secondEmploymentId = secondEmployee.json().data.id as string;
+
+    const candidates = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/team-candidates?shift=day&limit=15&search=engenheiro`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(candidates.statusCode, candidates.body).toBe(200);
+    expect(candidates.json().data.data).toHaveLength(2);
+
+    const foreignCursor = encodeCursor({
+      v: 1,
+      resource: "another-resource",
+      scopeHash: "0".repeat(64),
+      queryHash: "0".repeat(64),
+      sortBy: "name",
+      sortDirection: "asc",
+      last: { value: "A", id: scope.employmentId },
+    });
+    const invalidCursor = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/team-candidates?shift=day&cursor=${foreignCursor}`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(invalidCursor.statusCode, invalidCursor.body).toBe(400);
+
+    const dayMobilization = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [scope.employmentId, secondEmploymentId].map(
+          (employmentId) => ({
+            employmentId,
+            shift: "day",
+            confirmedJobRoleId: scope.jobRoleId,
+            monthlyWorkloadHours: 220,
+            compensationMode: "monthly",
+            compensationValue: "5000.00",
+            overtimeRate: "22.73",
+          }),
+        ),
+      },
+    });
+    expect(dayMobilization.statusCode, dayMobilization.body).toBe(200);
+
+    const nightMobilization = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees/night`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            employmentId: secondEmploymentId,
+            shift: "night",
+            confirmedJobRoleId: scope.jobRoleId,
+            monthlyWorkloadHours: 180,
+            compensationMode: "monthly",
+            compensationValue: "4500.00",
+            overtimeRate: "25.00",
+          },
+        ],
+        weeklySchedule: [1, 2, 3, 4, 5, 6, 7].map((dayOfWeek) => ({
+          shift: "night",
+          dayOfWeek,
+          isWorking: dayOfWeek < 6,
+          startTime: dayOfWeek < 6 ? "18:00" : null,
+          endTime: dayOfWeek < 6 ? "06:00" : null,
+          endDayOffset: dayOfWeek < 6 ? 1 : 0,
+        })),
+        breakTemplates: [],
+      },
+    });
+    expect(nightMobilization.statusCode, nightMobilization.body).toBe(200);
+    expect(nightMobilization.json().data.employeeAllocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          employment: expect.objectContaining({ id: scope.employmentId }),
+          shift: "day",
+        }),
+        expect.objectContaining({
+          employment: expect.objectContaining({ id: secondEmploymentId }),
+          shift: "night",
+          monthlyWorkloadHours: 180,
+        }),
+      ]),
+    );
   });
 
   it("excludes the edited front from its own allocated balance", async () => {

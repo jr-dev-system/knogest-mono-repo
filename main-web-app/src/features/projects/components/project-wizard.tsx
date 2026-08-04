@@ -48,6 +48,7 @@ type Option = {
   readingId?: string;
   jobRolePeriodId?: string;
   jobRoleId?: string;
+  allocatedShift?: "day" | "night" | null;
   temporary?: boolean;
 };
 
@@ -600,7 +601,13 @@ function Accountability({
   );
 }
 
-export function Schedule({ form }: { form: UseFormReturn<ProjectCommand> }) {
+export function Schedule({
+  fixedShift,
+  form,
+}: {
+  fixedShift?: "day" | "night";
+  form: UseFormReturn<ProjectCommand>;
+}) {
   const days = form.watch("weeklySchedule");
   const breaks = form.watch("breakTemplates");
   const labels = [
@@ -612,8 +619,10 @@ export function Schedule({ form }: { form: UseFormReturn<ProjectCommand> }) {
     "Sábado",
     "Domingo",
   ];
-  const enabledShifts = (["day", "night"] as const).filter((shift) =>
-    days.some((day) => day.shift === shift),
+  const enabledShifts = (["day", "night"] as const).filter(
+    (shift) =>
+      (!fixedShift || shift === fixedShift) &&
+      days.some((day) => day.shift === shift),
   );
   const addNightShift = () => {
     const dayRows = days.filter((day) => day.shift === "day");
@@ -661,15 +670,15 @@ export function Schedule({ form }: { form: UseFormReturn<ProjectCommand> }) {
         <p className="text-sm font-semibold text-muted-foreground">
           O turno diurno é obrigatório. O noturno é opcional e independente.
         </p>
-        {enabledShifts.includes("night") ? (
+        {!fixedShift && enabledShifts.includes("night") ? (
           <Button type="button" variant="outline" onClick={removeNightShift}>
             Remover turno noturno
           </Button>
-        ) : (
+        ) : !fixedShift ? (
           <Button type="button" variant="outline" onClick={addNightShift}>
             <Plus className="size-4" /> Adicionar turno noturno
           </Button>
-        )}
+        ) : null}
       </div>
       {enabledShifts.map((shift) => {
         const shiftDays = days
@@ -831,11 +840,15 @@ export function Schedule({ form }: { form: UseFormReturn<ProjectCommand> }) {
 }
 
 export function EmployeeMobilization({
+  fixedShift,
   form,
+  onDraftStateChange,
   options,
   sessionKey,
 }: {
+  fixedShift?: "day" | "night";
   form: UseFormReturn<ProjectCommand>;
+  onDraftStateChange?: (hasDraft: boolean) => void;
   options: ProjectWizardOptions;
   sessionKey: string;
 }) {
@@ -867,8 +880,9 @@ export function EmployeeMobilization({
     setNewJobRoleName("");
     setIsAddingJobRole(false);
     setJobRoleMessage("");
+    onDraftStateChange?.(false);
     /* eslint-enable react-hooks/set-state-in-effect */
-  }, [options.jobRoles, sessionKey]);
+  }, [onDraftStateChange, options.jobRoles, sessionKey]);
 
   const workingDaysForShift = (shift: "day" | "night") =>
     weeklySchedule.filter((day) => day.isWorking && day.shift === shift).length;
@@ -911,6 +925,15 @@ export function EmployeeMobilization({
     const allocation = allocations.find(
       (item) => item.employmentId === option.id,
     );
+    if (
+      fixedShift &&
+      allocation &&
+      allocation.shift !== fixedShift &&
+      !window.confirm(
+        `Transferir ${option.label} para o turno ${fixedShift === "day" ? "Diurno" : "Noturno"}?`,
+      )
+    )
+      return;
     const compensationMode = allocation?.compensationMode ?? "monthly";
     const compensationValue = allocation?.compensationValue ?? "0.00";
     const monthlyHours = String(allocation?.monthlyWorkloadHours ?? 220);
@@ -924,7 +947,7 @@ export function EmployeeMobilization({
       : undefined;
     setDraft({
       employmentId: option.id,
-      shift: allocation?.shift ?? "day",
+      shift: fixedShift ?? allocation?.shift ?? "day",
       confirmedJobRoleId:
         allocation?.confirmedJobRoleId ??
         temporaryRoleId ??
@@ -943,6 +966,7 @@ export function EmployeeMobilization({
         ),
       overtimeIsManual: Boolean(allocation),
     });
+    onDraftStateChange?.(true);
   };
   const cancelEditing = () => {
     setActiveEmploymentId(null);
@@ -950,6 +974,7 @@ export function EmployeeMobilization({
     setNewJobRoleName("");
     setIsAddingJobRole(false);
     setJobRoleMessage("");
+    onDraftStateChange?.(false);
   };
   const confirmDraft = () => {
     if (!draft) return;
@@ -1062,20 +1087,26 @@ export function EmployeeMobilization({
           <div className="grid gap-4 md:grid-cols-2">
             <label className="grid gap-1.5 text-sm font-semibold md:col-span-2">
               <span>Turno fixo</span>
-              <select
-                className={controlClass}
-                value={draft.shift}
-                onChange={(event) =>
-                  updateDraft({
-                    shift: event.target.value as "day" | "night",
-                  })
-                }
-              >
-                <option value="day">Diurno</option>
-                {weeklySchedule.some((day) => day.shift === "night") && (
-                  <option value="night">Noturno</option>
-                )}
-              </select>
+              {fixedShift ? (
+                <p className="flex min-h-11 items-center rounded-md border border-input bg-muted/40 px-3 text-sm font-semibold">
+                  {fixedShift === "day" ? "Diurno" : "Noturno"}
+                </p>
+              ) : (
+                <select
+                  className={controlClass}
+                  value={draft.shift}
+                  onChange={(event) =>
+                    updateDraft({
+                      shift: event.target.value as "day" | "night",
+                    })
+                  }
+                >
+                  <option value="day">Diurno</option>
+                  {weeklySchedule.some((day) => day.shift === "night") && (
+                    <option value="night">Noturno</option>
+                  )}
+                </select>
+              )}
               <span className="text-xs font-medium text-muted-foreground">
                 A mudança realoca o trabalhador imediatamente, sem período
                 temporário.
@@ -1378,6 +1409,25 @@ export function EmployeeMobilization({
                     >
                       <Pencil className="size-4" />
                     </Button>
+                    {fixedShift && allocation.shift === fixedShift && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-lg"
+                        aria-label={`Remover ${option.label} do turno`}
+                        onClick={() =>
+                          form.setValue(
+                            "initialEmployeeAllocations",
+                            allocations.filter(
+                              (item) => item.employmentId !== option.id,
+                            ),
+                            { shouldDirty: true, shouldValidate: true },
+                          )
+                        }
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    )}
                   </div>
                 );
               })

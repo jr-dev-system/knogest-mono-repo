@@ -123,3 +123,12 @@ Contrato técnico:
   `role="status"` para sucesso ou mensagens não bloqueantes.
 - Criação de funcionários, máquinas, obras e fornecedores deve acontecer em modal.
 - Não use páginas separadas de criação para este MVP inicial.
+
+### Abas operacionais
+
+- Use uma única faixa segmentada, rolável horizontalmente no celular, seguida
+  do `tabpanel`; não envolva cada aba em um card próprio.
+- Preserve foco visível, alvos de ao menos 36 px e rótulos curtos orientados à
+  tarefa. Abas não substituem etapas sequenciais de um wizard.
+- Quando houver um seletor de turno acima das abas, mantenha hierarquia e
+  espaçamento distintos para evitar que os dois controles pareçam duplicados.

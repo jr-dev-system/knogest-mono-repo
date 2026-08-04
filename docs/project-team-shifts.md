@@ -59,5 +59,11 @@ mudanças posteriores de turno.
 - Mobilização de frente usa `machineAssignments[]`, com `machineId` e `shift`.
 - `PUT /projects/:projectId/mobilization/employees` pode reconciliar equipe,
   jornada e intervalos juntos.
+- `PUT /projects/:projectId/mobilization/employees/:shift` reconcilia somente o
+  turno informado e preserva o turno oposto. Uma transferência exige que a
+  mesma pessoa seja enviada explicitamente no turno de destino.
+- `GET /projects/:projectId/team-candidates?shift=&search=&cursor=&limit=15`
+  busca nome ou função e pagina 15 funcionários por vez. O cursor é vinculado
+  a tenant, obra, turno e busca; qualquer mudança de filtro invalida o cursor.
 - A carga mensal caracteriza o contrato da pessoa e nunca determina quantas
   horas ela trabalhou em um dia específico.

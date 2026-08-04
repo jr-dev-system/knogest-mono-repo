@@ -65,3 +65,16 @@ com cancelar e ação primária. Feedback positivo pós-envio pode usar
 `role="status"` fora do formulário.
 Funcionários, clientes e fornecedores de combustível são as referências do
 padrão reutilizável.
+
+## Navegação por abas
+
+Use `OperationTabs` em modais operacionais que separam duas ou mais tarefas do
+mesmo contexto e `OperationTabPanel` para o conteúdo ativo. O `tablist` precisa
+de rótulo acessível e prefixo de IDs compartilhado com os painéis. Somente a
+aba ativa participa da ordem de tabulação; setas esquerda/direita, `Home` e
+`End` mudam seleção e foco. Em telas estreitas, a faixa é horizontal e rolável,
+sem comprimir os rótulos.
+
+O seletor de contexto (por exemplo, Diurno/Noturno) fica antes das abas de
+tarefa. Trocar contexto com rascunho deve pedir confirmação, e cada painel deve
+manter seus estados de vazio, erro e carregamento no próprio corpo do modal.

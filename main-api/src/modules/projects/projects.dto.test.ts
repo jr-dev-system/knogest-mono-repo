@@ -5,6 +5,7 @@ import {
   projectIdempotencyKeySchema,
   projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
+  projectTeamCandidatesQuerySchema,
   projectWorkFrontCommandSchema,
   projectWorkFrontServicesCommandSchema,
   type ProjectCommand,
@@ -56,6 +57,21 @@ const command: ProjectCommand = {
 };
 
 describe("Projects DTO", () => {
+  it("binds team candidate pages to a shift and limits each page to 15", () => {
+    expect(
+      projectTeamCandidatesQuerySchema.parse({ shift: "day", search: " operador " }),
+    ).toMatchObject({ shift: "day", limit: 15, search: "operador" });
+    expect(() =>
+      projectTeamCandidatesQuerySchema.parse({ shift: "night", limit: 16 }),
+    ).toThrow();
+    expect(() =>
+      projectTeamCandidatesQuerySchema.parse({
+        shift: "day",
+        cursor: "cursor com espaço",
+      }),
+    ).toThrow();
+  });
+
   it("accepts the minimal aggregate", () =>
     expect(projectCommandSchema.safeParse(command).success).toBe(true));
 

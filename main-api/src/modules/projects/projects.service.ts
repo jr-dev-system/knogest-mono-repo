@@ -10,6 +10,7 @@ import type {
   ProjectMachineMobilizationCommand,
   ProjectMobilizationHistoryQuery,
   ProjectReadinessCommand,
+  ProjectTeamCandidatesQuery,
   ProjectQuantityBaselineRevisionCommand,
   ProjectWorkFrontCommand,
   ProjectWorkFrontMobilizationCommand,
@@ -44,6 +45,14 @@ export class ProjectsService {
 
   readinessOptions(scope: ProjectScope, projectId: string) {
     return this.handler.readinessOptions(scope, projectId);
+  }
+
+  teamCandidates(
+    scope: ProjectScope,
+    projectId: string,
+    query: ProjectTeamCandidatesQuery,
+  ) {
+    return this.handler.teamCandidates(scope, projectId, query);
   }
 
   saveReadiness(
@@ -113,6 +122,20 @@ export class ProjectsService {
     command: ProjectEmployeeMobilizationCommand,
   ) {
     return this.handler.saveEmployeeMobilization(scope, projectId, command);
+  }
+
+  saveEmployeeMobilizationShift(
+    scope: ProjectScope,
+    projectId: string,
+    shift: "day" | "night",
+    command: ProjectEmployeeMobilizationCommand,
+  ) {
+    return this.handler.saveEmployeeMobilizationShift(
+      scope,
+      projectId,
+      shift,
+      command,
+    );
   }
 
   saveMachineMobilization(

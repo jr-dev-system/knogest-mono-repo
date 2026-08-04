@@ -21,6 +21,7 @@ import {
   type ProjectListQuery,
   type ProjectMachineMobilizationCommand,
   type ProjectMobilizationHistoryQuery,
+  type ProjectTeamCandidatesQuery,
   type ProjectQuantityBaselineRevisionCommand,
   type ProjectReadinessCommand,
   type ProjectWorkFrontCommand,
@@ -3742,6 +3743,108 @@ export class ProjectsHandler {
     });
   }
 
+  async saveEmployeeMobilizationShift(
+    scope: ProjectScope,
+    projectId: string,
+    shift: "day" | "night",
+    command: ProjectEmployeeMobilizationCommand,
+  ) {
+    if (command.allocations.some((allocation) => allocation.shift !== shift))
+      validationError(
+        "allocations.shift",
+        "shift-mismatch",
+        "Todas as alocações devem pertencer ao turno informado na rota.",
+      );
+    const dbSelectedShift = dbShift(shift);
+    const selectedEmploymentIds = new Set(
+      command.allocations.map((item) => item.employmentId),
+    );
+    const otherAllocations =
+      await this.context.prisma.projectEmployeeAllocation.findMany({
+        where: {
+          ...projectScopeWhere(scope, projectId),
+          effectiveTo: null,
+          shift: { not: dbSelectedShift },
+        },
+      });
+    const allocations = [
+      ...otherAllocations
+        .filter((item) => !selectedEmploymentIds.has(item.employmentId))
+        .map((item) => ({
+          employmentId: item.employmentId,
+          shift: item.shift === "NIGHT" ? ("night" as const) : ("day" as const),
+          confirmedJobRolePeriodId: item.employmentJobRolePeriodId,
+          confirmedJobRoleName: item.jobRole,
+          monthlyWorkloadHours: item.monthlyWorkloadHours,
+          compensationMode: item.compensationMode as ReadinessEmployeeAllocation["compensationMode"],
+          compensationValue: item.compensationValue.toFixed(2),
+          overtimeRate: item.overtimeRate.toFixed(2),
+        })),
+      ...command.allocations,
+    ];
+    let weeklySchedule = command.weeklySchedule;
+    let breakTemplates = command.breakTemplates;
+    if (weeklySchedule && breakTemplates) {
+      const currentRevision =
+        await this.context.prisma.projectScheduleRevision.findFirst({
+          where: {
+            ...projectScopeWhere(scope, projectId),
+            effectiveTo: null,
+          },
+          orderBy: { effectiveFrom: "desc" },
+          select: { id: true },
+        });
+      const [otherDays, otherBreaks] = currentRevision
+        ? await Promise.all([
+            this.context.prisma.projectScheduleDay.findMany({
+              where: {
+                corporationId: scope.corporationId,
+                companyId: scope.companyId,
+                scheduleRevisionId: currentRevision.id,
+                shift: { not: dbSelectedShift },
+              },
+              orderBy: { dayOfWeek: "asc" },
+            }),
+            this.context.prisma.projectBreakTemplate.findMany({
+              where: {
+                corporationId: scope.corporationId,
+                companyId: scope.companyId,
+                scheduleRevisionId: currentRevision.id,
+                shift: { not: dbSelectedShift },
+              },
+              orderBy: { position: "asc" },
+            }),
+          ])
+        : [[], []];
+      weeklySchedule = [
+        ...otherDays.map((day) => ({
+          shift: day.shift === "NIGHT" ? ("night" as const) : ("day" as const),
+          dayOfWeek: day.dayOfWeek,
+          isWorking: day.isWorking,
+          startTime: day.startTime,
+          endTime: day.endTime,
+          endDayOffset: day.endDayOffset,
+        })),
+        ...weeklySchedule.filter((day) => day.shift === shift),
+      ];
+      breakTemplates = [
+        ...otherBreaks.map((item) => ({
+          shift:
+            item.shift === "NIGHT" ? ("night" as const) : ("day" as const),
+          name: item.name,
+          durationMinutes: item.durationMinutes,
+        })),
+        ...breakTemplates.filter((item) => item.shift === shift),
+      ];
+    }
+    return this.saveEmployeeMobilization(scope, projectId, {
+      ...command,
+      allocations,
+      weeklySchedule,
+      breakTemplates,
+    });
+  }
+
   async saveMachineMobilization(
     scope: ProjectScope,
     projectId: string,
@@ -4509,6 +4612,169 @@ export class ProjectsHandler {
 
   async detail(scope: ProjectScope, projectId: string) {
     return buildProjectSnapshot(this.context, scope, projectId);
+  }
+
+  async teamCandidates(
+    scope: ProjectScope,
+    projectId: string,
+    query: ProjectTeamCandidatesQuery,
+  ) {
+    const project = await this.context.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: { id: true },
+    });
+    if (!project) projectNotFound();
+    const normalizedSearch = query.search?.trim() || undefined;
+    const cursorQuery = {
+      search: normalizedSearch ?? null,
+      shift: query.shift,
+    };
+    const cursorScope = {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      projectId,
+      shift: query.shift,
+    };
+    const boundary = parseBoundCursor({
+      cursor: query.cursor,
+      query: cursorQuery,
+      resource: "project-team-candidates",
+      scope: cursorScope,
+      sortBy: "name",
+      sortDirection: "asc",
+    });
+    const [currentAllocations, foreignAllocations] = await Promise.all([
+      this.context.prisma.projectEmployeeAllocation.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          projectId,
+          effectiveTo: null,
+        },
+        select: { employmentId: true, personId: true, shift: true },
+      }),
+      this.context.prisma.projectEmployeeAllocation.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          effectiveTo: null,
+          NOT: { projectId },
+        },
+        select: { personId: true },
+      }),
+    ]);
+    const currentPersonIds = new Set(
+      currentAllocations.map((item) => item.personId),
+    );
+    const unavailablePersonIds = [
+      ...new Set(
+        foreignAllocations
+          .map((item) => item.personId)
+          .filter((personId) => !currentPersonIds.has(personId)),
+      ),
+    ];
+    const records = await this.context.prisma.employment.findMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        state: "ACTIVE",
+        isActive: true,
+        ...(unavailablePersonIds.length
+          ? { personId: { notIn: unavailablePersonIds } }
+          : {}),
+        AND: [
+          ...(normalizedSearch
+            ? [{
+                OR: [
+                {
+                  person: {
+                    displayName: {
+                      contains: normalizedSearch,
+                      mode: "insensitive" as const,
+                    },
+                  },
+                },
+                {
+                  jobRolePeriods: {
+                    some: {
+                      effectiveTo: null,
+                      jobRole: {
+                        name: {
+                          contains: normalizedSearch,
+                          mode: "insensitive" as const,
+                        },
+                      },
+                    },
+                  },
+                },
+                ],
+              }]
+            : []),
+          ...(boundary
+            ? [{
+                OR: [
+                { person: { displayName: { gt: String(boundary.value) } } },
+                {
+                  person: { displayName: String(boundary.value) },
+                  id: { gt: boundary.id },
+                },
+                ],
+              }]
+            : []),
+        ],
+      },
+      orderBy: [{ person: { displayName: "asc" } }, { id: "asc" }],
+      take: query.limit + 1,
+      select: {
+        id: true,
+        person: { select: { displayName: true } },
+        jobRolePeriods: {
+          where: { effectiveTo: null },
+          orderBy: { effectiveFrom: "desc" },
+          take: 1,
+          select: {
+            id: true,
+            jobRole: { select: { id: true, name: true } },
+          },
+        },
+      },
+    });
+    const allocationByEmployment = new Map(
+      currentAllocations.map((item) => [item.employmentId, item]),
+    );
+    const page = buildCursorPage({
+      items: records,
+      limit: query.limit,
+      query: cursorQuery,
+      resource: "project-team-candidates",
+      scope: cursorScope,
+      sortBy: "name",
+      sortDirection: "asc",
+      getLast: (item) => ({ value: item.person.displayName, id: item.id }),
+    });
+    return {
+      data: page.data.map((item) => {
+        const role = item.jobRolePeriods[0];
+        const allocation = allocationByEmployment.get(item.id);
+        return {
+          id: item.id,
+          label: item.person.displayName,
+          detail: role?.jobRole.name ?? null,
+          jobRolePeriodId: role?.id ?? null,
+          jobRoleId: role?.jobRole.id ?? null,
+          allocatedShift: allocation
+            ? allocation.shift === "NIGHT"
+              ? "night"
+              : "day"
+            : null,
+        };
+      }),
+      pageInfo: page.pageInfo,
+    };
   }
 
   async readinessOptions(scope: ProjectScope, projectId: string) {
