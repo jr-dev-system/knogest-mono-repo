@@ -15,6 +15,7 @@ import {
   projectTeamMembersQuerySchema,
   projectWorkFrontCommandSchema,
   projectWorkFrontMobilizationCommandSchema,
+  projectWorkFrontMobilizationOptionsQuerySchema,
   projectWorkFrontParamsSchema,
   projectWorkFrontServicesCommandSchema,
 } from "./projects.dto";
@@ -63,6 +64,89 @@ const projectItemSchema = {
   },
 };
 const uuid = { type: "string", format: "uuid" } as const;
+const cursorPageInfoSchema = {
+  type: "object",
+  required: ["hasNextPage", "nextCursor"],
+  properties: {
+    hasNextPage: { type: "boolean" },
+    nextCursor: { type: "string", nullable: true },
+  },
+} as const;
+const occupyingFrontSchema = {
+  type: "object",
+  nullable: true,
+  required: ["id", "name"],
+  properties: { id: uuid, name: { type: "string" } },
+} as const;
+const workFrontMobilizationEmployeeOptionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "resourceType",
+    "id",
+    "name",
+    "jobRole",
+    "shift",
+    "occupyingFront",
+    "selected",
+    "disabled",
+  ],
+  properties: {
+    resourceType: { type: "string", const: "employee" },
+    id: uuid,
+    name: { type: "string" },
+    jobRole: { type: "string" },
+    shift: { enum: ["day", "night"] },
+    occupyingFront: occupyingFrontSchema,
+    selected: { type: "boolean" },
+    disabled: { type: "boolean" },
+  },
+} as const;
+const workFrontMobilizationMachineOptionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "resourceType",
+    "id",
+    "selectionKey",
+    "name",
+    "manufacturer",
+    "model",
+    "identifier",
+    "shift",
+    "operator",
+    "occupyingFront",
+    "selected",
+    "disabled",
+  ],
+  properties: {
+    resourceType: { type: "string", const: "machine" },
+    id: uuid,
+    selectionKey: { type: "string" },
+    name: { type: "string" },
+    manufacturer: { type: "string" },
+    model: { type: "string" },
+    identifier: {
+      type: "object",
+      nullable: true,
+      required: ["kind", "value"],
+      properties: {
+        kind: { enum: ["PLATE", "COMPANY_TAG"] },
+        value: { type: "string" },
+      },
+    },
+    shift: { enum: ["day", "night"] },
+    operator: {
+      type: "object",
+      nullable: true,
+      required: ["id", "name"],
+      properties: { id: uuid, name: { type: "string" } },
+    },
+    occupyingFront: occupyingFrontSchema,
+    selected: { type: "boolean" },
+    disabled: { type: "boolean" },
+  },
+} as const;
 const projectAddressOpenApiSchema = {
   type: "object",
   additionalProperties: false,
@@ -1647,6 +1731,83 @@ export async function v1ProjectsController(app: FastifyInstance) {
             params.data.projectId,
             params.data.frontId,
             body.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string; frontId: string };
+    Querystring: Record<string, unknown>;
+  }>(
+    "/projects/:projectId/fronts/:frontId/mobilization-options",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "List paginated work-front mobilization options",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["projectId", "frontId"],
+          properties: { projectId: uuid, frontId: uuid },
+        },
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          required: ["resourceType"],
+          properties: {
+            resourceType: { enum: ["employee", "machine"] },
+            search: { type: "string", maxLength: 120 },
+            limit: { type: "integer", minimum: 1, maximum: 15, default: 15 },
+            cursor: { type: "string", maxLength: 2048 },
+          },
+        },
+        response: {
+          200: successSchema({
+            type: "object",
+            required: ["data", "pageInfo"],
+            properties: {
+              data: {
+                type: "array",
+                items: {
+                  oneOf: [
+                    workFrontMobilizationEmployeeOptionSchema,
+                    workFrontMobilizationMachineOptionSchema,
+                  ],
+                },
+              },
+              pageInfo: cursorPageInfoSchema,
+            },
+          }),
+          400: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const params = projectWorkFrontParamsSchema.safeParse(request.params);
+      const query = projectWorkFrontMobilizationOptionsQuerySchema.safeParse(
+        request.query,
+      );
+      if (!params.success || !query.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid work front mobilization options query",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.workFrontMobilizationOptions(
+            scope(request),
+            params.data.projectId,
+            params.data.frontId,
+            query.data,
           ),
         });
       } catch (error) {

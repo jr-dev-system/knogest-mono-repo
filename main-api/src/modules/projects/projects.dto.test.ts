@@ -8,6 +8,7 @@ import {
   projectTeamCandidatesQuerySchema,
   projectTeamMembersQuerySchema,
   projectWorkFrontCommandSchema,
+  projectWorkFrontMobilizationOptionsQuerySchema,
   projectWorkFrontServicesCommandSchema,
   type ProjectCommand,
 } from "./projects.dto";
@@ -60,7 +61,10 @@ const command: ProjectCommand = {
 describe("Projects DTO", () => {
   it("binds team candidate pages to a shift and limits each page to 15", () => {
     expect(
-      projectTeamCandidatesQuerySchema.parse({ shift: "day", search: " operador " }),
+      projectTeamCandidatesQuerySchema.parse({
+        shift: "day",
+        search: " operador ",
+      }),
     ).toMatchObject({ shift: "day", limit: 15, search: "operador" });
     expect(() =>
       projectTeamCandidatesQuerySchema.parse({ shift: "night", limit: 16 }),
@@ -80,6 +84,25 @@ describe("Projects DTO", () => {
     });
     expect(() =>
       projectTeamMembersQuerySchema.parse({ shift: "day", limit: 16 }),
+    ).toThrow();
+  });
+
+  it("limits work-front mobilization searches to cursor pages of 15", () => {
+    expect(
+      projectWorkFrontMobilizationOptionsQuerySchema.parse({
+        resourceType: "machine",
+        search: "  escavadeira  ",
+      }),
+    ).toEqual({
+      resourceType: "machine",
+      search: "escavadeira",
+      limit: 15,
+    });
+    expect(() =>
+      projectWorkFrontMobilizationOptionsQuerySchema.parse({
+        resourceType: "employee",
+        limit: 16,
+      }),
     ).toThrow();
   });
 

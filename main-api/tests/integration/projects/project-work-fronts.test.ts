@@ -186,6 +186,26 @@ describe("project work-front quantities", () => {
         machineId: machine.id,
       },
     });
+    await app.prisma.machineIdentifier.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: machine.id,
+        kind: "COMPANY_TAG",
+        value: "PAT-EX-01",
+        normalizedValue: "PATEX01",
+      },
+    });
+    await app.prisma.machineIdentifier.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: machine.id,
+        kind: "PLATE",
+        value: "ABC-1D23",
+        normalizedValue: "ABC1D23",
+      },
+    });
     const reading = await app.prisma.machineMeterReading.create({
       data: {
         corporationId: scope.corporationId,
@@ -968,5 +988,146 @@ describe("project work-front quantities", () => {
         }),
       }),
     );
+  });
+
+  it("paginates front options, excludes operators and exposes occupied resources", async () => {
+    const scope = await setup();
+    const directRole = await app.prisma.jobRole.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        name: "Topógrafo",
+        normalizedName: "topografo",
+      },
+    });
+    const directEmployee = await app.inject({
+      method: "POST",
+      url: "/api/v1/employees",
+      headers: { authorization: scope.authorization },
+      payload: {
+        document: syntheticFuelSupplierCpfFixture,
+        fullName: "Bruno Topografia",
+        companyRegistrationNumber: "TOP-001",
+        admissionDate: "2026-07-01",
+        jobRoleId: directRole.id,
+      },
+    });
+    expect(directEmployee.statusCode, directEmployee.body).toBe(201);
+    const directEmploymentId = directEmployee.json().data.id as string;
+    const [firstResponse, secondResponse] = await Promise.all([
+      createFront(scope.authorization, scope.projectId, "Frente A", "40.00"),
+      createFront(scope.authorization, scope.projectId, "Frente B", "40.00"),
+    ]);
+    const frontIds = [
+      ...(firstResponse.json().data.workFronts as { id: string }[]),
+      ...(secondResponse.json().data.workFronts as { id: string }[]),
+    ]
+      .map((front) => front.id)
+      .filter((id, index, ids) => ids.indexOf(id) === index);
+    const resources = await prepareProjectResources(scope);
+    const team = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            employmentId: scope.employmentId,
+            confirmedJobRoleId: scope.jobRoleId,
+            monthlyWorkloadHours: 220,
+            compensationMode: "monthly",
+            compensationValue: "5000.00",
+            overtimeRate: "30.00",
+          },
+          {
+            employmentId: directEmploymentId,
+            confirmedJobRoleId: directRole.id,
+            monthlyWorkloadHours: 180,
+            compensationMode: "monthly",
+            compensationValue: "4000.00",
+            overtimeRate: "25.00",
+          },
+        ],
+      },
+    });
+    expect(team.statusCode, team.body).toBe(200);
+    const first = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontIds[0]}/mobilization`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        employmentIds: [directEmploymentId],
+        machineIds: [resources.machineId],
+      },
+    });
+    expect(first.statusCode, first.body).toBe(200);
+
+    const employees = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontIds[1]}/mobilization-options?resourceType=employee&search=top%C3%B3grafo`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(employees.statusCode, employees.body).toBe(200);
+    expect(employees.json().data).toEqual({
+      data: [
+        expect.objectContaining({
+          resourceType: "employee",
+          id: directEmploymentId,
+          name: "Bruno Topografia",
+          shift: "day",
+          selected: false,
+          disabled: true,
+          occupyingFront: expect.objectContaining({ id: frontIds[0] }),
+        }),
+      ],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    });
+    const operators = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontIds[1]}/mobilization-options?resourceType=employee&search=Respons%C3%A1vel`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(operators.statusCode, operators.body).toBe(200);
+    expect(operators.json().data.data).toEqual([]);
+
+    for (const search of [
+      "Escavadeira",
+      "Teste",
+      "EX-01",
+      "PAT-EX-01",
+      "ABC-1D23",
+    ]) {
+      const machines = await app.inject({
+        method: "GET",
+        url: `/api/v1/projects/${scope.projectId}/fronts/${frontIds[1]}/mobilization-options?resourceType=machine&search=${encodeURIComponent(search)}`,
+        headers: { authorization: scope.authorization },
+      });
+      expect(machines.statusCode, machines.body).toBe(200);
+      expect(machines.json().data.data).toEqual([
+        expect.objectContaining({
+          resourceType: "machine",
+          selectionKey: `${resources.machineId}:day`,
+          shift: "day",
+          operator: expect.objectContaining({ id: scope.employmentId }),
+          disabled: true,
+          occupyingFront: expect.objectContaining({ id: frontIds[0] }),
+        }),
+      ]);
+    }
+
+    const selected = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontIds[0]}/mobilization-options?resourceType=machine`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(selected.json().data.data[0]).toEqual(
+      expect.objectContaining({ selected: true, disabled: false }),
+    );
+    const invalidCursor = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/fronts/${frontIds[0]}/mobilization-options?resourceType=machine&cursor=invalid`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(invalidCursor.statusCode, invalidCursor.body).toBe(400);
   });
 });

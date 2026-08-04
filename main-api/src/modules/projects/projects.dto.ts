@@ -584,6 +584,20 @@ export const projectWorkFrontParamsSchema = z
   .object({ projectId: uuid, frontId: uuid })
   .strict();
 
+export const projectWorkFrontMobilizationOptionsQuerySchema = z
+  .object({
+    resourceType: z.enum(["employee", "machine"]),
+    search: z.string().trim().max(120).optional(),
+    limit: z.coerce.number().int().min(1).max(15).default(15),
+    cursor: z
+      .string()
+      .min(1)
+      .max(2048)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .optional(),
+  })
+  .strict();
+
 export const projectWorkFrontMobilizationCommandSchema = z
   .object({
     employmentIds: z.array(uuid).max(200),
@@ -939,6 +953,9 @@ export type ProjectWorkFrontServicesCommand = z.infer<
 >;
 export type ProjectWorkFrontMobilizationCommand = z.infer<
   typeof projectWorkFrontMobilizationCommandSchema
+>;
+export type ProjectWorkFrontMobilizationOptionsQuery = z.infer<
+  typeof projectWorkFrontMobilizationOptionsQuerySchema
 >;
 export type ProjectEmployeeMobilizationCommand = z.infer<
   typeof projectEmployeeMobilizationCommandSchema

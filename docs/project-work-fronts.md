@@ -70,6 +70,18 @@ automaticamente e conta como equipe. A mesma máquina pode estar em frentes
 diferentes em turnos diferentes. Se a pessoa também tiver sido selecionada
 diretamente, o histórico registra as duas origens sem duplicá-la na frente.
 
+O modal de mobilização da frente separa **Funcionários** e **Máquinas** em tabs.
+Cada tab consulta até 15 recursos por página e preserva as seleções ao trocar
+de página, busca ou tipo de recurso. Funcionários podem ser buscados por nome ou
+função; máquinas por nome, fabricante, modelo, placa ou patrimônio. A busca é
+aplicada após 300 ms sem digitação.
+
+Operadores atuais das máquinas da obra não aparecem como seleção direta na tab
+Funcionários. Na tab Máquinas, cada linha representa `máquina + turno` e mostra
+operador e eventual frente ocupante. Recursos de outra frente continuam
+visíveis, porém desabilitados, e precisam ser liberados antes de uma nova
+destinação.
+
 Os requisitos de equipe e máquinas bloqueiam apenas o **início** da frente. Depois de ativa, a frente pode ter sua mobilização alterada ou ficar temporariamente sem recursos sem ser encerrada automaticamente.
 
 Alterar o pool da obra também é permitido durante a execução, desde que não remova uma pessoa, máquina ou operador ainda destinado a uma frente. Mobilizações e desmobilizações encerram o período anterior e criam histórico auditável; registros históricos não são sobrescritos nem apagados.
@@ -89,6 +101,7 @@ Frente: `PLANNED → ACTIVE`; uma frente planejada também pode ser cancelada. C
 - `PUT /projects/:projectId/mobilization/employees`
 - `PUT /projects/:projectId/mobilization/machines`
 - `PUT /projects/:projectId/fronts/:frontId/mobilization`
+- `GET /projects/:projectId/fronts/:frontId/mobilization-options`
 - `GET /projects/:projectId/mobilization-history`
 - `POST /projects/:projectId/fronts/:frontId/start`
 - `POST /projects/:projectId/fronts/:frontId/cancel`
@@ -100,6 +113,11 @@ Clientes devem omitir `data` e `Content-Type`; não devem enviar `{}` nem
 é preservada pelo cliente HTTP server-only compartilhado.
 
 O detalhe de projeto retorna `quantityBaseline` com total, alocado, saldo e produzido por serviço. Cada serviço da frente retorna `produced`, `minimumQuantity`, `maximumQuantity` e `hasProductions`, além dos requisitos, destinações atuais, validade de planejamento (`planningEligibility`) e aptidão para início (`eligibility`). O histórico é paginado por cursor e pode ser filtrado por classe de recurso e frente.
+
+`mobilization-options` exige `resourceType=employee|machine`, aceita `search` e
+`cursor` e limita a página a 15 itens. O cursor é vinculado ao tenant, empresa,
+obra, frente, tipo de recurso e busca normalizada; trocar qualquer filtro
+invalida o cursor anterior.
 
 ## Regras para evoluções futuras
 

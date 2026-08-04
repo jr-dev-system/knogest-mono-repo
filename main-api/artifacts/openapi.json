@@ -18421,6 +18421,255 @@
         }
       }
     },
+    "/api/v1/projects/{projectId}/fronts/{frontId}/mobilization-options": {
+      "get": {
+        "summary": "List paginated work-front mobilization options",
+        "tags": ["Projects"],
+        "parameters": [
+          {
+            "schema": { "enum": ["employee", "machine"] },
+            "in": "query",
+            "name": "resourceType",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 15,
+              "default": 15
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 2048 },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "frontId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["data", "pageInfo"],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "resourceType",
+                                  "id",
+                                  "name",
+                                  "jobRole",
+                                  "shift",
+                                  "occupyingFront",
+                                  "selected",
+                                  "disabled"
+                                ],
+                                "properties": {
+                                  "resourceType": {
+                                    "type": "string",
+                                    "enum": ["employee"]
+                                  },
+                                  "id": { "type": "string", "format": "uuid" },
+                                  "name": { "type": "string" },
+                                  "jobRole": { "type": "string" },
+                                  "shift": { "enum": ["day", "night"] },
+                                  "occupyingFront": {
+                                    "type": "object",
+                                    "nullable": true,
+                                    "required": ["id", "name"],
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      "name": { "type": "string" }
+                                    }
+                                  },
+                                  "selected": { "type": "boolean" },
+                                  "disabled": { "type": "boolean" }
+                                }
+                              },
+                              {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "resourceType",
+                                  "id",
+                                  "selectionKey",
+                                  "name",
+                                  "manufacturer",
+                                  "model",
+                                  "identifier",
+                                  "shift",
+                                  "operator",
+                                  "occupyingFront",
+                                  "selected",
+                                  "disabled"
+                                ],
+                                "properties": {
+                                  "resourceType": {
+                                    "type": "string",
+                                    "enum": ["machine"]
+                                  },
+                                  "id": { "type": "string", "format": "uuid" },
+                                  "selectionKey": { "type": "string" },
+                                  "name": { "type": "string" },
+                                  "manufacturer": { "type": "string" },
+                                  "model": { "type": "string" },
+                                  "identifier": {
+                                    "type": "object",
+                                    "nullable": true,
+                                    "required": ["kind", "value"],
+                                    "properties": {
+                                      "kind": {
+                                        "enum": ["PLATE", "COMPANY_TAG"]
+                                      },
+                                      "value": { "type": "string" }
+                                    }
+                                  },
+                                  "shift": { "enum": ["day", "night"] },
+                                  "operator": {
+                                    "type": "object",
+                                    "nullable": true,
+                                    "required": ["id", "name"],
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      "name": { "type": "string" }
+                                    }
+                                  },
+                                  "occupyingFront": {
+                                    "type": "object",
+                                    "nullable": true,
+                                    "required": ["id", "name"],
+                                    "properties": {
+                                      "id": {
+                                        "type": "string",
+                                        "format": "uuid"
+                                      },
+                                      "name": { "type": "string" }
+                                    }
+                                  },
+                                  "selected": { "type": "boolean" },
+                                  "disabled": { "type": "boolean" }
+                                }
+                              }
+                            ]
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/projects/{projectId}/mobilization-history": {
       "get": {
         "summary": "List Project or work-front mobilization history",

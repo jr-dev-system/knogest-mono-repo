@@ -55,6 +55,7 @@ import { cn } from "@/lib/utils";
 import type { ProjectDailyReportsPage } from "../daily-reports.types";
 import { ProjectDailyReports } from "./project-daily-reports";
 import { ProjectTeamView } from "./project-team-view";
+import { WorkFrontMobilizationSelector } from "./work-front-mobilization-selector";
 import type { ProjectProductionsPage } from "../productions.types";
 import { ProjectProductions } from "./project-productions";
 import {
@@ -2215,37 +2216,6 @@ export function ProjectDetail({
     project.status === "planned" || project.status === "active";
   const mobilizingFront = project.workFronts.find(
     (front) => front.id === mobilizingFrontId,
-  );
-  const employeeOccupation = new Map(
-    project.workFronts.flatMap((front) =>
-      front.employeeAssignments.flatMap((assignment) =>
-        assignment.employment
-          ? [[assignment.employment.id, front] as const]
-          : [],
-      ),
-    ),
-  );
-  const machineOccupation = new Map(
-    project.workFronts.flatMap((front) =>
-      front.machineAssignments.flatMap((assignment) =>
-        assignment.machine
-          ? [[`${assignment.machine.id}:${assignment.shift}`, front] as const]
-          : [],
-      ),
-    ),
-  );
-  const selectedMachineOperatorIds = new Set(
-    project.machineAllocations.flatMap((allocation) =>
-      allocation.machine
-        ? allocation.operatorAssignments.flatMap((assignment) =>
-            frontMachineIds.includes(
-              `${allocation.machine!.id}:${assignment.shift}`,
-            ) && assignment.operator
-              ? [assignment.operator.id]
-              : [],
-          )
-        : [],
-    ),
   );
   const canManageFronts =
     project.status === "planned" || project.status === "active";
@@ -4664,114 +4634,18 @@ export function ProjectDetail({
               )}
             </div>
           )}
-          <FormSection
-            title="Equipe da frente"
-            description="Operadores das máquinas selecionadas entram automaticamente e também contam como equipe."
-          >
-            <div className="grid gap-2">
-              {project.employeeAllocations.map((allocation) => {
-                const employment = allocation.employment;
-                if (!employment) return null;
-                const occupied = employeeOccupation.get(employment.id);
-                const occupiedElsewhere =
-                  occupied && occupied.id !== mobilizingFrontId;
-                const includedByMachine = selectedMachineOperatorIds.has(
-                  employment.id,
-                );
-                const checked =
-                  frontEmploymentIds.includes(employment.id) ||
-                  includedByMachine;
-                return (
-                  <label
-                    key={allocation.id}
-                    className={cn(
-                      "flex min-h-11 items-start gap-3 rounded-md border border-border px-3 py-2 text-sm",
-                      occupiedElsewhere && "opacity-60",
-                    )}
-                  >
-                    <input
-                      type="checkbox"
-                      className="mt-0.5 size-4 accent-primary"
-                      checked={checked}
-                      disabled={
-                        isPending ||
-                        Boolean(occupiedElsewhere) ||
-                        includedByMachine
-                      }
-                      onChange={(event) =>
-                        setFrontEmploymentIds((current) =>
-                          event.target.checked
-                            ? [...current, employment.id]
-                            : current.filter((id) => id !== employment.id),
-                        )
-                      }
-                    />
-                    <span>
-                      <strong className="block">{employment.name}</strong>
-                      <span className="text-muted-foreground">
-                        {includedByMachine
-                          ? "Incluído como operador"
-                          : occupiedElsewhere
-                            ? `Ocupado em ${occupied.name}`
-                            : allocation.jobRole}
-                      </span>
-                    </span>
-                  </label>
-                );
-              })}
-            </div>
-          </FormSection>
-          <FormSection
-            title="Máquinas da frente"
-            description="A máquina leva consigo o operador definido na mobilização geral da obra."
-          >
-            <div className="grid gap-2">
-              {project.machineAllocations.flatMap((allocation) => {
-                const machine = allocation.machine;
-                if (!machine) return [];
-                return allocation.operatorAssignments.map((assignment) => {
-                  const assignmentKey = `${machine.id}:${assignment.shift}` as
-                    | `${string}:day`
-                    | `${string}:night`;
-                  const occupied = machineOccupation.get(assignmentKey);
-                  const occupiedElsewhere =
-                    occupied && occupied.id !== mobilizingFrontId;
-                  return (
-                    <label
-                      key={`${allocation.id}:${assignment.shift}`}
-                      className={cn(
-                        "flex min-h-11 items-start gap-3 rounded-md border border-border px-3 py-2 text-sm",
-                        occupiedElsewhere && "opacity-60",
-                      )}
-                    >
-                      <input
-                        type="checkbox"
-                        className="mt-0.5 size-4 accent-primary"
-                        checked={frontMachineIds.includes(assignmentKey)}
-                        disabled={isPending || Boolean(occupiedElsewhere)}
-                        onChange={(event) =>
-                          setFrontMachineIds((current) =>
-                            event.target.checked
-                              ? [...current, assignmentKey]
-                              : current.filter((id) => id !== assignmentKey),
-                          )
-                        }
-                      />
-                      <span>
-                        <strong className="block">{machine.name}</strong>
-                        <span className="text-muted-foreground">
-                          {assignment.shift === "day" ? "Diurno" : "Noturno"} ·{" "}
-                          {occupiedElsewhere
-                            ? `Ocupada em ${occupied.name}`
-                            : `Operador: ${assignment.operator?.name ?? "não informado"}`}
-                        </span>
-                      </span>
-                    </label>
-                  );
-                });
-              })}
-            </div>
-          </FormSection>
+          {mobilizingFront && (
+            <WorkFrontMobilizationSelector
+              key={mobilizingFront.id}
+              projectId={project.id}
+              frontId={mobilizingFront.id}
+              disabled={isPending}
+              selectedEmploymentIds={frontEmploymentIds}
+              selectedMachineKeys={frontMachineIds}
+              onSelectedEmploymentIdsChange={setFrontEmploymentIds}
+              onSelectedMachineKeysChange={setFrontMachineIds}
+            />
+          )}
         </div>
       </OperationsModal>
 

@@ -70,6 +70,12 @@ A visualização da aba Equipe consulta
 `GET /projects/:projectId/team-members?shift=&cursor=&limit=15` por uma Server
 Action. Cada turno mantém suas páginas já carregadas e seu índice atual; trocar
 entre Diurno e Noturno não reinicia a navegação do outro turno.
+O modal de mobilização de uma frente consulta
+`GET /projects/:projectId/fronts/:frontId/mobilization-options` pela Server
+Action correspondente. Funcionários e máquinas mantêm caches separados por
+frente, tipo de recurso e busca; a paginação usa 15 itens e nunca reaproveita um
+cursor depois de mudar esses filtros. As seleções ficam no estado do comando,
+fora das páginas retornadas, para sobreviver a buscas e navegação.
 
 A linha de base e as distribuições usam strings decimais com três casas. A
 edição de serviços de uma frente ativa chama

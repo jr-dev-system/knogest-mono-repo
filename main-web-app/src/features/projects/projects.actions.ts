@@ -5,6 +5,7 @@ import { z } from "zod";
 import { postApiV1Projects } from "@/generated/clients/postApiV1Projects";
 import { getApiV1ProjectsProjectidTeamCandidates } from "@/generated/clients/getApiV1ProjectsProjectidTeamCandidates";
 import { getApiV1ProjectsProjectidTeamMembers } from "@/generated/clients/getApiV1ProjectsProjectidTeamMembers";
+import { getApiV1ProjectsProjectidFrontsFrontidMobilizationOptions } from "@/generated/clients/getApiV1ProjectsProjectidFrontsFrontidMobilizationOptions";
 import client, { ApiClientError } from "@/lib/api/server-client";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import { projectCommandSchema, type ProjectCommand } from "./projects-schema";
@@ -16,6 +17,7 @@ import type {
   ProjectSuppliedItemOffersPage,
   ProjectTeamCandidatesPage,
   ProjectTeamMembersPage,
+  ProjectWorkFrontMobilizationOptionsPage,
   SuppliedItemSelectorPage,
 } from "./projects.types";
 
@@ -700,6 +702,35 @@ export async function getProjectTeamMembersAction({
       cursor: cursor || undefined,
     },
   });
+  return response.data;
+}
+
+export async function getProjectWorkFrontMobilizationOptionsAction({
+  cursor,
+  frontId,
+  projectId,
+  resourceType,
+  search,
+}: {
+  cursor?: string | null;
+  frontId: string;
+  projectId: string;
+  resourceType: "employee" | "machine";
+  search?: string;
+}): Promise<ProjectWorkFrontMobilizationOptionsPage> {
+  const ids = z
+    .object({ projectId: z.string().uuid(), frontId: z.string().uuid() })
+    .parse({ projectId, frontId });
+  const response =
+    await getApiV1ProjectsProjectidFrontsFrontidMobilizationOptions({
+      ...ids,
+      params: {
+        resourceType,
+        search: search?.trim() || undefined,
+        limit: 15,
+        cursor: cursor || undefined,
+      },
+    });
   return response.data;
 }
 

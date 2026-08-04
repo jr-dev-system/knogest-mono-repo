@@ -23,6 +23,7 @@ vi.mock("../projects.actions", () => ({
     data: [],
     pageInfo: { hasNextPage: false, nextCursor: null },
   }),
+  getProjectWorkFrontMobilizationOptionsAction: vi.fn(),
   saveProjectEmployeeMobilizationAction: vi.fn(),
   saveProjectMachineMobilizationAction: vi.fn(),
   saveProjectQuantityBaselineAction: vi.fn(),
@@ -72,6 +73,7 @@ import {
   createProjectWorkFrontAction,
   getProjectMobilizationHistoryAction,
   getProjectTeamCandidatesAction,
+  getProjectWorkFrontMobilizationOptionsAction,
   saveProjectQuantityBaselineAction,
   saveProjectReadinessAction,
   saveProjectWorkFrontMobilizationAction,
@@ -1260,6 +1262,29 @@ describe("Project active work-front mobilization", () => {
 
   it("prepares a front separately and includes the machine operator", async () => {
     const saveMobilization = vi.mocked(saveProjectWorkFrontMobilizationAction);
+    const getOptions = vi.mocked(getProjectWorkFrontMobilizationOptionsAction);
+    getOptions.mockImplementation(async ({ resourceType }) => ({
+      data:
+        resourceType === "employee"
+          ? []
+          : [
+              {
+                resourceType: "machine" as const,
+                id: machine.id,
+                selectionKey: `${machine.id}:day`,
+                name: machine.name,
+                manufacturer: "Caterpillar",
+                model: "320",
+                identifier: { kind: "COMPANY_TAG" as const, value: "PAT-01" },
+                shift: "day" as const,
+                operator: { id: employee.id, name: employee.name },
+                occupyingFront: null,
+                selected: false,
+                disabled: false,
+              },
+            ],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    }));
     saveMobilization.mockResolvedValue({
       kind: "success",
       project: activeProject,
@@ -1273,21 +1298,18 @@ describe("Project active work-front mobilization", () => {
       screen.getByRole("button", { name: "Preparar mobilização" }),
     );
     const modal = screen.getByRole("dialog");
-    const machineCheckbox = within(modal).getByRole("checkbox", {
+    expect(
+      within(modal).getByRole("tab", { name: "Funcionários" }),
+    ).toBeTruthy();
+    expect(
+      within(modal).queryByRole("checkbox", { name: /Operador João/u }),
+    ).toBeNull();
+    await user.click(within(modal).getByRole("tab", { name: "Máquinas" }));
+    const machineCheckbox = await within(modal).findByRole("checkbox", {
       name: /Escavadeira 01/u,
     });
     await user.click(machineCheckbox);
-    const operatorCheckbox = within(modal)
-      .getAllByRole("checkbox", { name: /Operador João/u })
-      .find((checkbox) => (checkbox as HTMLInputElement).disabled) as
-      | HTMLInputElement
-      | undefined;
-    expect(operatorCheckbox).toBeDefined();
-    if (!operatorCheckbox) {
-      throw new Error("Operator checkbox was not auto-selected");
-    }
-    expect(operatorCheckbox.checked).toBe(true);
-    expect(operatorCheckbox.disabled).toBe(true);
+    expect(within(modal).getByText(/Operador: Operador João/u)).toBeTruthy();
     await user.click(
       within(modal).getByRole("button", { name: "Salvar mobilização" }),
     );

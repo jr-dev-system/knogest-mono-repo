@@ -15,6 +15,7 @@ import type {
   ProjectQuantityBaselineRevisionCommand,
   ProjectWorkFrontCommand,
   ProjectWorkFrontMobilizationCommand,
+  ProjectWorkFrontMobilizationOptionsQuery,
   ProjectWorkFrontServicesCommand,
 } from "./projects.dto";
 
@@ -122,6 +123,20 @@ export class ProjectsService {
       projectId,
       frontId,
       command,
+    );
+  }
+
+  workFrontMobilizationOptions(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+    query: ProjectWorkFrontMobilizationOptionsQuery,
+  ) {
+    return this.handler.workFrontMobilizationOptions(
+      scope,
+      projectId,
+      frontId,
+      query,
     );
   }
 

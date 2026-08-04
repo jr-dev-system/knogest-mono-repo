@@ -27,6 +27,7 @@ import {
   type ProjectReadinessCommand,
   type ProjectWorkFrontCommand,
   type ProjectWorkFrontMobilizationCommand,
+  type ProjectWorkFrontMobilizationOptionsQuery,
   type ProjectWorkFrontServicesCommand,
 } from "../projects.dto";
 
@@ -3777,7 +3778,8 @@ export class ProjectsHandler {
           confirmedJobRolePeriodId: item.employmentJobRolePeriodId,
           confirmedJobRoleName: item.jobRole,
           monthlyWorkloadHours: item.monthlyWorkloadHours,
-          compensationMode: item.compensationMode as ReadinessEmployeeAllocation["compensationMode"],
+          compensationMode:
+            item.compensationMode as ReadinessEmployeeAllocation["compensationMode"],
           compensationValue: item.compensationValue.toFixed(2),
           overtimeRate: item.overtimeRate.toFixed(2),
         })),
@@ -3830,8 +3832,7 @@ export class ProjectsHandler {
       ];
       breakTemplates = [
         ...otherBreaks.map((item) => ({
-          shift:
-            item.shift === "NIGHT" ? ("night" as const) : ("day" as const),
+          shift: item.shift === "NIGHT" ? ("night" as const) : ("day" as const),
           name: item.name,
           durationMinutes: item.durationMinutes,
         })),
@@ -4689,42 +4690,46 @@ export class ProjectsHandler {
           : {}),
         AND: [
           ...(normalizedSearch
-            ? [{
-                OR: [
+            ? [
                 {
-                  person: {
-                    displayName: {
-                      contains: normalizedSearch,
-                      mode: "insensitive" as const,
-                    },
-                  },
-                },
-                {
-                  jobRolePeriods: {
-                    some: {
-                      effectiveTo: null,
-                      jobRole: {
-                        name: {
+                  OR: [
+                    {
+                      person: {
+                        displayName: {
                           contains: normalizedSearch,
                           mode: "insensitive" as const,
                         },
                       },
                     },
-                  },
+                    {
+                      jobRolePeriods: {
+                        some: {
+                          effectiveTo: null,
+                          jobRole: {
+                            name: {
+                              contains: normalizedSearch,
+                              mode: "insensitive" as const,
+                            },
+                          },
+                        },
+                      },
+                    },
+                  ],
                 },
-                ],
-              }]
+              ]
             : []),
           ...(boundary
-            ? [{
-                OR: [
-                { person: { displayName: { gt: String(boundary.value) } } },
+            ? [
                 {
-                  person: { displayName: String(boundary.value) },
-                  id: { gt: boundary.id },
+                  OR: [
+                    { person: { displayName: { gt: String(boundary.value) } } },
+                    {
+                      person: { displayName: String(boundary.value) },
+                      id: { gt: boundary.id },
+                    },
+                  ],
                 },
-                ],
-              }]
+              ]
             : []),
         ],
       },
@@ -4831,8 +4836,7 @@ export class ProjectsHandler {
     const ordered = allocations
       .map((allocation) => ({
         allocation,
-        name:
-          nameByEmployment.get(allocation.employmentId) ?? "Funcionário",
+        name: nameByEmployment.get(allocation.employmentId) ?? "Funcionário",
       }))
       .sort(
         (left, right) =>
@@ -4868,6 +4872,276 @@ export class ProjectsHandler {
         compensationMode: allocation.compensationMode,
         overtimeRate: allocation.overtimeRate.toFixed(2),
       })),
+      pageInfo: page.pageInfo,
+    };
+  }
+
+  async workFrontMobilizationOptions(
+    scope: ProjectScope,
+    projectId: string,
+    frontId: string,
+    query: ProjectWorkFrontMobilizationOptionsQuery,
+  ) {
+    const scopeWhere = projectScopeWhere(scope, projectId);
+    const [project, front] = await Promise.all([
+      this.context.prisma.project.findFirst({
+        where: {
+          id: projectId,
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+        },
+        select: { id: true },
+      }),
+      this.context.prisma.projectWorkFront.findFirst({
+        where: { id: frontId, ...scopeWhere },
+        select: { id: true },
+      }),
+    ]);
+    if (!project || !front) projectNotFound();
+
+    const normalizedSearch =
+      query.search?.trim().toLocaleLowerCase("pt-BR") || null;
+    const cursorQuery = {
+      resourceType: query.resourceType,
+      search: normalizedSearch,
+    };
+    const cursorScope = {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      projectId,
+      frontId,
+      resourceType: query.resourceType,
+    };
+    const boundary = parseBoundCursor({
+      cursor: query.cursor,
+      query: cursorQuery,
+      resource: "work-front-mobilization-options",
+      scope: cursorScope,
+      sortBy: "name",
+      sortDirection: "asc",
+    });
+
+    const [
+      employeeAllocations,
+      machineAllocations,
+      employeeOccupations,
+      machineOccupations,
+      fronts,
+    ] = await Promise.all([
+      this.context.prisma.projectEmployeeAllocation.findMany({
+        where: { ...scopeWhere, effectiveTo: null },
+      }),
+      this.context.prisma.projectMachineAllocation.findMany({
+        where: { ...scopeWhere, effectiveTo: null },
+        include: { shiftAssignments: { where: { effectiveTo: null } } },
+      }),
+      this.context.prisma.projectWorkFrontEmployeeAssignment.findMany({
+        where: { ...scopeWhere, effectiveTo: null },
+        select: { employmentId: true, workFrontId: true },
+      }),
+      this.context.prisma.projectWorkFrontMachineAssignment.findMany({
+        where: { ...scopeWhere, effectiveTo: null },
+        select: { machineId: true, shift: true, workFrontId: true },
+      }),
+      this.context.prisma.projectWorkFront.findMany({
+        where: scopeWhere,
+        select: { id: true, name: true },
+      }),
+    ]);
+    const operatorIds = new Set(
+      machineAllocations.flatMap((allocation) =>
+        allocation.shiftAssignments.map(
+          (assignment) => assignment.operatorEmploymentId,
+        ),
+      ),
+    );
+    const employmentIds = [
+      ...employeeAllocations.map((allocation) => allocation.employmentId),
+      ...operatorIds,
+    ];
+    const machineIds = machineAllocations.map(
+      (allocation) => allocation.machineId,
+    );
+    const [employments, machines] = await Promise.all([
+      employmentIds.length
+        ? this.context.prisma.employment.findMany({
+            where: {
+              corporationId: scope.corporationId,
+              companyId: scope.companyId,
+              id: { in: [...new Set(employmentIds)] },
+            },
+            select: { id: true, person: { select: { displayName: true } } },
+          })
+        : [],
+      machineIds.length
+        ? this.context.prisma.machine.findMany({
+            where: {
+              corporationId: scope.corporationId,
+              id: { in: machineIds },
+            },
+            select: {
+              id: true,
+              name: true,
+              manufacturer: true,
+              model: true,
+              identifiers: {
+                where: {
+                  companyId: scope.companyId,
+                  releasedAt: null,
+                },
+                orderBy: { createdAt: "desc" },
+                select: { kind: true, value: true },
+              },
+            },
+          })
+        : [],
+    ]);
+    const employmentNames = new Map(
+      employments.map((employment) => [
+        employment.id,
+        employment.person.displayName,
+      ]),
+    );
+    const machinesById = new Map(
+      machines.map((machine) => [machine.id, machine]),
+    );
+    const frontsById = new Map(fronts.map((item) => [item.id, item]));
+    const employeeOccupationById = new Map(
+      employeeOccupations.map((item) => [item.employmentId, item]),
+    );
+    const machineOccupationByKey = new Map(
+      machineOccupations.map((item) => [
+        `${item.machineId}:${shiftDto(item.shift)}`,
+        item,
+      ]),
+    );
+    const matches = (...values: Array<string | null | undefined>) =>
+      !normalizedSearch ||
+      values.some((value) =>
+        value?.toLocaleLowerCase("pt-BR").includes(normalizedSearch),
+      );
+    type ResultItem =
+      | {
+          resourceType: "employee";
+          id: string;
+          name: string;
+          jobRole: string;
+          shift: "day" | "night";
+          occupyingFront: { id: string; name: string } | null;
+          selected: boolean;
+          disabled: boolean;
+        }
+      | {
+          resourceType: "machine";
+          id: string;
+          selectionKey: string;
+          name: string;
+          manufacturer: string;
+          model: string;
+          identifier: { kind: "PLATE" | "COMPANY_TAG"; value: string } | null;
+          shift: "day" | "night";
+          operator: { id: string; name: string } | null;
+          occupyingFront: { id: string; name: string } | null;
+          selected: boolean;
+          disabled: boolean;
+        };
+    let items: Array<ResultItem & { cursorId: string }>;
+    if (query.resourceType === "employee") {
+      items = employeeAllocations
+        .filter((allocation) => !operatorIds.has(allocation.employmentId))
+        .flatMap((allocation) => {
+          const name = employmentNames.get(allocation.employmentId);
+          if (!name || !matches(name, allocation.jobRole)) return [];
+          const occupation = employeeOccupationById.get(
+            allocation.employmentId,
+          );
+          const occupyingFront = occupation
+            ? (frontsById.get(occupation.workFrontId) ?? null)
+            : null;
+          return [
+            {
+              resourceType: "employee" as const,
+              id: allocation.employmentId,
+              cursorId: allocation.employmentId,
+              name,
+              jobRole: allocation.jobRole,
+              shift: shiftDto(allocation.shift),
+              occupyingFront,
+              selected: occupation?.workFrontId === frontId,
+              disabled: Boolean(
+                occupation && occupation.workFrontId !== frontId,
+              ),
+            },
+          ];
+        });
+    } else {
+      items = machineAllocations.flatMap((allocation) => {
+        const machine = machinesById.get(allocation.machineId);
+        if (!machine) return [];
+        const identifier = machine.identifiers[0] ?? null;
+        if (
+          !matches(
+            machine.name,
+            machine.manufacturer,
+            machine.model,
+            ...machine.identifiers.map((item) => item.value),
+          )
+        )
+          return [];
+        return allocation.shiftAssignments.map((assignment) => {
+          const shift = shiftDto(assignment.shift);
+          const selectionKey = `${machine.id}:${shift}`;
+          const occupation = machineOccupationByKey.get(selectionKey);
+          const occupyingFront = occupation
+            ? (frontsById.get(occupation.workFrontId) ?? null)
+            : null;
+          const operatorName = employmentNames.get(
+            assignment.operatorEmploymentId,
+          );
+          return {
+            resourceType: "machine" as const,
+            id: machine.id,
+            cursorId: selectionKey,
+            selectionKey,
+            name: machine.name,
+            manufacturer: machine.manufacturer,
+            model: machine.model,
+            identifier,
+            shift,
+            operator: operatorName
+              ? { id: assignment.operatorEmploymentId, name: operatorName }
+              : null,
+            occupyingFront,
+            selected: occupation?.workFrontId === frontId,
+            disabled: Boolean(occupation && occupation.workFrontId !== frontId),
+          };
+        });
+      });
+    }
+    items = items
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name, "pt-BR") ||
+          left.cursorId.localeCompare(right.cursorId),
+      )
+      .filter(
+        (item) =>
+          !boundary ||
+          item.name.localeCompare(String(boundary.value), "pt-BR") > 0 ||
+          (item.name === String(boundary.value) && item.cursorId > boundary.id),
+      );
+    const page = buildCursorPage({
+      items,
+      limit: query.limit,
+      query: cursorQuery,
+      resource: "work-front-mobilization-options",
+      scope: cursorScope,
+      sortBy: "name",
+      sortDirection: "asc",
+      getLast: (item) => ({ value: item.name, id: item.cursorId }),
+    });
+    return {
+      data: page.data.map(({ cursorId: _cursorId, ...item }) => item),
       pageInfo: page.pageInfo,
     };
   }
