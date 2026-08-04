@@ -399,6 +399,31 @@ describe("project work-front quantities", () => {
         }),
       ]),
     );
+    const dayMembers = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/team-members?shift=day&limit=15`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(dayMembers.statusCode, dayMembers.body).toBe(200);
+    expect(dayMembers.json().data.data).toEqual([
+      expect.objectContaining({
+        employmentId: scope.employmentId,
+        name: "Responsável técnico",
+        monthlyWorkloadHours: 220,
+      }),
+    ]);
+    const nightMembers = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/team-members?shift=night&limit=15`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(nightMembers.statusCode, nightMembers.body).toBe(200);
+    expect(nightMembers.json().data.data[0]).toMatchObject({
+      employmentId: secondEmploymentId,
+      name: "Operador noturno",
+      monthlyWorkloadHours: 180,
+      overtimeRate: "25.00",
+    });
   });
 
   it("excludes the edited front from its own allocated balance", async () => {

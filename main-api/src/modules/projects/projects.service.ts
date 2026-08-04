@@ -11,6 +11,7 @@ import type {
   ProjectMobilizationHistoryQuery,
   ProjectReadinessCommand,
   ProjectTeamCandidatesQuery,
+  ProjectTeamMembersQuery,
   ProjectQuantityBaselineRevisionCommand,
   ProjectWorkFrontCommand,
   ProjectWorkFrontMobilizationCommand,
@@ -53,6 +54,14 @@ export class ProjectsService {
     query: ProjectTeamCandidatesQuery,
   ) {
     return this.handler.teamCandidates(scope, projectId, query);
+  }
+
+  teamMembers(
+    scope: ProjectScope,
+    projectId: string,
+    query: ProjectTeamMembersQuery,
+  ) {
+    return this.handler.teamMembers(scope, projectId, query);
   }
 
   saveReadiness(

@@ -65,5 +65,13 @@ mudanças posteriores de turno.
 - `GET /projects/:projectId/team-candidates?shift=&search=&cursor=&limit=15`
   busca nome ou função e pagina 15 funcionários por vez. O cursor é vinculado
   a tenant, obra, turno e busca; qualquer mudança de filtro invalida o cursor.
+- `GET /projects/:projectId/team-members?shift=&cursor=&limit=15` lista a equipe
+  operacional do turno em páginas de até 15 pessoas. Cada linha apresenta nome,
+  função, carga mensal, modalidade e valor da hora extra. O cursor é vinculado
+  a tenant, empresa, obra e turno.
+- A aba Equipe mantém históricos de paginação independentes para Diurno e
+  Noturno. A ação `Editar turno` abre o editor já no turno visível e salva
+  somente esse recorte; contagens, carregamento, erro e estado vazio são
+  apresentados separadamente por turno.
 - A carga mensal caracteriza o contrato da pessoa e nunca determina quantas
   horas ela trabalhou em um dia específico.

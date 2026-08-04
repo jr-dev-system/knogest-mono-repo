@@ -6,6 +6,7 @@ import {
   projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
   projectTeamCandidatesQuerySchema,
+  projectTeamMembersQuerySchema,
   projectWorkFrontCommandSchema,
   projectWorkFrontServicesCommandSchema,
   type ProjectCommand,
@@ -69,6 +70,16 @@ describe("Projects DTO", () => {
         shift: "day",
         cursor: "cursor com espaço",
       }),
+    ).toThrow();
+  });
+
+  it("limits the operational team listing to 15 members per cursor page", () => {
+    expect(projectTeamMembersQuerySchema.parse({ shift: "night" })).toEqual({
+      shift: "night",
+      limit: 15,
+    });
+    expect(() =>
+      projectTeamMembersQuerySchema.parse({ shift: "day", limit: 16 }),
     ).toThrow();
   });
 

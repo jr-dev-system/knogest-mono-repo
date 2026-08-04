@@ -22,6 +22,7 @@ import {
   type ProjectMachineMobilizationCommand,
   type ProjectMobilizationHistoryQuery,
   type ProjectTeamCandidatesQuery,
+  type ProjectTeamMembersQuery,
   type ProjectQuantityBaselineRevisionCommand,
   type ProjectReadinessCommand,
   type ProjectWorkFrontCommand,
@@ -4773,6 +4774,100 @@ export class ProjectsHandler {
             : null,
         };
       }),
+      pageInfo: page.pageInfo,
+    };
+  }
+
+  async teamMembers(
+    scope: ProjectScope,
+    projectId: string,
+    query: ProjectTeamMembersQuery,
+  ) {
+    const project = await this.context.prisma.project.findFirst({
+      where: {
+        id: projectId,
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+      },
+      select: { id: true },
+    });
+    if (!project) projectNotFound();
+    const cursorQuery = { shift: query.shift };
+    const cursorScope = {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      projectId,
+      shift: query.shift,
+    };
+    const boundary = parseBoundCursor({
+      cursor: query.cursor,
+      query: cursorQuery,
+      resource: "project-team-members",
+      scope: cursorScope,
+      sortBy: "name",
+      sortDirection: "asc",
+    });
+    const allocations =
+      await this.context.prisma.projectEmployeeAllocation.findMany({
+        where: {
+          ...projectScopeWhere(scope, projectId),
+          effectiveTo: null,
+          shift: dbShift(query.shift),
+        },
+      });
+    const employments = allocations.length
+      ? await this.context.prisma.employment.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            id: { in: allocations.map((item) => item.employmentId) },
+          },
+          select: { id: true, person: { select: { displayName: true } } },
+        })
+      : [];
+    const nameByEmployment = new Map(
+      employments.map((item) => [item.id, item.person.displayName]),
+    );
+    const ordered = allocations
+      .map((allocation) => ({
+        allocation,
+        name:
+          nameByEmployment.get(allocation.employmentId) ?? "Funcionário",
+      }))
+      .sort(
+        (left, right) =>
+          left.name.localeCompare(right.name, "pt-BR") ||
+          left.allocation.id.localeCompare(right.allocation.id),
+      )
+      .filter(
+        (item) =>
+          !boundary ||
+          item.name.localeCompare(String(boundary.value), "pt-BR") > 0 ||
+          (item.name === String(boundary.value) &&
+            item.allocation.id > boundary.id),
+      )
+      .slice(0, query.limit + 1);
+    const page = buildCursorPage({
+      items: ordered,
+      limit: query.limit,
+      query: cursorQuery,
+      resource: "project-team-members",
+      scope: cursorScope,
+      sortBy: "name",
+      sortDirection: "asc",
+      getLast: (item) => ({ value: item.name, id: item.allocation.id }),
+    });
+    return {
+      data: page.data.map(({ allocation, name }) => ({
+        id: allocation.id,
+        employmentId: allocation.employmentId,
+        name,
+        jobRole: allocation.jobRole,
+        shift: query.shift,
+        monthlyWorkloadHours: allocation.monthlyWorkloadHours,
+        compensationMode: allocation.compensationMode,
+        overtimeRate: allocation.overtimeRate.toFixed(2),
+      })),
       pageInfo: page.pageInfo,
     };
   }

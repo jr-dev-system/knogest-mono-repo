@@ -313,6 +313,10 @@ export type ProjectTeamCandidatesPage =
   GetApiV1ProjectsProjectidTeamCandidatesQueryResponse["data"];
 export type ProjectTeamCandidate = ProjectTeamCandidatesPage["data"][number];
 
+export type ProjectTeamMembersPage =
+  GetApiV1ProjectsProjectidTeamMembersQueryResponse["data"];
+export type ProjectTeamMember = ProjectTeamMembersPage["data"][number];
+
 export type ProjectRegistryPage = {
   data: {
     id: string;
@@ -325,3 +329,4 @@ export type ProjectRegistryPage = {
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
 };
 import type { GetApiV1ProjectsProjectidTeamCandidatesQueryResponse } from "@/generated/models/GetApiV1ProjectsProjectidTeamCandidates";
+import type { GetApiV1ProjectsProjectidTeamMembersQueryResponse } from "@/generated/models/GetApiV1ProjectsProjectidTeamMembers";

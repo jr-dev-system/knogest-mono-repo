@@ -19,6 +19,10 @@ vi.mock("../projects.actions", () => ({
   createProjectWorkFrontAction: vi.fn(),
   getProjectMobilizationHistoryAction: vi.fn(),
   getProjectTeamCandidatesAction: vi.fn(),
+  getProjectTeamMembersAction: vi.fn().mockResolvedValue({
+    data: [],
+    pageInfo: { hasNextPage: false, nextCursor: null },
+  }),
   saveProjectEmployeeMobilizationAction: vi.fn(),
   saveProjectMachineMobilizationAction: vi.fn(),
   saveProjectQuantityBaselineAction: vi.fn(),
@@ -1352,7 +1356,7 @@ describe("Project active work-front mobilization", () => {
     renderProjectDetail(activeProject);
 
     await user.click(screen.getByRole("tab", { name: /Equipe/u }));
-    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(screen.getByRole("button", { name: "Editar turno" }));
     const modal = await screen.findByRole("dialog", {
       name: "Editar equipe operacional",
     });

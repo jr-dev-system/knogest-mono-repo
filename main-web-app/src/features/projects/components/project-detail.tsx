@@ -54,6 +54,7 @@ import {
 import { cn } from "@/lib/utils";
 import type { ProjectDailyReportsPage } from "../daily-reports.types";
 import { ProjectDailyReports } from "./project-daily-reports";
+import { ProjectTeamView } from "./project-team-view";
 import type { ProjectProductionsPage } from "../productions.types";
 import { ProjectProductions } from "./project-productions";
 import {
@@ -2031,8 +2032,7 @@ export function ProjectDetail({
   const [teamCandidatesError, setTeamCandidatesError] = React.useState<
     string | null
   >(null);
-  const [teamHasEmployeeDraft, setTeamHasEmployeeDraft] =
-    React.useState(false);
+  const [teamHasEmployeeDraft, setTeamHasEmployeeDraft] = React.useState(false);
   const teamCandidateRequestId = React.useRef(0);
   const readinessForm = useForm<ProjectCommand>({
     defaultValues: projectToCommand(project),
@@ -2092,7 +2092,9 @@ export function ProjectDetail({
           if (teamCandidateRequestId.current === requestId)
             setTeamCandidatesLoading(false);
         });
-    }, [debouncedTeamSearch, project.id, teamShift]);
+    },
+    [debouncedTeamSearch, project.id, teamShift],
+  );
 
   /* eslint-disable react-hooks/set-state-in-effect -- Debounced server lookup resets the cursor page when the modal context changes. */
   React.useEffect(() => {
@@ -3343,7 +3345,10 @@ export function ProjectDetail({
 
   const openTeamModal = (shift: "day" | "night" = "day") => {
     const command = projectToCommand(project);
-    if (shift === "night" && !command.weeklySchedule.some((day) => day.shift === "night")) {
+    if (
+      shift === "night" &&
+      !command.weeklySchedule.some((day) => day.shift === "night")
+    ) {
       command.weeklySchedule.push(
         ...command.weeklySchedule
           .filter((day) => day.shift === "day")
@@ -3382,7 +3387,10 @@ export function ProjectDetail({
     )
       return;
     const command = projectToCommand(project);
-    if (shift === "night" && !command.weeklySchedule.some((day) => day.shift === "night")) {
+    if (
+      shift === "night" &&
+      !command.weeklySchedule.some((day) => day.shift === "night")
+    ) {
       command.weeklySchedule.push(
         ...command.weeklySchedule
           .filter((day) => day.shift === "day")
@@ -4195,46 +4203,22 @@ export function ProjectDetail({
                   >
                     Histórico
                   </Button>
-                  {canManageMobilization && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="min-h-10"
-                      onClick={() => openTeamModal("day")}
-                    >
-                      <Pencil className="size-4" />
-                      Editar
-                    </Button>
-                  )}
                 </div>
               }
             >
-              {project.employeeAllocations.length ? (
-                <div className="grid gap-2 text-sm">
-                  {project.employeeAllocations.slice(0, 4).map((allocation) => (
-                    <div
-                      key={allocation.id}
-                      className="rounded-md border border-border bg-background px-3 py-2"
-                    >
-                      <p className="font-bold">
-                        {allocation.employment?.name ?? "Funcionário"}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {allocation.jobRole} ·{" "}
-                        {compensationLabels[allocation.compensationMode]} ·{" "}
-                        {allocation.shift === "night" ? "Noturno" : "Diurno"}
-                      </p>
-                    </div>
-                  ))}
-                  {project.employeeAllocations.length > 4 && (
-                    <p className="text-sm font-semibold text-muted-foreground">
-                      +{project.employeeAllocations.length - 4} funcionário(s)
-                    </p>
-                  )}
-                </div>
-              ) : (
-                <EmptyBlock>Nenhum funcionário mobilizado.</EmptyBlock>
-              )}
+              <ProjectTeamView
+                projectId={project.id}
+                counts={{
+                  day: project.employeeAllocations.filter(
+                    (allocation) => allocation.shift === "day",
+                  ).length,
+                  night: project.employeeAllocations.filter(
+                    (allocation) => allocation.shift === "night",
+                  ).length,
+                }}
+                canEdit={canManageMobilization}
+                onEditShift={openTeamModal}
+              />
             </Section>
           )}
 
@@ -5570,11 +5554,17 @@ export function ProjectDetail({
               </div>
             </label>
             {teamCandidatesError ? (
-              <div role="alert" className="rounded-md border border-destructive/40 p-3 text-sm font-semibold text-destructive">
+              <div
+                role="alert"
+                className="rounded-md border border-destructive/40 p-3 text-sm font-semibold text-destructive"
+              >
                 {teamCandidatesError}
               </div>
             ) : teamCandidatesLoading && activeTeamPage.data.length === 0 ? (
-              <div role="status" className="flex min-h-24 items-center justify-center gap-2 text-sm font-semibold text-muted-foreground">
+              <div
+                role="status"
+                className="flex min-h-24 items-center justify-center gap-2 text-sm font-semibold text-muted-foreground"
+              >
                 <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
                 Carregando funcionários…
               </div>

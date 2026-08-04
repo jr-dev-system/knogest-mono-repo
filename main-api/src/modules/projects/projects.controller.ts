@@ -12,6 +12,7 @@ import {
   projectReadinessCommandSchema,
   projectShiftParamsSchema,
   projectTeamCandidatesQuerySchema,
+  projectTeamMembersQuerySchema,
   projectWorkFrontCommandSchema,
   projectWorkFrontMobilizationCommandSchema,
   projectWorkFrontParamsSchema,
@@ -787,6 +788,56 @@ const projectTeamCandidatesPageSchema = {
   },
 } as const;
 
+const projectTeamMembersPageSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["data", "pageInfo"],
+  properties: {
+    data: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "employmentId",
+          "name",
+          "jobRole",
+          "shift",
+          "monthlyWorkloadHours",
+          "compensationMode",
+          "overtimeRate",
+        ],
+        properties: {
+          id: uuid,
+          employmentId: uuid,
+          name: { type: "string" },
+          jobRole: { type: "string" },
+          shift: { enum: ["day", "night"] },
+          monthlyWorkloadHours: {
+            type: "integer",
+            minimum: 1,
+            maximum: 744,
+          },
+          compensationMode: {
+            enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],
+          },
+          overtimeRate: { type: "string" },
+        },
+      },
+    },
+    pageInfo: {
+      type: "object",
+      additionalProperties: false,
+      required: ["hasNextPage", "nextCursor"],
+      properties: {
+        hasNextPage: { type: "boolean" },
+        nextCursor: { type: "string", nullable: true },
+      },
+    },
+  },
+} as const;
+
 function scope(request: FastifyRequest): ProjectScope {
   const auth = request.authContext;
   if (!auth?.companyId) throw new Error("Company scope middleware invariant");
@@ -997,6 +1048,66 @@ export async function v1ProjectsController(app: FastifyInstance) {
         return jsonResponse.success({
           reply,
           data: await service.detail(scope(request), request.params.projectId),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { shift?: string; limit?: number; cursor?: string };
+  }>(
+    "/projects/:projectId/team-members",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "List paginated members of one Project shift",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["projectId"],
+          properties: { projectId: uuid },
+        },
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          required: ["shift"],
+          properties: {
+            shift: { enum: ["day", "night"] },
+            limit: { type: "integer", minimum: 1, maximum: 15, default: 15 },
+            cursor: { type: "string", maxLength: 2048 },
+          },
+        },
+        response: {
+          200: successSchema(projectTeamMembersPageSchema),
+          400: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsedParams = projectParamsSchema.safeParse(request.params);
+      const parsedQuery = projectTeamMembersQuerySchema.safeParse(
+        request.query,
+      );
+      if (!parsedParams.success || !parsedQuery.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid Project team members query",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.teamMembers(
+            scope(request),
+            parsedParams.data.projectId,
+            parsedQuery.data,
+          ),
         });
       } catch (error) {
         return jsonResponse.fromError({ reply, error });

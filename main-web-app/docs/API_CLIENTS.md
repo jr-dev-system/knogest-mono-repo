@@ -66,6 +66,10 @@ O editor de equipe consulta
 turno ativo em `PUT /projects/:projectId/mobilization/employees/:shift`. A
 Server Action deve reiniciar a paginação quando turno ou busca mudar e nunca
 reutilizar cursores entre esses filtros.
+A visualização da aba Equipe consulta
+`GET /projects/:projectId/team-members?shift=&cursor=&limit=15` por uma Server
+Action. Cada turno mantém suas páginas já carregadas e seu índice atual; trocar
+entre Diurno e Noturno não reinicia a navegação do outro turno.
 
 A linha de base e as distribuições usam strings decimais com três casas. A
 edição de serviços de uma frente ativa chama

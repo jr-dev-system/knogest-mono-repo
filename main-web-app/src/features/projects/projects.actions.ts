@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { postApiV1Projects } from "@/generated/clients/postApiV1Projects";
 import { getApiV1ProjectsProjectidTeamCandidates } from "@/generated/clients/getApiV1ProjectsProjectidTeamCandidates";
+import { getApiV1ProjectsProjectidTeamMembers } from "@/generated/clients/getApiV1ProjectsProjectidTeamMembers";
 import client, { ApiClientError } from "@/lib/api/server-client";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import { projectCommandSchema, type ProjectCommand } from "./projects-schema";
@@ -14,6 +15,7 @@ import type {
   ProjectMobilizationHistoryPage,
   ProjectSuppliedItemOffersPage,
   ProjectTeamCandidatesPage,
+  ProjectTeamMembersPage,
   SuppliedItemSelectorPage,
 } from "./projects.types";
 
@@ -674,6 +676,27 @@ export async function getProjectTeamCandidatesAction({
       shift,
       limit: 15,
       search: search?.trim() || undefined,
+      cursor: cursor || undefined,
+    },
+  });
+  return response.data;
+}
+
+export async function getProjectTeamMembersAction({
+  cursor,
+  projectId,
+  shift,
+}: {
+  cursor?: string | null;
+  projectId: string;
+  shift: "day" | "night";
+}): Promise<ProjectTeamMembersPage> {
+  const id = z.string().uuid().parse(projectId);
+  const response = await getApiV1ProjectsProjectidTeamMembers({
+    projectId: id,
+    params: {
+      shift,
+      limit: 15,
       cursor: cursor || undefined,
     },
   });

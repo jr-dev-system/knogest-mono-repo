@@ -678,6 +678,19 @@ export const projectShiftParamsSchema = z
   })
   .strict();
 
+export const projectTeamMembersQuerySchema = z
+  .object({
+    shift: z.enum(["day", "night"]),
+    limit: z.coerce.number().int().min(1).max(15).default(15),
+    cursor: z
+      .string()
+      .min(1)
+      .max(2048)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .optional(),
+  })
+  .strict();
+
 const projectReadinessExistingOfferSchema = z
   .object({
     mode: z.literal("existing").optional(),
@@ -907,6 +920,9 @@ export type ProjectCommand = z.infer<typeof projectCommandSchema>;
 export type ProjectListQuery = z.infer<typeof projectListQuerySchema>;
 export type ProjectTeamCandidatesQuery = z.infer<
   typeof projectTeamCandidatesQuerySchema
+>;
+export type ProjectTeamMembersQuery = z.infer<
+  typeof projectTeamMembersQuerySchema
 >;
 export type ProjectParams = z.infer<typeof projectParamsSchema>;
 export type ProjectReadinessCommand = z.infer<
