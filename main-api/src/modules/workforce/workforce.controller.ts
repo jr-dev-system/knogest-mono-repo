@@ -159,7 +159,7 @@ const currentAllocationSchema = {
     "personId",
     "project",
     "jobRole",
-    "expectedDailyWorkloadMinutes",
+    "monthlyWorkloadHours",
     "compensationMode",
     "compensationValue",
     "overtimeRate",
@@ -182,7 +182,7 @@ const currentAllocationSchema = {
       },
     },
     jobRole: { type: "string" },
-    expectedDailyWorkloadMinutes: { type: "integer" },
+    monthlyWorkloadHours: { type: "integer" },
     compensationMode: { type: "string" },
     compensationValue: { type: "string" },
     overtimeRate: { type: "string" },
@@ -532,7 +532,7 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
             "employmentId",
             "projectId",
             "jobRole",
-            "expectedDailyWorkloadMinutes",
+            "monthlyWorkloadHours",
             "compensationMode",
             "compensationValue",
             "overtimeRate",
@@ -541,10 +541,10 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
             employmentId: { type: "string", format: "uuid" },
             projectId: { type: "string", format: "uuid" },
             jobRole: { type: "string", minLength: 1, maxLength: 120 },
-            expectedDailyWorkloadMinutes: {
+            monthlyWorkloadHours: {
               type: "integer",
               minimum: 1,
-              maximum: 1440,
+              maximum: 744,
             },
             compensationMode: {
               enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],
@@ -649,7 +649,7 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
             "destinationCompanyId",
             "destinationProjectId",
             "jobRole",
-            "expectedDailyWorkloadMinutes",
+            "monthlyWorkloadHours",
             "compensationMode",
             "compensationValue",
             "overtimeRate",
@@ -659,10 +659,10 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
             destinationCompanyId: { type: "string", format: "uuid" },
             destinationProjectId: { type: "string", format: "uuid" },
             jobRole: { type: "string", minLength: 1, maxLength: 120 },
-            expectedDailyWorkloadMinutes: {
+            monthlyWorkloadHours: {
               type: "integer",
               minimum: 1,
-              maximum: 1440,
+              maximum: 744,
             },
             compensationMode: {
               type: "string",
@@ -719,7 +719,7 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
           additionalProperties: false,
           required: [
             "jobRole",
-            "expectedDailyWorkloadMinutes",
+            "monthlyWorkloadHours",
             "compensationMode",
             "compensationValue",
             "overtimeRate",
@@ -727,10 +727,10 @@ export const v1WorkforceController = async (app: FastifyInstance) => {
           ],
           properties: {
             jobRole: { type: "string", minLength: 1, maxLength: 120 },
-            expectedDailyWorkloadMinutes: {
+            monthlyWorkloadHours: {
               type: "integer",
               minimum: 1,
-              maximum: 1440,
+              maximum: 744,
             },
             compensationMode: {
               type: "string",

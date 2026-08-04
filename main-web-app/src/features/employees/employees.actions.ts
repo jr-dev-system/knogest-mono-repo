@@ -135,8 +135,8 @@ export async function changeEmployeeJobRoleAction(
 function allocationPayload(formData: FormData) {
   return {
     jobRole: optionalString(formData, "jobRole"),
-    expectedDailyWorkloadMinutes: Number(
-      optionalString(formData, "expectedDailyWorkloadMinutes"),
+    monthlyWorkloadHours: Number(
+      optionalString(formData, "monthlyWorkloadHours"),
     ),
     compensationMode: optionalString(formData, "compensationMode") as
       | "daily"

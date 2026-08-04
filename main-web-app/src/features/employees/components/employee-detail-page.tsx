@@ -398,7 +398,7 @@ function AllocationPanel({
       </h2>
       <p className="mt-2 text-sm text-muted-foreground">
         {allocation.project.name} · {allocation.jobRole} ·{" "}
-        {allocation.expectedDailyWorkloadMinutes} min/dia
+        {allocation.monthlyWorkloadHours} h/mês
       </p>
       <div className="mt-4 grid gap-4 lg:grid-cols-3">
         <form
@@ -507,14 +507,14 @@ function TermsFields({
         />
       </label>
       <label className="grid gap-1 text-sm font-semibold">
-        Carga (min/dia)
+        Carga mensal (h)
         <Input
-          name="expectedDailyWorkloadMinutes"
+          name="monthlyWorkloadHours"
           type="number"
           min="1"
-          max="1440"
+          max="744"
           required
-          defaultValue={defaults?.expectedDailyWorkloadMinutes}
+          defaultValue={defaults?.monthlyWorkloadHours}
         />
       </label>
       <label className="grid gap-1 text-sm font-semibold">

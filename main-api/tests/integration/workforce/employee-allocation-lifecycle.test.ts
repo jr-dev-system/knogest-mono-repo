@@ -181,7 +181,7 @@ describe("Employee allocation lifecycle", () => {
 
   const terms = {
     jobRole: "Operator",
-    expectedDailyWorkloadMinutes: 480,
+    monthlyWorkloadHours: 220,
     compensationMode: "daily",
     compensationValue: "100.00",
     overtimeRate: "10.00",

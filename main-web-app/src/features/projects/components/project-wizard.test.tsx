@@ -23,6 +23,7 @@ vi.mock("next/navigation", () => ({
 import type { BaseFormModalRenderHelpers } from "@/components/modals/BaseFormModal";
 import {
   EmployeeMobilization,
+  calculateSuggestedHourlyRate,
   MachineMobilization,
   ProjectWizard,
   ProjectWizardIdentity,
@@ -163,7 +164,7 @@ function MachineHarness({
               shift: "day",
               confirmedJobRoleId: "job-role-1",
               confirmedJobRolePeriodId: "role-period-1",
-              expectedDailyWorkloadMinutes: 480,
+              monthlyWorkloadHours: 220,
               compensationMode: "monthly",
               compensationValue: "0.00",
               overtimeRate: "0.00",
@@ -173,7 +174,7 @@ function MachineHarness({
               shift: "day",
               confirmedJobRoleId: "job-role-1",
               confirmedJobRolePeriodId: "role-period-2",
-              expectedDailyWorkloadMinutes: 480,
+              monthlyWorkloadHours: 180,
               compensationMode: "monthly",
               compensationValue: "0.00",
               overtimeRate: "0.00",
@@ -250,6 +251,26 @@ function EmployeeHarness() {
 }
 
 describe("Project wizard polish", () => {
+  it.each([
+    ["monthly", "2200,00", "220", 5, "10,00"],
+    ["weekly", "550,00", "220", 5, "10,83"],
+    ["fortnightly", "1100,00", "220", 5, "10,83"],
+    ["daily", "100,00", "220", 5, "9,85"],
+    ["hourly", "27,50", "180", 5, "27,50"],
+  ] as const)(
+    "calculates the base hourly value for %s compensation",
+    (compensationMode, compensationValue, workload, workingDays, expected) => {
+      expect(
+        calculateSuggestedHourlyRate({
+          compensationMode,
+          compensationValue,
+          monthlyWorkloadHours: workload,
+          workingDaysPerWeek: workingDays,
+        }),
+      ).toBe(expected);
+    },
+  );
+
   it("marks invalid fields without inline validation messages", () => {
     render(<IdentityHarness />);
 

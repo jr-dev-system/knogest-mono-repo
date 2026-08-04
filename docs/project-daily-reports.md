@@ -28,7 +28,6 @@ Ao iniciar um RDO, a API resolve o contexto vigente na data e turno:
 
 - dados da obra e escala específica do turno;
 - funcionários e máquinas mobilizados naquele turno e período;
-- carga diária esperada das alocações;
 - última leitura oficial da máquina anterior ao início do turno.
 
 Supervisor e técnicos vêm pré-selecionados somente quando também pertencem à
@@ -57,13 +56,17 @@ confirmadas.
 ## Jornadas
 
 Cada participante registra função, minutos normais, minutos extras e se
-completou o turno. **Turno completo** substitui os minutos normais pela carga
-diária esperada da alocação. Exceções usam duração `HH:MM`; horas extras ficam
-sempre separadas.
+completou o turno. **Turno completo** é um atalho opcional que preenche os
+minutos normais pela janela efetiva informada no próprio RDO. Editar as horas
+normais desmarca esse atalho. Exceções usam duração `HH:MM`; horas extras ficam
+sempre separadas. A carga mensal da alocação não define horas diárias e não é
+copiada para o relatório.
 
 As linhas do rascunho ainda não são oficiais. A finalização torna as jornadas
 oficiais em conjunto com o RDO; consumidores devem considerar somente jornadas
-cujo relatório pai está `FINALIZED`.
+cujo relatório pai está `FINALIZED`. Essas horas são declarações operacionais
+confirmadas e formarão a base de uma futura frequência; não representam
+marcações de entrada e saída nem substituem um sistema de ponto.
 
 ## Horímetros e odômetros
 

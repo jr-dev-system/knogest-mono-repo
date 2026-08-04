@@ -58,6 +58,9 @@ O cadastro de equipe envia `shift` em cada alocação e pode reconciliar
 usam `operatorAssignments` por turno; frentes usam `machineAssignments` com o
 par `machineId + shift`. Ao trocar data ou turno na produção, a interface
 reconsulta as opções antes de substituir responsáveis, frente e máquinas.
+Cada alocação envia `monthlyWorkloadHours` como inteiro entre 1 e 744. O RDO
+não recebe nem devolve snapshot dessa carga: `completedFullShift` faz a API
+resolver as horas normais pela janela efetiva do próprio relatório.
 
 A linha de base e as distribuições usam strings decimais com três casas. A
 edição de serviços de uma frente ativa chama

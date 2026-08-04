@@ -158,7 +158,7 @@ const projectCommandOpenApiSchema = {
         additionalProperties: false,
         required: [
           "employmentId",
-          "expectedDailyWorkloadMinutes",
+          "monthlyWorkloadHours",
           "compensationMode",
           "compensationValue",
           "overtimeRate",
@@ -174,10 +174,10 @@ const projectCommandOpenApiSchema = {
             maxLength: 120,
             nullable: true,
           },
-          expectedDailyWorkloadMinutes: {
+          monthlyWorkloadHours: {
             type: "integer",
             minimum: 1,
-            maximum: 1440,
+            maximum: 744,
           },
           compensationMode: {
             enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],

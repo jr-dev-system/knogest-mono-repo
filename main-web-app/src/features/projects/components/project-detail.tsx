@@ -404,7 +404,7 @@ function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
         shift: allocation.shift,
         confirmedJobRoleName: allocation.jobRole,
         confirmedJobRolePeriodId: null,
-        expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
+        monthlyWorkloadHours: allocation.monthlyWorkloadHours,
         compensationMode: allocation.compensationMode,
         compensationValue: allocation.compensationValue,
         overtimeRate: allocation.overtimeRate,

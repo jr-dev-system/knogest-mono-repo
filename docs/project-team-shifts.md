@@ -16,6 +16,13 @@ Este documento é a fonte canônica dos turnos fixos da equipe de uma obra.
   ou agendado entre turnos.
 - A função temporária aplicada somente à obra continua existindo e não deve ser
   confundida com remanejamento temporário de turno.
+- Cada alocação registra `monthlyWorkloadHours`. A interface oferece 220 h e
+  180 h como atalhos e aceita um inteiro personalizado entre 1 h e 744 h; novas
+  alocações e registros migrados usam 220 h quando não houver outra definição.
+- O valor-hora sugerido não inclui adicional: mensal usa
+  `valor mensal / carga mensal`; semanal, quinzenal e diária são convertidos
+  ao equivalente mensal antes da divisão; pagamento por hora preserva o
+  próprio valor. O usuário pode substituir a sugestão manualmente.
 
 ## Recursos operacionais
 
@@ -52,3 +59,5 @@ mudanças posteriores de turno.
 - Mobilização de frente usa `machineAssignments[]`, com `machineId` e `shift`.
 - `PUT /projects/:projectId/mobilization/employees` pode reconciliar equipe,
   jornada e intervalos juntos.
+- A carga mensal caracteriza o contrato da pessoa e nunca determina quantas
+  horas ela trabalhou em um dia específico.

@@ -218,7 +218,7 @@ describe("project daily reports", () => {
             employmentId,
             shift: "day",
             confirmedJobRoleId: role.id,
-            expectedDailyWorkloadMinutes: 600,
+            monthlyWorkloadHours: 220,
             compensationMode: "monthly",
             compensationValue: "5000.00",
             overtimeRate: "30.00",
@@ -227,7 +227,7 @@ describe("project daily reports", () => {
             employmentId: nightEmploymentId,
             shift: "night",
             confirmedJobRoleId: role.id,
-            expectedDailyWorkloadMinutes: 600,
+            monthlyWorkloadHours: 180,
             compensationMode: "monthly",
             compensationValue: "5000.00",
             overtimeRate: "30.00",
@@ -398,7 +398,7 @@ describe("project daily reports", () => {
     expect(created.json().data.employees[0]).toMatchObject({
       name: "Rafael Brito",
       completedFullShift: true,
-      regularWorkedMinutes: 600,
+      regularWorkedMinutes: 660,
       overtimeMinutes: 60,
     });
     const reportId = created.json().data.id as string;

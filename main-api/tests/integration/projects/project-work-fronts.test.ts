@@ -205,7 +205,7 @@ describe("project work-front quantities", () => {
           {
             employmentId: scope.employmentId,
             confirmedJobRoleId: scope.jobRoleId,
-            expectedDailyWorkloadMinutes: 480,
+            monthlyWorkloadHours: 220,
             compensationMode: "monthly",
             compensationValue: "5000.00",
             overtimeRate: "30.00",

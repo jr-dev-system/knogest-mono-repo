@@ -229,7 +229,7 @@ const employeeAllocationSchema = z
     confirmedJobRoleId: z.string().uuid().optional(),
     confirmedJobRolePeriodId: z.string().uuid().nullable().optional(),
     confirmedJobRoleName: optionalText(120).optional(),
-    expectedDailyWorkloadMinutes: z.coerce.number().int().min(1).max(1440),
+    monthlyWorkloadHours: z.coerce.number().int().min(1).max(744),
     compensationMode: z.enum([
       "daily",
       "hourly",

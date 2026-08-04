@@ -55,7 +55,6 @@ describe("buildProjectDailyReportMessage", () => {
           employmentId: "00000000-0000-4000-8000-000000000003",
           name: "Rafael Brito",
           jobRole: "Supervisor de Terraplanagem",
-          expectedDailyWorkloadMinutes: 600,
           completedFullShift: true,
           regularWorkedMinutes: 600,
           overtimeMinutes: 60,

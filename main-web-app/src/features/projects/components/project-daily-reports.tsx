@@ -336,6 +336,14 @@ export function ProjectDailyReports({
     control: form.control,
     name: "activityEndDayOffset",
   });
+  const watchedActivityStartTime = useWatch({
+    control: form.control,
+    name: "activityStartTime",
+  });
+  const watchedActivityEndTime = useWatch({
+    control: form.control,
+    name: "activityEndTime",
+  });
   const watchedReportDate = useWatch({
     control: form.control,
     name: "reportDate",
@@ -346,6 +354,11 @@ export function ProjectDailyReports({
   const isFormBusy = contextLoading || saving || finalizing;
   const isFormDirty = form.formState.isDirty;
   const formIssues = [...issues, ...collectFormIssues(form.formState.errors)];
+  const fullShiftMinutes = effectiveWindowMinutes(
+    watchedActivityStartTime,
+    watchedActivityEndTime,
+    watchedActivityEndDayOffset,
+  );
 
   React.useEffect(() => {
     if (formOpen) stepHeadingRef.current?.focus();
@@ -1245,7 +1258,7 @@ export function ProjectDailyReports({
           {currentStep === 3 && (
             <FormSection
               title="Equipe"
-              description="Selecione quem trabalhou neste turno. As horas previstas já vêm da jornada de cada pessoa."
+              description="Selecione quem trabalhou neste turno. O atalho usa a janela efetiva informada; ajuste as horas quando a jornada realizada for diferente."
             >
               <div className="flex justify-end">
                 <Button
@@ -1257,9 +1270,7 @@ export function ProjectDailyReports({
                       (options?.employeeOptions ?? []).map((employee) => ({
                         employmentId: employee.id,
                         completedFullShift: true,
-                        regularDuration: formatDuration(
-                          employee.expectedDailyWorkloadMinutes,
-                        ),
+                        regularDuration: formatDuration(fullShiftMinutes),
                         overtimeDuration: "00:00",
                       })),
                       { shouldDirty: true, shouldValidate: true },
@@ -1294,9 +1305,8 @@ export function ProjectDailyReports({
                                   {
                                     employmentId: employee.id,
                                     completedFullShift: true,
-                                    regularDuration: formatDuration(
-                                      employee.expectedDailyWorkloadMinutes,
-                                    ),
+                                    regularDuration:
+                                      formatDuration(fullShiftMinutes),
                                     overtimeDuration: "00:00",
                                   },
                                 ]
@@ -1323,9 +1333,7 @@ export function ProjectDailyReports({
                               if (checked)
                                 form.setValue(
                                   `employees.${index}.regularDuration`,
-                                  formatDuration(
-                                    employee.expectedDailyWorkloadMinutes,
-                                  ),
+                                  formatDuration(fullShiftMinutes),
                                   { shouldDirty: true },
                                 );
                             }}
@@ -1338,11 +1346,16 @@ export function ProjectDailyReports({
                                 form.formState.errors.employees?.[index]
                                   ?.regularDuration,
                               )}
-                              disabled={
-                                selectedEmployees[index]!.completedFullShift
-                              }
                               {...form.register(
                                 `employees.${index}.regularDuration`,
+                                {
+                                  onChange: () =>
+                                    form.setValue(
+                                      `employees.${index}.completedFullShift`,
+                                      false,
+                                      { shouldDirty: true },
+                                    ),
+                                },
                               )}
                             />
                           </Field>
@@ -2074,6 +2087,18 @@ function clockMinutes(value: string) {
 
 function formatDuration(minutes: number) {
   return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
+}
+
+function effectiveWindowMinutes(
+  startTime: string,
+  endTime: string,
+  endDayOffset: number,
+) {
+  if (!startTime || !endTime) return 0;
+  return Math.max(
+    0,
+    endDayOffset * 1440 + clockMinutes(endTime) - clockMinutes(startTime),
+  );
 }
 
 function formatDate(value: string) {

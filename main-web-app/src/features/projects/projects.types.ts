@@ -106,7 +106,7 @@ export type ProjectDetailSnapshot = {
     employment: ProjectEmployeeSummary | null;
     shift: "day" | "night";
     jobRole: string;
-    expectedDailyWorkloadMinutes: number;
+    monthlyWorkloadHours: number;
     compensationMode: CompensationMode;
     compensationValue: string;
     overtimeRate: string;

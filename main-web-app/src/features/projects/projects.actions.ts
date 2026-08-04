@@ -262,7 +262,7 @@ const projectReadinessActionSchema = z
             .max(120)
             .nullable()
             .optional(),
-          expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
+          monthlyWorkloadHours: z.number().int().min(1).max(744),
           compensationMode: z.enum([
             "daily",
             "hourly",

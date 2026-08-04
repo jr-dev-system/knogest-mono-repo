@@ -46,7 +46,6 @@ export type DailyReportWriteData = {
     employmentId: string;
     employeeNameSnapshot: string;
     jobRoleSnapshot: string;
-    expectedDailyWorkloadMinutes: number;
     completedFullShift: boolean;
     regularWorkedMinutes: number;
     overtimeMinutes: number;
@@ -145,7 +144,6 @@ export async function findProjectDailyReportContextHandler(
       select: {
         employmentId: true,
         jobRole: true,
-        expectedDailyWorkloadMinutes: true,
       },
     }),
     context.prisma.projectMachineAllocation.findMany({

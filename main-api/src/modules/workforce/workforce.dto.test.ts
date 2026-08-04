@@ -18,7 +18,7 @@ describe("workforce DTOs", () => {
         employmentId: "00000000-0000-4000-8000-000000000001",
         projectId: "00000000-0000-4000-8000-000000000002",
         jobRole: "Operador",
-        expectedDailyWorkloadMinutes: 1440,
+        monthlyWorkloadHours: 744,
         compensationMode: "monthly",
         compensationValue: "0.00",
         overtimeRate: "12.50",
@@ -29,7 +29,18 @@ describe("workforce DTOs", () => {
         employmentId: "00000000-0000-4000-8000-000000000001",
         projectId: "00000000-0000-4000-8000-000000000002",
         jobRole: "Operador",
-        expectedDailyWorkloadMinutes: 1,
+        monthlyWorkloadHours: 745,
+        compensationMode: "monthly",
+        compensationValue: "0.00",
+        overtimeRate: "12.50",
+      }),
+    ).toThrow();
+    expect(() =>
+      allocateEmployeeSchema.parse({
+        employmentId: "00000000-0000-4000-8000-000000000001",
+        projectId: "00000000-0000-4000-8000-000000000002",
+        jobRole: "Operador",
+        monthlyWorkloadHours: 1,
         compensationMode: "monthly",
         compensationValue: "1.001",
         overtimeRate: "0.00",
@@ -49,7 +60,7 @@ describe("workforce DTOs", () => {
     ).toThrow();
     const terms = {
       jobRole: "Operador",
-      expectedDailyWorkloadMinutes: 480,
+      monthlyWorkloadHours: 220,
       compensationMode: "daily" as const,
       compensationValue: "0.00",
       overtimeRate: "12.50",
@@ -77,7 +88,9 @@ describe("workforce DTOs", () => {
 
   it("normalizes and requires the auditable termination reason", () => {
     expect(
-      terminateEmploymentSchema.parse({ reason: "  Encerramento solicitado  " }),
+      terminateEmploymentSchema.parse({
+        reason: "  Encerramento solicitado  ",
+      }),
     ).toEqual({ reason: "Encerramento solicitado" });
     expect(() => terminateEmploymentSchema.parse({ reason: "" })).toThrow();
     expect(() =>

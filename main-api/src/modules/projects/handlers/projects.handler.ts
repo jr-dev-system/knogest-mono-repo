@@ -1563,7 +1563,7 @@ async function replaceEmployeeAllocations(
           ? currentRole?.id
           : null,
         jobRole: jobRoleName,
-        expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
+        monthlyWorkloadHours: allocation.monthlyWorkloadHours,
         compensationMode: allocation.compensationMode,
         compensationValue: allocation.compensationValue,
         overtimeRate: allocation.overtimeRate,
@@ -2584,7 +2584,7 @@ async function buildProjectSnapshot(
     employment: employeeDto(allocation.employmentId),
     shift: shiftDto(allocation.shift),
     jobRole: allocation.jobRole,
-    expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
+    monthlyWorkloadHours: allocation.monthlyWorkloadHours,
     compensationMode: allocation.compensationMode,
     compensationValue: decimalString(allocation.compensationValue, 2),
     overtimeRate: decimalString(allocation.overtimeRate, 2),
@@ -3177,8 +3177,7 @@ export class ProjectsHandler {
                 ? currentRole?.id
                 : null,
               jobRole: jobRoleName,
-              expectedDailyWorkloadMinutes:
-                allocation.expectedDailyWorkloadMinutes,
+              monthlyWorkloadHours: allocation.monthlyWorkloadHours,
               compensationMode: allocation.compensationMode,
               compensationValue: allocation.compensationValue,
               overtimeRate: allocation.overtimeRate,

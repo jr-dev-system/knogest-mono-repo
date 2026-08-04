@@ -79,7 +79,7 @@ export interface CreateEmployeeAllocationData {
   employmentId: string;
   projectId: string;
   jobRole: string;
-  expectedDailyWorkloadMinutes: number;
+  monthlyWorkloadHours: number;
   compensationMode: string;
   compensationValue: string;
   overtimeRate: string;
@@ -95,7 +95,7 @@ export interface AllocationLifecycleScope {
 
 export interface AllocationTerms {
   jobRole: string;
-  expectedDailyWorkloadMinutes: number;
+  monthlyWorkloadHours: number;
   compensationMode: string;
   compensationValue: string;
   overtimeRate: string;
@@ -109,7 +109,7 @@ const allocationSelect = {
   employmentId: true,
   personId: true,
   jobRole: true,
-  expectedDailyWorkloadMinutes: true,
+  monthlyWorkloadHours: true,
   compensationMode: true,
   compensationValue: true,
   overtimeRate: true,
@@ -288,7 +288,7 @@ export async function createEmployeeAllocationHandler(
         projectId: input.projectId,
         personId: employment.personId,
         jobRole: input.jobRole,
-        expectedDailyWorkloadMinutes: input.expectedDailyWorkloadMinutes,
+        monthlyWorkloadHours: input.monthlyWorkloadHours,
         compensationMode: input.compensationMode,
         compensationValue: input.compensationValue,
         overtimeRate: input.overtimeRate,
@@ -301,7 +301,7 @@ export async function createEmployeeAllocationHandler(
         personId: true,
         projectId: true,
         jobRole: true,
-        expectedDailyWorkloadMinutes: true,
+        monthlyWorkloadHours: true,
         compensationMode: true,
         compensationValue: true,
         overtimeRate: true,
@@ -523,7 +523,7 @@ export async function reallocateEmployeeHandler(
         employmentId: destinationEmployment.id,
         personId: source.personId,
         jobRole: input.jobRole,
-        expectedDailyWorkloadMinutes: input.expectedDailyWorkloadMinutes,
+        monthlyWorkloadHours: input.monthlyWorkloadHours,
         compensationMode: input.compensationMode,
         compensationValue: input.compensationValue,
         overtimeRate: input.overtimeRate,
@@ -571,8 +571,7 @@ export async function replaceEmployeeAllocationTermsHandler(
   );
   const unchanged =
     previous.jobRole === input.jobRole &&
-    previous.expectedDailyWorkloadMinutes ===
-      input.expectedDailyWorkloadMinutes &&
+    previous.monthlyWorkloadHours === input.monthlyWorkloadHours &&
     previous.compensationMode === input.compensationMode &&
     previous.compensationValue.toFixed(2) === input.compensationValue &&
     previous.overtimeRate.toFixed(2) === input.overtimeRate;
@@ -597,7 +596,7 @@ export async function replaceEmployeeAllocationTermsHandler(
       employmentId: previous.employmentId,
       personId: previous.personId,
       jobRole: input.jobRole,
-      expectedDailyWorkloadMinutes: input.expectedDailyWorkloadMinutes,
+      monthlyWorkloadHours: input.monthlyWorkloadHours,
       compensationMode: input.compensationMode,
       compensationValue: input.compensationValue,
       overtimeRate: input.overtimeRate,

@@ -412,7 +412,7 @@ describe("fleet Machine registry and meter readings", () => {
             employmentId,
             shift: "day",
             confirmedJobRolePeriodId: employment.jobRolePeriods[0].id,
-            expectedDailyWorkloadMinutes: 480,
+            monthlyWorkloadHours: 220,
             compensationMode: "monthly",
             compensationValue: "0.00",
             overtimeRate: "0.00",

@@ -42,7 +42,7 @@ const normalizedText = (max: number) =>
 export const allocationTermsSchema = z
   .object({
     jobRole: normalizedText(120),
-    expectedDailyWorkloadMinutes: z.number().int().min(1).max(1440),
+    monthlyWorkloadHours: z.number().int().min(1).max(744),
     compensationMode: z.enum([
       "daily",
       "hourly",
@@ -75,7 +75,9 @@ export type ReleaseEmployeeAllocationInput = z.infer<
 export const terminateEmploymentSchema = z
   .object({ reason: normalizedText(240) })
   .strict();
-export type TerminateEmploymentInput = z.infer<typeof terminateEmploymentSchema>;
+export type TerminateEmploymentInput = z.infer<
+  typeof terminateEmploymentSchema
+>;
 
 export const reallocateEmployeeSchema = z
   .object({

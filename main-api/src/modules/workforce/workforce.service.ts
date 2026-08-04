@@ -220,7 +220,7 @@ function allocationDto(
     personId: string;
     projectId: string;
     jobRole: string;
-    expectedDailyWorkloadMinutes: number;
+    monthlyWorkloadHours: number;
     compensationMode: string;
     compensationValue: { toFixed: (digits: number) => string };
     overtimeRate: { toFixed: (digits: number) => string };
@@ -240,7 +240,7 @@ function allocationDto(
       status: project.status.toLowerCase(),
     },
     jobRole: allocation.jobRole,
-    expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
+    monthlyWorkloadHours: allocation.monthlyWorkloadHours,
     compensationMode: allocation.compensationMode,
     compensationValue: allocation.compensationValue.toFixed(2),
     overtimeRate: allocation.overtimeRate.toFixed(2),

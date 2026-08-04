@@ -848,7 +848,7 @@ export function EmployeeMobilization({
     employmentId: string;
     shift: "day" | "night";
     confirmedJobRoleId: string;
-    dailyHours: string;
+    monthlyHours: string;
     compensationMode: ProjectCommand["initialEmployeeAllocations"][number]["compensationMode"];
     compensationValue: string;
     overtimeRate: string;
@@ -870,60 +870,26 @@ export function EmployeeMobilization({
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [options.jobRoles, sessionKey]);
 
-  const workingDays = weeklySchedule.filter(
-    (day) => day.isWorking && day.shift === (draft?.shift ?? "day"),
-  ).length;
-  const formatHours = (minutes: number) =>
-    String(Number((minutes / 60).toFixed(2))).replace(".", ",");
+  const workingDaysForShift = (shift: "day" | "night") =>
+    weeklySchedule.filter((day) => day.isWorking && day.shift === shift).length;
   const formatCompensation = (amount: string) =>
     new Intl.NumberFormat("pt-BR", {
       style: "currency",
       currency: "BRL",
     }).format(Number(decimalInputToCanonical(amount) || 0));
   const toHours = (value: string) => Number(value.replace(",", "."));
-  const calculateHourlyRate = React.useCallback(
-    (
-      compensationValue: string,
-      compensationMode: ProjectCommand["initialEmployeeAllocations"][number]["compensationMode"],
-      dailyHours: string,
-    ) => {
-      const amount = Number(decimalInputToCanonical(compensationValue) || 0);
-      const hours = toHours(dailyHours);
-      const weeklyHours = hours * workingDays;
-      if (!Number.isFinite(amount) || !Number.isFinite(hours) || hours <= 0)
-        return "0,00";
-      const divisor =
-        compensationMode === "hourly"
-          ? 1
-          : compensationMode === "daily"
-            ? hours
-            : compensationMode === "weekly"
-              ? weeklyHours
-              : compensationMode === "fortnightly"
-                ? weeklyHours * 2
-                : weeklyHours * 4.3333;
-      return canonicalDecimalToBrazilian(
-        (divisor > 0 ? amount / divisor : 0).toFixed(2),
-      );
-    },
-    [workingDays],
-  );
-  React.useEffect(() => {
-    /* eslint-disable react-hooks/set-state-in-effect -- Keeps the derived overtime preview in sync with the active draft. */
-    setDraft((current) =>
-      current && !current.overtimeIsManual
-        ? {
-            ...current,
-            overtimeRate: calculateHourlyRate(
-              current.compensationValue,
-              current.compensationMode,
-              current.dailyHours,
-            ),
-          }
-        : current,
-    );
-    /* eslint-enable react-hooks/set-state-in-effect */
-  }, [calculateHourlyRate]);
+  const calculateHourlyRate = (
+    compensationValue: string,
+    compensationMode: ProjectCommand["initialEmployeeAllocations"][number]["compensationMode"],
+    monthlyHours: string,
+    shift: "day" | "night",
+  ) =>
+    calculateSuggestedHourlyRate({
+      compensationValue,
+      compensationMode,
+      monthlyWorkloadHours: monthlyHours,
+      workingDaysPerWeek: workingDaysForShift(shift),
+    });
   const updateDraft = (
     patch: Partial<NonNullable<typeof draft>>,
     manualOvertime = false,
@@ -936,7 +902,8 @@ export function EmployeeMobilization({
         next.overtimeRate = calculateHourlyRate(
           next.compensationValue,
           next.compensationMode,
-          next.dailyHours,
+          next.monthlyHours,
+          next.shift,
         );
       return next;
     });
@@ -946,9 +913,7 @@ export function EmployeeMobilization({
     );
     const compensationMode = allocation?.compensationMode ?? "monthly";
     const compensationValue = allocation?.compensationValue ?? "0.00";
-    const dailyHours = formatHours(
-      allocation?.expectedDailyWorkloadMinutes ?? 480,
-    );
+    const monthlyHours = String(allocation?.monthlyWorkloadHours ?? 220);
     setActiveEmploymentId(option.id);
     setNewJobRoleName("");
     setIsAddingJobRole(false);
@@ -965,12 +930,17 @@ export function EmployeeMobilization({
         temporaryRoleId ??
         option.jobRoleId ??
         "",
-      dailyHours,
+      monthlyHours,
       compensationMode,
       compensationValue,
       overtimeRate:
         allocation?.overtimeRate ??
-        calculateHourlyRate(compensationValue, compensationMode, dailyHours),
+        calculateHourlyRate(
+          compensationValue,
+          compensationMode,
+          monthlyHours,
+          allocation?.shift ?? "day",
+        ),
       overtimeIsManual: Boolean(allocation),
     });
   };
@@ -983,14 +953,16 @@ export function EmployeeMobilization({
   };
   const confirmDraft = () => {
     if (!draft) return;
-    const hours = toHours(draft.dailyHours);
+    const hours = toHours(draft.monthlyHours);
     const role = jobRoles.find((item) => item.id === draft.confirmedJobRoleId);
     if (!role) {
       setJobRoleMessage("Selecione o cargo que será aplicado nesta obra.");
       return;
     }
-    if (!Number.isFinite(hours) || hours <= 0 || hours > 24) {
-      setJobRoleMessage("Informe uma carga diária entre 0,01 e 24 horas.");
+    if (!Number.isInteger(hours) || hours < 1 || hours > 744) {
+      setJobRoleMessage(
+        "Informe uma carga mensal inteira entre 1 e 744 horas.",
+      );
       return;
     }
     const option = options.employees.find(
@@ -1013,7 +985,7 @@ export function EmployeeMobilization({
                 ? (option.jobRolePeriodId ?? null)
                 : null,
           }),
-      expectedDailyWorkloadMinutes: Math.round(hours * 60),
+      monthlyWorkloadHours: hours,
       compensationMode: draft.compensationMode,
       compensationValue: decimalInputToCanonical(draft.compensationValue),
       overtimeRate: decimalInputToCanonical(draft.overtimeRate),
@@ -1197,21 +1169,43 @@ export function EmployeeMobilization({
                 {selectedRole?.temporary ? " — somente nesta obra" : ""}
               </p>
             </div>
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Carga diária (horas)</span>
-              <Input
-                className="h-11"
-                type="number"
-                inputMode="decimal"
-                min={0.01}
-                max={24}
-                step={0.25}
-                value={draft.dailyHours}
-                onChange={(event) =>
-                  updateDraft({ dailyHours: event.target.value })
+            <div className="grid gap-1.5 text-sm font-semibold">
+              <label htmlFor="project-monthly-workload">Carga mensal</label>
+              <select
+                id="project-monthly-workload"
+                className={controlClass}
+                value={
+                  draft.monthlyHours === "220" || draft.monthlyHours === "180"
+                    ? draft.monthlyHours
+                    : "custom"
                 }
-              />
-            </label>
+                onChange={(event) =>
+                  updateDraft({
+                    monthlyHours:
+                      event.target.value === "custom" ? "" : event.target.value,
+                  })
+                }
+              >
+                <option value="220">220 h/mês</option>
+                <option value="180">180 h/mês</option>
+                <option value="custom">Outra carga</option>
+              </select>
+              {draft.monthlyHours !== "220" && draft.monthlyHours !== "180" && (
+                <Input
+                  className="h-11"
+                  type="number"
+                  inputMode="numeric"
+                  min={1}
+                  max={744}
+                  step={1}
+                  placeholder="Horas por mês"
+                  value={draft.monthlyHours}
+                  onChange={(event) =>
+                    updateDraft({ monthlyHours: event.target.value })
+                  }
+                />
+              )}
+            </div>
             <label className="grid gap-1.5 text-sm font-semibold">
               <span>Modalidade de pagamento</span>
               <select
@@ -1285,7 +1279,8 @@ export function EmployeeMobilization({
                             overtimeRate: calculateHourlyRate(
                               current.compensationValue,
                               current.compensationMode,
-                              current.dailyHours,
+                              current.monthlyHours,
+                              current.shift,
                             ),
                             overtimeIsManual: false,
                           }
@@ -1362,8 +1357,8 @@ export function EmployeeMobilization({
                         role?.label ||
                         option.detail ||
                         "Cargo não informado"}{" "}
-                      · {formatHours(allocation.expectedDailyWorkloadMinutes)}{" "}
-                      h/dia · {formatCompensation(allocation.compensationValue)}{" "}
+                      · {allocation.monthlyWorkloadHours} h/mês ·{" "}
+                      {formatCompensation(allocation.compensationValue)}{" "}
                       {allocation.compensationMode === "monthly"
                         ? "mensal"
                         : allocation.compensationMode === "daily"
@@ -1396,6 +1391,34 @@ export function EmployeeMobilization({
       )}
     </FormSection>
   );
+}
+
+export function calculateSuggestedHourlyRate({
+  compensationValue,
+  compensationMode,
+  monthlyWorkloadHours,
+  workingDaysPerWeek,
+}: {
+  compensationValue: string;
+  compensationMode: ProjectCommand["initialEmployeeAllocations"][number]["compensationMode"];
+  monthlyWorkloadHours: string;
+  workingDaysPerWeek: number;
+}) {
+  const amount = Number(decimalInputToCanonical(compensationValue) || 0);
+  const hours = Number(monthlyWorkloadHours.replace(",", "."));
+  if (!Number.isFinite(amount) || !Number.isFinite(hours) || hours <= 0)
+    return "0,00";
+  const monthlyEquivalent =
+    compensationMode === "hourly"
+      ? amount * hours
+      : compensationMode === "daily"
+        ? amount * workingDaysPerWeek * (52 / 12)
+        : compensationMode === "weekly"
+          ? amount * (52 / 12)
+          : compensationMode === "fortnightly"
+            ? amount * (26 / 12)
+            : amount;
+  return canonicalDecimalToBrazilian((monthlyEquivalent / hours).toFixed(2));
 }
 
 export function MachineMobilization({

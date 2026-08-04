@@ -111,8 +111,6 @@ export class DailyReportsService {
                 id: allocation.employmentId,
                 name: employment.person.displayName,
                 jobRole: allocation.jobRole,
-                expectedDailyWorkloadMinutes:
-                  allocation.expectedDailyWorkloadMinutes,
               },
             ]
           : [];
@@ -503,18 +501,14 @@ export class DailyReportsService {
       )
         throw resourceUnavailable("employee");
       const regularWorkedMinutes = entry.completedFullShift
-        ? allocation.expectedDailyWorkloadMinutes
+        ? activityWindowMinutes(command)
         : entry.regularWorkedMinutes;
-      if (
-        regularWorkedMinutes > allocation.expectedDailyWorkloadMinutes ||
-        regularWorkedMinutes + entry.overtimeMinutes > 1440
-      )
+      if (regularWorkedMinutes + entry.overtimeMinutes > 1440)
         throw resourceUnavailable("employee-hours");
       return {
         employmentId: entry.employmentId,
         employeeNameSnapshot: employment.person.displayName,
         jobRoleSnapshot: allocation.jobRole,
-        expectedDailyWorkloadMinutes: allocation.expectedDailyWorkloadMinutes,
         completedFullShift: entry.completedFullShift,
         regularWorkedMinutes,
         overtimeMinutes: entry.overtimeMinutes,
@@ -645,7 +639,6 @@ function toDetailDto(record: DailyReportRecord) {
       employmentId: item.employmentId,
       name: item.employeeNameSnapshot,
       jobRole: item.jobRoleSnapshot,
-      expectedDailyWorkloadMinutes: item.expectedDailyWorkloadMinutes,
       completedFullShift: item.completedFullShift,
       regularWorkedMinutes: item.regularWorkedMinutes,
       overtimeMinutes: item.overtimeMinutes,
@@ -722,6 +715,24 @@ function intervalFromLocal(
     startAt: zonedCivilDateTime(reportDate, startTime, 0),
     endAt: zonedCivilDateTime(reportDate, endTime, endDayOffset),
   };
+}
+
+function activityWindowMinutes(
+  command: Pick<
+    DailyReportCommand,
+    "activityStartTime" | "activityEndTime" | "activityEndDayOffset"
+  >,
+) {
+  return (
+    command.activityEndDayOffset * 1440 +
+    clockMinutes(command.activityEndTime) -
+    clockMinutes(command.activityStartTime)
+  );
+}
+
+function clockMinutes(value: string) {
+  const [hour, minute] = value.split(":").map(Number);
+  return hour! * 60 + minute!;
 }
 
 function zonedCivilDateTime(

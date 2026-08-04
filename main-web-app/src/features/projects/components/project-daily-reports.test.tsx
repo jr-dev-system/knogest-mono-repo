@@ -147,7 +147,7 @@ describe("ProjectDailyReports", () => {
           {
             employmentId,
             completedFullShift: true,
-            regularWorkedMinutes: 480,
+            regularWorkedMinutes: 660,
             overtimeMinutes: 0,
           },
         ],
@@ -157,6 +157,40 @@ describe("ProjectDailyReports", () => {
       expect(screen.queryByRole("heading", { name: "Novo RDO" })).toBeNull(),
     );
     expect(screen.getByText("Rascunho")).toBeTruthy();
+  });
+
+  it("uses the effective window for a full shift and clears the shortcut on manual edit", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getProjectDailyReportOptionsAction).mockResolvedValue(options);
+    render(
+      <ProjectDailyReports projectId={projectId} initialPage={emptyPage} />,
+    );
+
+    await user.click(screen.getByRole("button", { name: "Novo RDO" }));
+    await screen.findByRole("heading", { name: "Novo RDO" });
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.type(
+      screen.getByLabelText("Resumo dos serviços executados"),
+      "Atividade executada.",
+    );
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Marcar todos com turno completo" }),
+    );
+
+    const regularHours = screen.getByLabelText(
+      "Horas normais",
+    ) as HTMLInputElement;
+    const fullShift = screen.getByLabelText(
+      "Cumpriu o turno completo",
+    ) as HTMLInputElement;
+    expect(regularHours.value).toBe("11:00");
+    expect(fullShift.checked).toBe(true);
+
+    await user.clear(regularHours);
+    await user.type(regularHours, "08:00");
+    expect(fullShift.checked).toBe(false);
   });
 
   it("protects unsaved data when changing the temporal context or closing", async () => {
@@ -313,7 +347,6 @@ const options: ProjectDailyReportOptions = {
       id: employmentId,
       name: "Rafael Brito",
       jobRole: "Supervisor",
-      expectedDailyWorkloadMinutes: 480,
     },
   ],
   machineOptions: [],
@@ -343,9 +376,8 @@ const draft: ProjectDailyReportDetail = {
       employmentId,
       name: "Rafael Brito",
       jobRole: "Supervisor",
-      expectedDailyWorkloadMinutes: 480,
       completedFullShift: true,
-      regularWorkedMinutes: 480,
+      regularWorkedMinutes: 660,
       overtimeMinutes: 0,
     },
   ],

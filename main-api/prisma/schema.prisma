@@ -921,7 +921,7 @@ model ProjectEmployeeAllocation {
   shift                        ProjectDailyReportShift  @default(DAY)
   jobRole                      String                   @map("job_role") @db.VarChar(120)
   employmentJobRolePeriodId    String?                  @map("employment_job_role_period_id") @db.Uuid
-  expectedDailyWorkloadMinutes Int                      @map("expected_daily_workload_minutes")
+  monthlyWorkloadHours         Int                      @default(220) @map("monthly_workload_hours")
   compensationMode             String                   @map("compensation_mode") @db.VarChar(16)
   compensationValue            Decimal                  @map("compensation_value") @db.Decimal(18, 2)
   overtimeRate                 Decimal                  @map("overtime_rate") @db.Decimal(18, 2)
@@ -1320,7 +1320,6 @@ model ProjectDailyReportEmployee {
   employmentId                 String             @map("employment_id") @db.Uuid
   employeeNameSnapshot         String             @map("employee_name_snapshot") @db.VarChar(180)
   jobRoleSnapshot              String             @map("job_role_snapshot") @db.VarChar(120)
-  expectedDailyWorkloadMinutes Int                @map("expected_daily_workload_minutes")
   completedFullShift           Boolean            @map("completed_full_shift")
   regularWorkedMinutes         Int                @map("regular_worked_minutes")
   overtimeMinutes              Int                @default(0) @map("overtime_minutes")
