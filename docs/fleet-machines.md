@@ -16,9 +16,20 @@ branca existentes podem ser atualizadas por
 `PATCH /machines/:machineId/load-specification`; string decimal define o valor
 e `null` o remove.
 
-Na produção, somente máquina ativa de linha branca, com `loadVolumeM3 > 0` e
-mobilizada na frente e turno solicitados é elegível. O volume cadastrado vira o
-snapshot de capacidade padrão do lançamento e não pode ser sobrescrito pelo
-comando. Uma viagem pode registrar variação individual em
-`adjustedVolumeM3`. O peso máximo é informativo nesta versão: não converte
-unidades nem bloqueia o lançamento.
+Na produção, equipamentos operacionais e caminhões são opções separadas. Toda
+máquina ativa mobilizada na frente e turno pode participar como equipamento,
+inclusive linha amarela. Somente a existência de
+`MachineTransportSpecification` com capacidade efetiva positiva torna a
+máquina elegível como caminhão.
+
+A extensão mantém capacidade nominal, capacidade efetiva, unidade (por padrão
+`M3_LOOSE`) e peso máximo. Nesta versão, criar, alterar ou remover a
+especificação legada de carga sincroniza a extensão 1:1. A migration faz o
+backfill das máquinas com `loadVolumeM3 > 0`, copiando o valor para as duas
+capacidades.
+
+Capacidade, unidade, identificação e motorista viram snapshots do resumo por
+caminhão e não podem ser sobrescritos pelo comando. Eventos detalhados antigos
+continuam aceitando `adjustedVolumeM3`. O período de propriedade agora também
+suporta `OWNED`, `RENTED` e `THIRD_PARTY`, com proprietário externo opcional;
+RBAC e gestão administrativa completa desses campos permanecem posteriores.

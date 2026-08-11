@@ -1,12 +1,44 @@
+import { execFileSync } from "node:child_process";
+import { resolve } from "node:path";
+
 import { expect, test } from "@playwright/test";
 
-import { createPrismaClient } from "../../../main-api/src/db/prisma.db";
+const apiRoot = resolve(process.cwd(), "../main-api");
+const testDatabaseUrl = "postgres://test:testpass@localhost:5433/knogest_test";
+
+function sessionState(sessionId: string) {
+  return JSON.parse(
+    execFileSync(
+      "pnpm",
+      ["exec", "tsx", "scripts/e2e-session-state.ts", "get", sessionId],
+      {
+        cwd: apiRoot,
+        env: { ...process.env, DATABASE_URL: testDatabaseUrl },
+        encoding: "utf8",
+      },
+    ),
+  ) as { refreshVersion: number; revokedAt: string | null };
+}
+
+function revokeSession(sessionId: string) {
+  execFileSync(
+    "pnpm",
+    ["exec", "tsx", "scripts/e2e-session-state.ts", "revoke", sessionId],
+    {
+      cwd: apiRoot,
+      env: { ...process.env, DATABASE_URL: testDatabaseUrl },
+      stdio: "inherit",
+    },
+  );
+}
 
 async function loginThroughUi(page: import("@playwright/test").Page) {
   await page.goto("/auth/login");
   await page.getByLabel("Email corporativo").fill("master@pilot.test");
   await page.getByLabel("Senha").fill("correct e2e password");
   await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page).toHaveURL(/\/home\/company$/);
+  await page.getByRole("button", { name: /Pilot E2E Company/ }).click();
   await expect(page).toHaveURL(/\/home$/);
 }
 
@@ -52,6 +84,8 @@ test("logs in through the trusted host without exposing credential material", as
   await page.getByLabel("Email corporativo").fill("master@pilot.test");
   await page.getByLabel("Senha").fill("correct e2e password");
   await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page).toHaveURL(/\/home\/company$/);
+  await page.getByRole("button", { name: /Pilot E2E Company/ }).click();
   await expect(page).toHaveURL(/\/home$/);
 
   const cookies = await context.cookies();
@@ -99,7 +133,9 @@ test("logs in through the trusted host without exposing credential material", as
 test("shows the same readable failure without disclosing account existence", async ({
   page,
 }) => {
-  await page.goto("http://desconhecido.localhost:3000/auth/login");
+  await page.goto(
+    `http://desconhecido.localhost:${process.env.E2E_WEB_PORT ?? "3000"}/auth/login`,
+  );
   await page.getByLabel("Email corporativo").fill("unknown@pilot.test");
   await page.getByLabel("Senha").fill("incorrect password");
   await page.getByRole("button", { name: "Entrar" }).click();
@@ -111,7 +147,7 @@ test("shows the same readable failure without disclosing account existence", asy
 
 test("has no NextAuth session authority", async ({ request }) => {
   const response = await request.get(
-    "http://piloto.localhost:3000/api/auth/session",
+    `http://piloto.localhost:${process.env.E2E_WEB_PORT ?? "3000"}/api/auth/session`,
   );
   expect(response.status()).toBe(404);
 });
@@ -168,26 +204,14 @@ test("coordinates concurrent dashboard renewal into one Session rotation", async
   );
   expect(access).toBeDefined();
   const sessionId = decodeSessionId(access!.value);
-  const { prisma, pool } = createPrismaClient();
-  try {
-    const before = await prisma.session.findUniqueOrThrow({
-      where: { id: sessionId },
-      select: { refreshVersion: true },
-    });
-    await replaceAccessCookie(context, "expired-access-credential");
+  const before = sessionState(sessionId);
+  await replaceAccessCookie(context, "expired-access-credential");
 
-    await page.goto("/home/obras");
-    await expect(page).toHaveURL(/\/home\/obras$/);
-    const after = await prisma.session.findUniqueOrThrow({
-      where: { id: sessionId },
-      select: { refreshVersion: true, revokedAt: true },
-    });
-    expect(after.refreshVersion).toBe(before.refreshVersion + 1);
-    expect(after.revokedAt).toBeNull();
-  } finally {
-    await prisma.$disconnect();
-    await pool.end();
-  }
+  await page.goto("/home/obras");
+  await expect(page).toHaveURL(/\/home\/obras$/);
+  const after = sessionState(sessionId);
+  expect(after.refreshVersion).toBe(before.refreshVersion + 1);
+  expect(after.revokedAt).toBeNull();
 });
 
 test("clears terminally revoked credentials and returns to login", async ({
@@ -199,20 +223,7 @@ test("clears terminally revoked credentials and returns to login", async ({
     (cookie) => cookie.name === "knogest-access",
   );
   expect(access).toBeDefined();
-  const { prisma, pool } = createPrismaClient();
-  try {
-    await prisma.session.update({
-      where: { id: decodeSessionId(access!.value) },
-      data: {
-        revokedAt: new Date(),
-        revocationReason: "e2e-terminal-refresh",
-        refreshTokenHash: null,
-      },
-    });
-  } finally {
-    await prisma.$disconnect();
-    await pool.end();
-  }
+  revokeSession(decodeSessionId(access!.value));
   await replaceAccessCookie(context, "expired-access-credential");
 
   await page.goto("/home");

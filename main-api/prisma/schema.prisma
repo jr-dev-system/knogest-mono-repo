@@ -129,13 +129,20 @@ enum ProjectDailyReportClimateCondition {
 
 enum ProjectProductionStatus {
   DRAFT
+  SUBMITTED
+  FIELD_CHECKED
+  AWAITING_TECHNICAL
   APPROVED
+  REJECTED
+  RELEASED
+  MEASURED
 
   @@map("project_production_status")
 }
 
 enum ProjectProductionEntryMode {
   DIRECT_TOTAL
+  TRUCK_SUMMARY
   TRIPS
 
   @@map("project_production_entry_mode")
@@ -143,8 +150,10 @@ enum ProjectProductionEntryMode {
 
 enum ProjectProductionVolumeCondition {
   CUT
+  BANK
   LOOSE
   COMPACTED
+  PLACED
 
   @@map("project_production_volume_condition")
 }
@@ -185,14 +194,113 @@ enum ProjectProductionEquipmentRole {
 enum ProjectProductionRevisionEvent {
   CREATED
   UPDATED
+  SUBMITTED
+  FIELD_CHECKED
+  AWAITING_TECHNICAL
   APPROVED
   DIRECT_APPROVED
+  REJECTED
+  RELEASED
+  QUALITY_RECORDED
   REOPENED
   TRIP_ADDED
   TRIP_REMOVED
   RDO_CONFIRMED
 
   @@map("project_production_revision_event")
+}
+
+enum ProjectProductionKind {
+  INDIVIDUAL_ACTIVITY
+  MATERIAL_MOVEMENT
+
+  @@map("project_production_kind")
+}
+
+enum ProjectProductionComponentType {
+  INDIVIDUAL
+  CUT
+  LOADING
+  TRANSPORT
+  UNLOADING
+  SPREADING
+  COMPACTION
+  FILL
+  FINISHING
+
+  @@map("project_production_component_type")
+}
+
+enum ProjectProductionQuantityKind {
+  OPERATIONAL
+  ESTIMATED
+  TECHNICALLY_ACCEPTED
+  CONTRACT_MEASURED
+
+  @@map("project_production_quantity_kind")
+}
+
+enum ProjectProductionQuantityMethod {
+  MANUAL
+  TRUCK_SUMMARY
+  TRIP_EVENTS
+  WEIGHBRIDGE
+  CONVERTED
+  TOPOGRAPHY
+  LABORATORY
+  CONTRACT_MEASUREMENT
+
+  @@map("project_production_quantity_method")
+}
+
+enum ProjectProductionQualityType {
+  FIELD_INSPECTION
+  TOPOGRAPHY
+  DENSITY
+  PROCTOR
+  COMPACTION
+  MOISTURE
+  FINISHING
+
+  @@map("project_production_quality_type")
+}
+
+enum ProjectProductionQualityStatus {
+  PENDING
+  ACCEPTED
+  REJECTED
+
+  @@map("project_production_quality_status")
+}
+
+enum ProjectProductionApprovalPhase {
+  SUBMISSION
+  FIELD_CHECK
+  TECHNICAL_CHECK
+  RELEASE
+  REOPEN
+  MEASUREMENT
+
+  @@map("project_production_approval_phase")
+}
+
+enum ProjectProductionApprovalDecision {
+  SUBMITTED
+  ACCEPTED
+  REJECTED
+  RELEASED
+  REOPENED
+  MEASURED
+
+  @@map("project_production_approval_decision")
+}
+
+enum MachineOwnershipKind {
+  OWNED
+  RENTED
+  THIRD_PARTY
+
+  @@map("machine_ownership_kind")
 }
 
 model Corporation {
@@ -647,25 +755,26 @@ model EmploymentPeriod {
 }
 
 model Machine {
-  id                   String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId        String                              @map("corporation_id") @db.Uuid
-  name                 String                              @db.VarChar(160)
-  description          String?                             @db.VarChar(500)
-  type                 MachineType
-  manufacturer         String                              @db.VarChar(120)
-  model                String                              @db.VarChar(120)
-  meterType            MachineMeterType                    @map("meter_type")
-  loadVolumeM3         Decimal?                            @map("load_volume_m3") @db.Decimal(10, 3)
-  maxSupportedWeightT  Decimal?                            @map("max_supported_weight_t") @db.Decimal(10, 3)
-  isActive             Boolean                             @default(true) @map("is_active")
-  createdAt            DateTime                            @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt            DateTime                            @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation          Corporation                         @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  ownershipPeriods     MachineOwnershipPeriod[]
-  identifiers          MachineIdentifier[]
-  meterReadings        MachineMeterReading[]
-  workFrontAssignments ProjectWorkFrontMachineAssignment[]
-  dailyReportEntries   ProjectDailyReportMachine[]
+  id                     String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId          String                              @map("corporation_id") @db.Uuid
+  name                   String                              @db.VarChar(160)
+  description            String?                             @db.VarChar(500)
+  type                   MachineType
+  manufacturer           String                              @db.VarChar(120)
+  model                  String                              @db.VarChar(120)
+  meterType              MachineMeterType                    @map("meter_type")
+  loadVolumeM3           Decimal?                            @map("load_volume_m3") @db.Decimal(10, 3)
+  maxSupportedWeightT    Decimal?                            @map("max_supported_weight_t") @db.Decimal(10, 3)
+  isActive               Boolean                             @default(true) @map("is_active")
+  createdAt              DateTime                            @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime                            @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation            Corporation                         @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  ownershipPeriods       MachineOwnershipPeriod[]
+  identifiers            MachineIdentifier[]
+  meterReadings          MachineMeterReading[]
+  workFrontAssignments   ProjectWorkFrontMachineAssignment[]
+  dailyReportEntries     ProjectDailyReportMachine[]
+  transportSpecification MachineTransportSpecification?
 
   @@unique([corporationId, id])
   @@index([corporationId, createdAt, id])
@@ -674,21 +783,37 @@ model Machine {
 }
 
 model MachineOwnershipPeriod {
-  id            String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId String      @map("corporation_id") @db.Uuid
-  companyId     String      @map("company_id") @db.Uuid
-  machineId     String      @map("machine_id") @db.Uuid
-  effectiveFrom DateTime    @default(now()) @map("effective_from") @db.Timestamptz(3)
-  effectiveTo   DateTime?   @map("effective_to") @db.Timestamptz(3)
-  createdAt     DateTime    @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt     DateTime    @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation   Corporation @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company       Company     @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  machine       Machine     @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
+  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId     String               @map("corporation_id") @db.Uuid
+  companyId         String               @map("company_id") @db.Uuid
+  machineId         String               @map("machine_id") @db.Uuid
+  effectiveFrom     DateTime             @default(now()) @map("effective_from") @db.Timestamptz(3)
+  effectiveTo       DateTime?            @map("effective_to") @db.Timestamptz(3)
+  ownershipKind     MachineOwnershipKind @default(OWNED) @map("ownership_kind")
+  externalOwnerName String?              @map("external_owner_name") @db.VarChar(180)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation       Corporation          @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company           Company              @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  machine           Machine              @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
 
   @@index([corporationId, companyId, machineId])
   @@index([corporationId, companyId, effectiveFrom, id])
   @@map("machine_ownership_periods")
+}
+
+model MachineTransportSpecification {
+  id                  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  machineId           String   @unique @map("machine_id") @db.Uuid
+  nominalCapacity     Decimal  @map("nominal_capacity") @db.Decimal(12, 3)
+  effectiveCapacity   Decimal  @map("effective_capacity") @db.Decimal(12, 3)
+  capacityUnitCode    String   @default("M3_LOOSE") @map("capacity_unit_code") @db.VarChar(32)
+  maxSupportedWeightT Decimal? @map("max_supported_weight_t") @db.Decimal(12, 3)
+  createdAt           DateTime @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.Timestamptz(3)
+  machine             Machine  @relation(fields: [machineId], references: [id], onDelete: Cascade)
+
+  @@map("machine_transport_specifications")
 }
 
 model MachineIdentifier {
@@ -912,27 +1037,27 @@ model ProjectBreakTemplate {
 }
 
 model ProjectEmployeeAllocation {
-  id                           String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId                String                   @map("corporation_id") @db.Uuid
-  companyId                    String                   @map("company_id") @db.Uuid
-  projectId                    String                   @map("project_id") @db.Uuid
-  employmentId                 String                   @map("employment_id") @db.Uuid
-  personId                     String                   @map("person_id") @db.Uuid
-  shift                        ProjectDailyReportShift  @default(DAY)
-  jobRole                      String                   @map("job_role") @db.VarChar(120)
-  employmentJobRolePeriodId    String?                  @map("employment_job_role_period_id") @db.Uuid
-  monthlyWorkloadHours         Int                      @default(220) @map("monthly_workload_hours")
-  compensationMode             String                   @map("compensation_mode") @db.VarChar(16)
-  compensationValue            Decimal                  @map("compensation_value") @db.Decimal(18, 2)
-  overtimeRate                 Decimal                  @map("overtime_rate") @db.Decimal(18, 2)
-  effectiveFrom                DateTime                 @map("effective_from") @db.Timestamptz(3)
-  effectiveTo                  DateTime?                @map("effective_to") @db.Timestamptz(3)
-  createdByUserId              String?                  @map("created_by_user_id") @db.Uuid
-  endedByUserId                String?                  @map("ended_by_user_id") @db.Uuid
-  endedReason                  String?                  @map("ended_reason") @db.VarChar(500)
-  employmentJobRolePeriod      EmploymentJobRolePeriod? @relation(fields: [employmentJobRolePeriodId], references: [id], onDelete: Restrict)
-  createdBy                    User?                    @relation("ProjectEmployeeAllocationCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict)
-  endedBy                      User?                    @relation("ProjectEmployeeAllocationEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict)
+  id                        String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId             String                   @map("corporation_id") @db.Uuid
+  companyId                 String                   @map("company_id") @db.Uuid
+  projectId                 String                   @map("project_id") @db.Uuid
+  employmentId              String                   @map("employment_id") @db.Uuid
+  personId                  String                   @map("person_id") @db.Uuid
+  shift                     ProjectDailyReportShift  @default(DAY)
+  jobRole                   String                   @map("job_role") @db.VarChar(120)
+  employmentJobRolePeriodId String?                  @map("employment_job_role_period_id") @db.Uuid
+  monthlyWorkloadHours      Int                      @default(220) @map("monthly_workload_hours")
+  compensationMode          String                   @map("compensation_mode") @db.VarChar(16)
+  compensationValue         Decimal                  @map("compensation_value") @db.Decimal(18, 2)
+  overtimeRate              Decimal                  @map("overtime_rate") @db.Decimal(18, 2)
+  effectiveFrom             DateTime                 @map("effective_from") @db.Timestamptz(3)
+  effectiveTo               DateTime?                @map("effective_to") @db.Timestamptz(3)
+  createdByUserId           String?                  @map("created_by_user_id") @db.Uuid
+  endedByUserId             String?                  @map("ended_by_user_id") @db.Uuid
+  endedReason               String?                  @map("ended_reason") @db.VarChar(500)
+  employmentJobRolePeriod   EmploymentJobRolePeriod? @relation(fields: [employmentJobRolePeriodId], references: [id], onDelete: Restrict)
+  createdBy                 User?                    @relation("ProjectEmployeeAllocationCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict)
+  endedBy                   User?                    @relation("ProjectEmployeeAllocationEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict)
 
   @@index([corporationId, companyId, projectId])
   @@index([employmentJobRolePeriodId])
@@ -1184,6 +1309,109 @@ model ProjectWorkFrontService {
   @@map("project_work_front_services")
 }
 
+model EarthworkServiceDefinition {
+  id        String                               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code      String                               @unique @db.VarChar(48)
+  name      String                               @db.VarChar(120)
+  isActive  Boolean                              @default(true) @map("is_active")
+  createdAt DateTime                             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  revisions EarthworkServiceDefinitionRevision[]
+
+  @@map("earthwork_service_definitions")
+}
+
+model EarthworkServiceDefinitionRevision {
+  id                  String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  serviceDefinitionId String                     @map("service_definition_id") @db.Uuid
+  revision            Int
+  unitCode            String                     @map("unit_code") @db.VarChar(32)
+  productionProfile   ProjectProductionProfile   @map("production_profile")
+  dmtPolicy           ProjectProductionDmtPolicy @map("dmt_policy")
+  fieldPolicy         Json                       @default("{}") @map("field_policy")
+  effectiveFrom       DateTime                   @map("effective_from") @db.Timestamptz(3)
+  effectiveTo         DateTime?                  @map("effective_to") @db.Timestamptz(3)
+  createdAt           DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  serviceDefinition   EarthworkServiceDefinition @relation(fields: [serviceDefinitionId], references: [id], onDelete: Cascade)
+
+  @@unique([serviceDefinitionId, revision], map: "earthwork_service_definition_revisions_uq")
+  @@index([serviceDefinitionId, effectiveFrom])
+  @@map("earthwork_service_definition_revisions")
+}
+
+model ProjectEarthworkMaterial {
+  id             String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId  String                             @map("corporation_id") @db.Uuid
+  companyId      String                             @map("company_id") @db.Uuid
+  projectId      String                             @map("project_id") @db.Uuid
+  code           String                             @db.VarChar(48)
+  name           String                             @db.VarChar(160)
+  classification String?                            @db.VarChar(120)
+  category       String?                            @db.VarChar(120)
+  isActive       Boolean                            @default(true) @map("is_active")
+  createdAt      DateTime                           @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt      DateTime                           @updatedAt @map("updated_at") @db.Timestamptz(3)
+  revisions      ProjectEarthworkMaterialRevision[]
+
+  @@unique([corporationId, companyId, projectId, code], map: "project_earthwork_materials_code_uq")
+  @@index([corporationId, companyId, projectId, name, id])
+  @@map("project_earthwork_materials")
+}
+
+model ProjectEarthworkMaterialRevision {
+  id                     String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  materialId             String                   @map("material_id") @db.Uuid
+  revision               Int
+  densityTPerM3          Decimal?                 @map("density_t_per_m3") @db.Decimal(12, 6)
+  swellFactor            Decimal?                 @map("swell_factor") @db.Decimal(12, 6)
+  looseToCompactedFactor Decimal?                 @map("loose_to_compacted_factor") @db.Decimal(12, 6)
+  effectiveFrom          DateTime                 @map("effective_from") @db.Timestamptz(3)
+  effectiveTo            DateTime?                @map("effective_to") @db.Timestamptz(3)
+  createdAt              DateTime                 @default(now()) @map("created_at") @db.Timestamptz(3)
+  material               ProjectEarthworkMaterial @relation(fields: [materialId], references: [id], onDelete: Cascade)
+
+  @@unique([materialId, revision], map: "project_earthwork_material_revisions_uq")
+  @@index([materialId, effectiveFrom])
+  @@map("project_earthwork_material_revisions")
+}
+
+model ProjectHaulRoute {
+  id            String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId String                     @map("corporation_id") @db.Uuid
+  companyId     String                     @map("company_id") @db.Uuid
+  projectId     String                     @map("project_id") @db.Uuid
+  code          String                     @db.VarChar(48)
+  name          String                     @db.VarChar(160)
+  origin        String                     @db.VarChar(240)
+  destination   String                     @db.VarChar(240)
+  isActive      Boolean                    @default(true) @map("is_active")
+  createdAt     DateTime                   @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt     DateTime                   @updatedAt @map("updated_at") @db.Timestamptz(3)
+  revisions     ProjectHaulRouteRevision[]
+
+  @@unique([corporationId, companyId, projectId, code], map: "project_haul_routes_code_uq")
+  @@index([corporationId, companyId, projectId, name, id])
+  @@map("project_haul_routes")
+}
+
+model ProjectHaulRouteRevision {
+  id                    String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  routeId               String           @map("route_id") @db.Uuid
+  revision              Int
+  loadedDistanceKm      Decimal          @map("loaded_distance_km") @db.Decimal(12, 3)
+  emptyReturnDistanceKm Decimal?         @map("empty_return_distance_km") @db.Decimal(12, 3)
+  contractualDmtKm      Decimal?         @map("contractual_dmt_km") @db.Decimal(12, 3)
+  contractualBand       String?          @map("contractual_band") @db.VarChar(80)
+  effectiveFrom         DateTime         @map("effective_from") @db.Timestamptz(3)
+  effectiveTo           DateTime?        @map("effective_to") @db.Timestamptz(3)
+  createdAt             DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
+  route                 ProjectHaulRoute @relation(fields: [routeId], references: [id], onDelete: Cascade)
+
+  @@unique([routeId, revision], map: "project_haul_route_revisions_uq")
+  @@index([routeId, effectiveFrom])
+  @@map("project_haul_route_revisions")
+}
+
 model ProjectWorkFrontLifecycleEvent {
   id            String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   corporationId String                 @map("corporation_id") @db.Uuid
@@ -1312,19 +1540,19 @@ model ProjectDailyReportTechnicalResponsibility {
 }
 
 model ProjectDailyReportEmployee {
-  id                           String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId                String             @map("corporation_id") @db.Uuid
-  companyId                    String             @map("company_id") @db.Uuid
-  projectId                    String             @map("project_id") @db.Uuid
-  dailyReportId                String             @map("daily_report_id") @db.Uuid
-  employmentId                 String             @map("employment_id") @db.Uuid
-  employeeNameSnapshot         String             @map("employee_name_snapshot") @db.VarChar(180)
-  jobRoleSnapshot              String             @map("job_role_snapshot") @db.VarChar(120)
-  completedFullShift           Boolean            @map("completed_full_shift")
-  regularWorkedMinutes         Int                @map("regular_worked_minutes")
-  overtimeMinutes              Int                @default(0) @map("overtime_minutes")
-  dailyReport                  ProjectDailyReport @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdre_report_fkey")
-  employment                   Employment         @relation("ProjectDailyReportEmployeeEmployment", fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdre_employment_fkey")
+  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String             @map("corporation_id") @db.Uuid
+  companyId            String             @map("company_id") @db.Uuid
+  projectId            String             @map("project_id") @db.Uuid
+  dailyReportId        String             @map("daily_report_id") @db.Uuid
+  employmentId         String             @map("employment_id") @db.Uuid
+  employeeNameSnapshot String             @map("employee_name_snapshot") @db.VarChar(180)
+  jobRoleSnapshot      String             @map("job_role_snapshot") @db.VarChar(120)
+  completedFullShift   Boolean            @map("completed_full_shift")
+  regularWorkedMinutes Int                @map("regular_worked_minutes")
+  overtimeMinutes      Int                @default(0) @map("overtime_minutes")
+  dailyReport          ProjectDailyReport @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdre_report_fkey")
+  employment           Employment         @relation("ProjectDailyReportEmployeeEmployment", fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdre_employment_fkey")
 
   @@unique([dailyReportId, employmentId], map: "project_daily_report_employees_report_employment_key")
   @@index([corporationId, companyId, projectId, employmentId, dailyReportId], map: "project_daily_report_employees_scope_idx")
@@ -1359,63 +1587,203 @@ model ProjectDailyReportMachine {
 }
 
 model ProjectProduction {
-  id                        String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId             String                            @map("corporation_id") @db.Uuid
-  companyId                 String                            @map("company_id") @db.Uuid
-  projectId                 String                            @map("project_id") @db.Uuid
-  workFrontId               String                            @map("work_front_id") @db.Uuid
-  workFrontServiceId        String                            @map("work_front_service_id") @db.Uuid
-  serviceCodeSnapshot       String                            @map("service_code_snapshot") @db.VarChar(48)
-  unitCodeSnapshot          String                            @map("unit_code_snapshot") @db.VarChar(32)
-  productionProfileSnapshot ProjectProductionProfile          @map("production_profile_snapshot")
-  dmtPolicySnapshot         ProjectProductionDmtPolicy        @map("dmt_policy_snapshot")
-  productionDate            DateTime                          @map("production_date") @db.Date
+  id                        String                               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId             String                               @map("corporation_id") @db.Uuid
+  companyId                 String                               @map("company_id") @db.Uuid
+  projectId                 String                               @map("project_id") @db.Uuid
+  workFrontId               String                               @map("work_front_id") @db.Uuid
+  workFrontServiceId        String                               @map("work_front_service_id") @db.Uuid
+  serviceCodeSnapshot       String                               @map("service_code_snapshot") @db.VarChar(48)
+  unitCodeSnapshot          String                               @map("unit_code_snapshot") @db.VarChar(32)
+  productionProfileSnapshot ProjectProductionProfile             @map("production_profile_snapshot")
+  dmtPolicySnapshot         ProjectProductionDmtPolicy           @map("dmt_policy_snapshot")
+  productionDate            DateTime                             @map("production_date") @db.Date
   shift                     ProjectDailyReportShift
-  shiftOrder                Int                               @map("shift_order")
-  status                    ProjectProductionStatus           @default(DRAFT)
-  entryMode                 ProjectProductionEntryMode        @map("entry_mode")
-  revision                  Int                               @default(1)
-  startTime                 String?                           @map("start_time") @db.VarChar(5)
-  endTime                   String?                           @map("end_time") @db.VarChar(5)
-  endDayOffset              Int                               @default(0) @map("end_day_offset")
-  responsibleEmploymentId   String?                           @map("responsible_employment_id") @db.Uuid
-  responsibleNameSnapshot   String?                           @map("responsible_name_snapshot") @db.VarChar(180)
-  location                  String?                           @db.VarChar(240)
-  startStation              String?                           @map("start_station") @db.VarChar(80)
-  endStation                String?                           @map("end_station") @db.VarChar(80)
-  layer                     String?                           @db.VarChar(80)
-  elevation                 String?                           @db.VarChar(80)
-  materialName              String?                           @map("material_name") @db.VarChar(160)
-  materialCategory          String?                           @map("material_category") @db.VarChar(120)
-  volumeCondition           ProjectProductionVolumeCondition? @map("volume_condition")
-  directQuantity            Decimal?                          @map("direct_quantity") @db.Decimal(18, 3)
-  measuredQuantity          Decimal?                          @map("measured_quantity") @db.Decimal(18, 3)
-  officialQuantity          Decimal                           @default(0) @map("official_quantity") @db.Decimal(18, 3)
-  conversionFactor          Decimal?                          @map("conversion_factor") @db.Decimal(12, 6)
-  origin                    String?                           @db.VarChar(240)
-  destination               String?                           @db.VarChar(240)
-  dmtKm                     Decimal?                          @map("dmt_km") @db.Decimal(10, 3)
-  layerThicknessCm          Decimal?                          @map("layer_thickness_cm") @db.Decimal(10, 2)
-  compactionPasses          Int?                              @map("compaction_passes")
-  moistureCondition         String?                           @map("moisture_condition") @db.VarChar(120)
-  evidence                  Json                              @default("[]")
-  notes                     String?                           @db.Text
-  createdByUserId           String                            @map("created_by_user_id") @db.Uuid
-  approvedByUserId          String?                           @map("approved_by_user_id") @db.Uuid
-  approvedAt                DateTime?                         @map("approved_at") @db.Timestamptz(3)
-  lastReopenReason          String?                           @map("last_reopen_reason") @db.VarChar(500)
-  createdAt                 DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt                 DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  shiftOrder                Int                                  @map("shift_order")
+  status                    ProjectProductionStatus              @default(DRAFT)
+  kind                      ProjectProductionKind                @default(INDIVIDUAL_ACTIVITY)
+  entryMode                 ProjectProductionEntryMode           @map("entry_mode")
+  revision                  Int                                  @default(1)
+  operationalRevision       Int                                  @default(1) @map("operational_revision")
+  batchFingerprint          String?                              @map("batch_fingerprint") @db.VarChar(64)
+  startTime                 String?                              @map("start_time") @db.VarChar(5)
+  endTime                   String?                              @map("end_time") @db.VarChar(5)
+  endDayOffset              Int                                  @default(0) @map("end_day_offset")
+  responsibleEmploymentId   String?                              @map("responsible_employment_id") @db.Uuid
+  responsibleNameSnapshot   String?                              @map("responsible_name_snapshot") @db.VarChar(180)
+  location                  String?                              @db.VarChar(240)
+  startStation              String?                              @map("start_station") @db.VarChar(80)
+  endStation                String?                              @map("end_station") @db.VarChar(80)
+  layer                     String?                              @db.VarChar(80)
+  elevation                 String?                              @db.VarChar(80)
+  materialName              String?                              @map("material_name") @db.VarChar(160)
+  materialCategory          String?                              @map("material_category") @db.VarChar(120)
+  volumeCondition           ProjectProductionVolumeCondition?    @map("volume_condition")
+  directQuantity            Decimal?                             @map("direct_quantity") @db.Decimal(18, 3)
+  measuredQuantity          Decimal?                             @map("measured_quantity") @db.Decimal(18, 3)
+  officialQuantity          Decimal                              @default(0) @map("official_quantity") @db.Decimal(18, 3)
+  conversionFactor          Decimal?                             @map("conversion_factor") @db.Decimal(12, 6)
+  origin                    String?                              @db.VarChar(240)
+  destination               String?                              @db.VarChar(240)
+  dmtKm                     Decimal?                             @map("dmt_km") @db.Decimal(10, 3)
+  layerThicknessCm          Decimal?                             @map("layer_thickness_cm") @db.Decimal(10, 2)
+  compactionPasses          Int?                                 @map("compaction_passes")
+  moistureCondition         String?                              @map("moisture_condition") @db.VarChar(120)
+  evidence                  Json                                 @default("[]")
+  notes                     String?                              @db.Text
+  createdByUserId           String                               @map("created_by_user_id") @db.Uuid
+  approvedByUserId          String?                              @map("approved_by_user_id") @db.Uuid
+  approvedAt                DateTime?                            @map("approved_at") @db.Timestamptz(3)
+  lastReopenReason          String?                              @map("last_reopen_reason") @db.VarChar(500)
+  createdAt                 DateTime                             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                 DateTime                             @updatedAt @map("updated_at") @db.Timestamptz(3)
   equipment                 ProjectProductionEquipment[]
   trips                     ProjectProductionTrip[]
   revisions                 ProjectProductionRevision[]
   dailyReportLinks          ProjectDailyReportProduction[]
+  individualActivity        ProjectProductionIndividualActivity?
+  materialMovement          ProjectMaterialMovement?
+  components                ProjectProductionComponent[]
+  truckSummaries            ProjectProductionTruckSummary[]
+  qualityChecks             ProjectProductionQualityCheck[]
+  approvals                 ProjectProductionApproval[]
 
   @@unique([corporationId, companyId, projectId, id], map: "project_productions_scope_id_uq")
+  @@unique([corporationId, companyId, projectId, batchFingerprint], map: "project_productions_batch_fingerprint_uq")
   @@index([corporationId, companyId, projectId, productionDate, shiftOrder, id], map: "project_productions_project_date_idx")
   @@index([corporationId, companyId, projectId, workFrontId, status], map: "project_productions_front_status_idx")
   @@index([corporationId, companyId, projectId, serviceCodeSnapshot, status], map: "project_productions_service_status_idx")
+  @@index([corporationId, companyId, projectId, productionDate, shift, status, kind], map: "project_productions_shift_workflow_idx")
   @@map("project_productions")
+}
+
+model ProjectProductionIndividualActivity {
+  id                      String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productionId            String                          @unique @map("production_id") @db.Uuid
+  quantityMethod          ProjectProductionQuantityMethod @map("quantity_method")
+  location                String?                         @db.VarChar(240)
+  startStation            String?                         @map("start_station") @db.VarChar(80)
+  endStation              String?                         @map("end_station") @db.VarChar(80)
+  layer                   String?                         @db.VarChar(80)
+  elevation               String?                         @db.VarChar(80)
+  exceptionalFromMovement Boolean                         @default(false) @map("exceptional_from_movement")
+  exceptionReason         String?                         @map("exception_reason") @db.VarChar(500)
+  production              ProjectProduction               @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@map("project_production_individual_activities")
+}
+
+model ProjectMaterialMovement {
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productionId       String            @unique @map("production_id") @db.Uuid
+  materialRevisionId String?           @map("material_revision_id") @db.Uuid
+  routeRevisionId    String?           @map("route_revision_id") @db.Uuid
+  origin             String            @db.VarChar(240)
+  destination        String            @db.VarChar(240)
+  layer              String?           @db.VarChar(80)
+  materialSnapshot   Json              @map("material_snapshot")
+  routeSnapshot      Json              @map("route_snapshot")
+  production         ProjectProduction @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@index([materialRevisionId])
+  @@index([routeRevisionId])
+  @@map("project_material_movements")
+}
+
+model ProjectProductionComponent {
+  id                  String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productionId        String                            @map("production_id") @db.Uuid
+  workFrontId         String                            @map("work_front_id") @db.Uuid
+  workFrontServiceId  String                            @map("work_front_service_id") @db.Uuid
+  componentType       ProjectProductionComponentType    @map("component_type")
+  position            Int
+  serviceCodeSnapshot String                            @map("service_code_snapshot") @db.VarChar(48)
+  unitCodeSnapshot    String                            @map("unit_code_snapshot") @db.VarChar(32)
+  volumeCondition     ProjectProductionVolumeCondition? @map("volume_condition")
+  production          ProjectProduction                 @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  quantities          ProjectProductionQuantity[]
+
+  @@unique([productionId, position], map: "project_production_components_position_uq")
+  @@index([productionId, componentType])
+  @@map("project_production_components")
+}
+
+model ProjectProductionQuantity {
+  id              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  componentId     String                            @map("component_id") @db.Uuid
+  kind            ProjectProductionQuantityKind
+  method          ProjectProductionQuantityMethod
+  value           Decimal                           @db.Decimal(18, 3)
+  unitCode        String                            @map("unit_code") @db.VarChar(32)
+  volumeCondition ProjectProductionVolumeCondition? @map("volume_condition")
+  sourceSnapshot  Json                              @default("{}") @map("source_snapshot")
+  createdAt       DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt       DateTime                          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  component       ProjectProductionComponent        @relation(fields: [componentId], references: [id], onDelete: Cascade)
+
+  @@unique([componentId, kind], map: "project_production_quantities_component_kind_uq")
+  @@index([kind, unitCode])
+  @@map("project_production_quantities")
+}
+
+model ProjectProductionTruckSummary {
+  id                       String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productionId             String            @map("production_id") @db.Uuid
+  machineId                String            @map("machine_id") @db.Uuid
+  driverEmploymentId       String?           @map("driver_employment_id") @db.Uuid
+  driverNameSnapshot       String?           @map("driver_name_snapshot") @db.VarChar(180)
+  machineNameSnapshot      String            @map("machine_name_snapshot") @db.VarChar(160)
+  identifierSnapshot       String?           @map("identifier_snapshot") @db.VarChar(80)
+  capacitySnapshot         Decimal           @map("capacity_snapshot") @db.Decimal(12, 3)
+  capacityUnitCodeSnapshot String            @map("capacity_unit_code_snapshot") @db.VarChar(32)
+  acceptedTrips            Int               @map("accepted_trips")
+  rejectedTrips            Int               @default(0) @map("rejected_trips")
+  partialTripCount         Int               @default(0) @map("partial_trip_count")
+  partialVolume            Decimal           @default(0) @map("partial_volume") @db.Decimal(18, 3)
+  actualWeightT            Decimal?          @map("actual_weight_t") @db.Decimal(18, 3)
+  loadFactor               Decimal           @default(1) @map("load_factor") @db.Decimal(12, 6)
+  averageCycleMinutes      Int?              @map("average_cycle_minutes")
+  occurrenceNotes          String?           @map("occurrence_notes") @db.VarChar(500)
+  createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt                DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  production               ProjectProduction @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@unique([productionId, machineId], map: "project_production_truck_summaries_machine_uq")
+  @@index([machineId])
+  @@map("project_production_truck_summaries")
+}
+
+model ProjectProductionQualityCheck {
+  id           String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productionId String                         @map("production_id") @db.Uuid
+  type         ProjectProductionQualityType
+  status       ProjectProductionQualityStatus @default(PENDING)
+  value        Decimal?                       @db.Decimal(18, 3)
+  unitCode     String?                        @map("unit_code") @db.VarChar(32)
+  notes        String?                        @db.VarChar(500)
+  evidence     Json                           @default("[]")
+  actorUserId  String                         @map("actor_user_id") @db.Uuid
+  createdAt    DateTime                       @default(now()) @map("created_at") @db.Timestamptz(3)
+  production   ProjectProduction              @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@index([productionId, type, createdAt])
+  @@map("project_production_quality_checks")
+}
+
+model ProjectProductionApproval {
+  id           String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productionId String                            @map("production_id") @db.Uuid
+  revision     Int
+  phase        ProjectProductionApprovalPhase
+  decision     ProjectProductionApprovalDecision
+  reason       String?                           @db.VarChar(500)
+  snapshot     Json
+  actorUserId  String                            @map("actor_user_id") @db.Uuid
+  createdAt    DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
+  production   ProjectProduction                 @relation(fields: [productionId], references: [id], onDelete: Cascade)
+
+  @@index([productionId, createdAt])
+  @@map("project_production_approvals")
 }
 
 model ProjectProductionEquipment {
@@ -1433,6 +1801,9 @@ model ProjectProductionEquipment {
   initialMeterValue     Decimal?                       @map("initial_meter_value") @db.Decimal(14, 2)
   finalMeterValue       Decimal?                       @map("final_meter_value") @db.Decimal(14, 2)
   workedMinutes         Int?                           @map("worked_minutes")
+  productiveMinutes     Int?                           @map("productive_minutes")
+  waitingMinutes        Int?                           @map("waiting_minutes")
+  stoppedMinutes        Int?                           @map("stopped_minutes")
   defaultTripCapacityM3 Decimal?                       @map("default_trip_capacity_m3") @db.Decimal(10, 3)
   createdAt             DateTime                       @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt             DateTime                       @updatedAt @map("updated_at") @db.Timestamptz(3)
@@ -1495,14 +1866,15 @@ model ProjectProductionRevision {
 }
 
 model ProjectDailyReportProduction {
-  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  dailyReportId     String            @map("daily_report_id") @db.Uuid
-  productionId      String            @map("production_id") @db.Uuid
-  confirmedRevision Int               @map("confirmed_revision")
-  isStale           Boolean           @default(false) @map("is_stale")
-  confirmedByUserId String            @map("confirmed_by_user_id") @db.Uuid
-  confirmedAt       DateTime          @map("confirmed_at") @db.Timestamptz(3)
-  production        ProjectProduction @relation(fields: [productionId], references: [id], onDelete: Restrict)
+  id                           String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  dailyReportId                String            @map("daily_report_id") @db.Uuid
+  productionId                 String            @map("production_id") @db.Uuid
+  confirmedRevision            Int               @map("confirmed_revision")
+  confirmedOperationalRevision Int               @map("confirmed_operational_revision")
+  isStale                      Boolean           @default(false) @map("is_stale")
+  confirmedByUserId            String            @map("confirmed_by_user_id") @db.Uuid
+  confirmedAt                  DateTime          @map("confirmed_at") @db.Timestamptz(3)
+  production                   ProjectProduction @relation(fields: [productionId], references: [id], onDelete: Restrict)
 
   @@unique([dailyReportId, productionId], map: "project_daily_report_production_uq")
   @@index([dailyReportId, isStale])

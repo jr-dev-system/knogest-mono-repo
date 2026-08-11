@@ -1,0 +1,15 @@
+ALTER TYPE "project_production_status" ADD VALUE IF NOT EXISTS 'SUBMITTED';
+ALTER TYPE "project_production_status" ADD VALUE IF NOT EXISTS 'FIELD_CHECKED';
+ALTER TYPE "project_production_status" ADD VALUE IF NOT EXISTS 'AWAITING_TECHNICAL';
+ALTER TYPE "project_production_status" ADD VALUE IF NOT EXISTS 'REJECTED';
+ALTER TYPE "project_production_status" ADD VALUE IF NOT EXISTS 'RELEASED';
+ALTER TYPE "project_production_status" ADD VALUE IF NOT EXISTS 'MEASURED';
+ALTER TYPE "project_production_entry_mode" ADD VALUE IF NOT EXISTS 'TRUCK_SUMMARY';
+ALTER TYPE "project_production_volume_condition" ADD VALUE IF NOT EXISTS 'BANK';
+ALTER TYPE "project_production_volume_condition" ADD VALUE IF NOT EXISTS 'PLACED';
+ALTER TYPE "project_production_revision_event" ADD VALUE IF NOT EXISTS 'SUBMITTED';
+ALTER TYPE "project_production_revision_event" ADD VALUE IF NOT EXISTS 'FIELD_CHECKED';
+ALTER TYPE "project_production_revision_event" ADD VALUE IF NOT EXISTS 'AWAITING_TECHNICAL';
+ALTER TYPE "project_production_revision_event" ADD VALUE IF NOT EXISTS 'REJECTED';
+ALTER TYPE "project_production_revision_event" ADD VALUE IF NOT EXISTS 'RELEASED';
+ALTER TYPE "project_production_revision_event" ADD VALUE IF NOT EXISTS 'QUALITY_RECORDED';

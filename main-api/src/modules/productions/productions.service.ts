@@ -1,4 +1,10 @@
+import { createHash } from "node:crypto";
+
 import { AppError } from "../../lib/utils/appError";
+import {
+  findEarthworkMaterialRevisionForProductionHandler,
+  findHaulRouteRevisionForProductionHandler,
+} from "../earthwork-catalogs/handlers/earthwork-catalogs.handler";
 import {
   buildCursorPage,
   parseBoundCursor,
@@ -6,29 +12,38 @@ import {
 import type { HandlerContext } from "../../lib/utils/handler.dto";
 import type {
   ProductionCommand,
+  ProductionDecision,
+  ProductionHistoryQuery,
   ProductionListQuery,
   ProductionOptionsQuery,
+  ProductionQualityCheck,
   ProductionReopen,
   ProductionTransition,
   ProductionTripCommand,
 } from "./productions.dto";
 import {
+  addProductionQualityCheckHandler,
   addProductionTripHandler,
-  approveProductionHandler,
   confirmDailyReportProductionsHandler,
   countShiftProductionsHandler,
   createProductionHandler,
   findDailyReportForProductionHandler,
   findProductionHandler,
+  findProductionByFingerprintHandler,
   findProductionOptionsContextHandler,
   listProductionsHandler,
+  listProductionHistoryHandler,
   listShiftProductionsHandler,
   removeProductionTripHandler,
-  reopenProductionHandler,
   replaceProductionHandler,
+  transitionProductionHandler,
   type ProductionScope,
   type ProductionWriteData,
 } from "./handlers/productions.handler";
+import {
+  calculateEarthworkMovement,
+  calculateTruckSummaryVolume,
+} from "./earthwork-calculations";
 
 const BUSINESS_TIME_ZONE = "America/Sao_Paulo";
 
@@ -76,6 +91,10 @@ export class ProductionsService {
       shiftToDb(query.shift),
     );
     if (!context) throw projectUnavailable();
+    assertProductionDateAllowed(
+      query.productionDate,
+      context.project.actualStartedAt,
+    );
     if (!context.shiftEnabled) throw shiftNotEnabled();
     const assignmentByFront = new Map<string, typeof context.assignments>();
     for (const assignment of context.assignments) {
@@ -90,6 +109,7 @@ export class ProductionsService {
         productionDate: query.productionDate,
         shift: query.shift,
       },
+      dateLimits: productionDateLimits(context.project.actualStartedAt),
       capabilities: capabilities(scope),
       responsibleOptions: uniqueBy(
         context.employeeAllocations.flatMap((allocation) =>
@@ -121,7 +141,7 @@ export class ProductionsService {
             ).toLowerCase(),
             dmtPolicy: service.dmtPolicy.toLowerCase(),
           })),
-        machines: (assignmentByFront.get(front.id) ?? []).flatMap(
+        equipment: (assignmentByFront.get(front.id) ?? []).flatMap(
           (assignment) =>
             assignment.machine.isActive
               ? [
@@ -131,9 +151,17 @@ export class ProductionsService {
                     manufacturer: assignment.machine.manufacturer,
                     model: assignment.machine.model,
                     meterType: assignment.machine.meterType.toLowerCase(),
+                    machineType: assignment.machine.type.toLowerCase(),
                     loadVolumeM3:
-                      assignment.machine.loadVolumeM3?.toFixed(3) ?? null,
+                      assignment.machine.transportSpecification?.effectiveCapacity.toFixed(
+                        3,
+                      ) ??
+                      assignment.machine.loadVolumeM3?.toFixed(3) ??
+                      null,
                     maxSupportedWeightT:
+                      assignment.machine.transportSpecification?.maxSupportedWeightT?.toFixed(
+                        3,
+                      ) ??
                       assignment.machine.maxSupportedWeightT?.toFixed(3) ??
                       null,
                     identifier:
@@ -146,6 +174,36 @@ export class ProductionsService {
                 ]
               : [],
         ),
+        trucks: (assignmentByFront.get(front.id) ?? []).flatMap(
+          (assignment) => {
+            const specification = assignment.machine.transportSpecification;
+            return assignment.machine.isActive &&
+              specification &&
+              specification.effectiveCapacity.gt(0)
+              ? [
+                  {
+                    id: assignment.machine.id,
+                    name: assignment.machine.name,
+                    manufacturer: assignment.machine.manufacturer,
+                    model: assignment.machine.model,
+                    meterType: assignment.machine.meterType.toLowerCase(),
+                    identifier:
+                      assignment.machine.identifiers[0]?.value ?? null,
+                    nominalCapacity: specification.nominalCapacity.toFixed(3),
+                    effectiveCapacity:
+                      specification.effectiveCapacity.toFixed(3),
+                    capacityUnitCode: specification.capacityUnitCode,
+                    maxSupportedWeightT:
+                      specification.maxSupportedWeightT?.toFixed(3) ?? null,
+                    driver: {
+                      id: assignment.operator.id,
+                      name: assignment.operator.person.displayName,
+                    },
+                  },
+                ]
+              : [];
+          },
+        ),
       })),
     };
   }
@@ -155,10 +213,9 @@ export class ProductionsService {
     projectId: string,
     command: ProductionCommand,
   ) {
-    assertCapability(
-      scope,
-      command.approveNow ? "publishDirect" : "createDraft",
-    );
+    assertCapability(scope, "createDraft");
+    if (command.submitNow || command.approveNow)
+      assertCapability(scope, "submit");
     return this.context.transaction(async (transactionContext) => {
       const data = await this.resolveWriteData(
         transactionContext,
@@ -180,11 +237,28 @@ export class ProductionsService {
           statusCode: 409,
           data: { limit: 200 },
         });
-      if (command.approveNow)
+      if (data.batchFingerprint) {
+        const duplicate = await findProductionByFingerprintHandler(
+          transactionContext,
+          scope,
+          projectId,
+          data.batchFingerprint,
+        );
+        if (duplicate)
+          throw new AppError({
+            code: "PRODUCTION_DUPLICATE_BATCH",
+            message: "An equivalent material movement batch already exists",
+            statusCode: 409,
+            data: { existingProductionId: duplicate.id },
+          });
+      }
+      if (command.submitNow || command.approveNow)
         validateApprovalData(data, {
-          operationalQuantity:
-            data.measuredQuantity ?? data.directQuantity ?? "0.000",
-          tripCount: 0,
+          operationalQuantity: data.officialQuantity,
+          tripCount: data.truckSummaries.reduce(
+            (sum, truck) => sum + truck.acceptedTrips,
+            0,
+          ),
         });
       const record = await createProductionHandler(
         transactionContext,
@@ -192,15 +266,31 @@ export class ProductionsService {
         projectId,
         data,
         {
-          approved: command.approveNow,
-          event: command.approveNow ? "DIRECT_APPROVED" : "CREATED",
-          snapshot: snapshotOf(
-            command,
-            command.approveNow ? "direct-approved" : "created",
-          ),
+          approved: false,
+          event: "CREATED",
+          snapshot: snapshotOf(command, "created"),
         },
       );
-      return toDetailDto(record);
+      if (!(command.submitNow || command.approveNow))
+        return toDetailDto(record);
+      const submitted = await transitionProductionHandler(
+        transactionContext,
+        scope,
+        projectId,
+        record.id,
+        {
+          expectedRevision: record.revision,
+          from: ["DRAFT"],
+          to: "SUBMITTED",
+          event: "SUBMITTED",
+          phase: "SUBMISSION",
+          decision: "SUBMITTED",
+          reason: null,
+          snapshot: snapshotOf(command, "submitted"),
+        },
+      );
+      if (!submitted) throw changedConcurrently();
+      return toDetailDto(submitted);
     });
   }
 
@@ -211,7 +301,8 @@ export class ProductionsService {
     command: ProductionCommand,
   ) {
     assertCapability(scope, "createDraft");
-    if (command.approveNow) assertCapability(scope, "publishDirect");
+    if (command.submitNow || command.approveNow)
+      assertCapability(scope, "submit");
     const expectedRevision = command.expectedRevision;
     if (!expectedRevision) throw revisionRequired();
     return this.context.transaction(async (transactionContext) => {
@@ -234,6 +325,33 @@ export class ProductionsService {
             trip.adjustedVolumeM3?.toFixed(3) ?? trip.capacityM3.toFixed(3),
         ),
       );
+      if (
+        current.kind === "MATERIAL_MOVEMENT" &&
+        current.batchFingerprint !== data.batchFingerprint
+      )
+        throw new AppError({
+          code: "PRODUCTION_BATCH_IDENTITY_IMMUTABLE",
+          message:
+            "Changing material movement identity requires a new production batch",
+          statusCode: 409,
+          data: { existingProductionId: current.id },
+        });
+      if (data.batchFingerprint) {
+        const duplicate = await findProductionByFingerprintHandler(
+          transactionContext,
+          scope,
+          projectId,
+          data.batchFingerprint,
+          productionId,
+        );
+        if (duplicate)
+          throw new AppError({
+            code: "PRODUCTION_DUPLICATE_BATCH",
+            message: "An equivalent material movement batch already exists",
+            statusCode: 409,
+            data: { existingProductionId: duplicate.id },
+          });
+      }
       const record = await replaceProductionHandler(
         transactionContext,
         scope,
@@ -244,19 +362,26 @@ export class ProductionsService {
         snapshotOf(command, "updated"),
       );
       if (!record) throw changedConcurrently();
-      if (command.approveNow) {
+      if (command.submitNow || command.approveNow) {
         validateApproval(record);
-        const approved = await approveProductionHandler(
+        const submitted = await transitionProductionHandler(
           transactionContext,
           scope,
           projectId,
           productionId,
-          record.revision,
-          snapshotOf(toDetailDto(record), "direct-approved"),
-          "DIRECT_APPROVED",
+          {
+            expectedRevision: record.revision,
+            from: ["DRAFT"],
+            to: "SUBMITTED",
+            event: "SUBMITTED",
+            phase: "SUBMISSION",
+            decision: "SUBMITTED",
+            reason: null,
+            snapshot: snapshotOf(toDetailDto(record), "submitted"),
+          },
         );
-        if (!approved) throw changedConcurrently();
-        return toDetailDto(approved);
+        if (!submitted) throw changedConcurrently();
+        return toDetailDto(submitted);
       }
       return toDetailDto(record);
     });
@@ -277,6 +402,63 @@ export class ProductionsService {
     return toDetailDto(record);
   }
 
+  async history(
+    scope: ProductionScope,
+    projectId: string,
+    productionId: string,
+    query: ProductionHistoryQuery,
+  ) {
+    assertCapability(scope, "viewHistory");
+    const normalizedQuery = {
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+    };
+    const cursorScope = {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      projectId,
+      productionId,
+    };
+    const boundary = parseBoundCursor({
+      cursor: query.cursor,
+      query: normalizedQuery,
+      resource: "project-production-history",
+      scope: cursorScope,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+    });
+    const records = await listProductionHistoryHandler(
+      this.context,
+      scope,
+      projectId,
+      productionId,
+      { boundary, limit: query.limit, sortDirection: query.sortDirection },
+    );
+    if (!records) throw notFound();
+    const page = buildCursorPage({
+      items: records,
+      limit: query.limit,
+      query: normalizedQuery,
+      resource: "project-production-history",
+      scope: cursorScope,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+      getLast: (item) => ({ id: item.id, value: item.revision }),
+    });
+    return {
+      data: page.data.map((revision) => ({
+        id: revision.id,
+        revision: revision.revision,
+        event: revision.event.toLowerCase(),
+        reason: revision.reason,
+        actorUserId: revision.actorUserId,
+        snapshot: revision.snapshot,
+        createdAt: revision.createdAt.toISOString(),
+      })),
+      pageInfo: page.pageInfo,
+    };
+  }
+
   async list(
     scope: ProductionScope,
     projectId: string,
@@ -286,6 +468,7 @@ export class ProductionsService {
       productionDate: query.productionDate ?? null,
       shift: query.shift ?? null,
       status: query.status ?? null,
+      kind: query.kind ?? null,
       workFrontId: query.workFrontId ?? null,
       sortBy: query.sortBy,
       sortDirection: query.sortDirection,
@@ -314,12 +497,22 @@ export class ProductionsService {
           ? civilDateValue(query.productionDate)
           : undefined,
         shift: query.shift ? shiftToDb(query.shift) : undefined,
-        status:
-          query.status === "approved"
-            ? "APPROVED"
-            : query.status === "draft"
-              ? "DRAFT"
-              : undefined,
+        status: query.status
+          ? (query.status.toUpperCase() as
+              | "DRAFT"
+              | "SUBMITTED"
+              | "FIELD_CHECKED"
+              | "AWAITING_TECHNICAL"
+              | "APPROVED"
+              | "REJECTED"
+              | "RELEASED"
+              | "MEASURED")
+          : undefined,
+        kind: query.kind
+          ? (query.kind.toUpperCase() as
+              | "INDIVIDUAL_ACTIVITY"
+              | "MATERIAL_MOVEMENT")
+          : undefined,
         workFrontId: query.workFrontId,
         sortDirection: query.sortDirection,
       },
@@ -357,22 +550,25 @@ export class ProductionsService {
       productionId,
     );
     if (!current) throw notFound();
-    assertCapability(
-      scope,
-      current.createdByUserId === scope.actorUserId
-        ? "publishDirect"
-        : "approveOthers",
-    );
-    if (current.status !== "DRAFT") throw immutable();
-    validateApproval(current);
+    assertCapability(scope, "approve");
+    if (current.status !== "AWAITING_TECHNICAL") throw immutable();
+    validateTechnicalApproval(current);
     const record = await this.context.transaction((transactionContext) =>
-      approveProductionHandler(
+      transitionProductionHandler(
         transactionContext,
         scope,
         projectId,
         productionId,
-        command.expectedRevision,
-        snapshotOf(toDetailDto(current), "approved"),
+        {
+          expectedRevision: command.expectedRevision,
+          from: ["AWAITING_TECHNICAL"],
+          to: "APPROVED",
+          event: "APPROVED",
+          phase: "TECHNICAL_CHECK",
+          decision: "ACCEPTED",
+          reason: null,
+          snapshot: snapshotOf(toDetailDto(current), "approved"),
+        },
       ),
     );
     if (!record) throw changedConcurrently();
@@ -393,16 +589,212 @@ export class ProductionsService {
       productionId,
     );
     if (!current) throw notFound();
-    if (current.status !== "APPROVED") throw immutable();
+    if (!["REJECTED", "APPROVED", "RELEASED"].includes(current.status))
+      throw immutable();
     const record = await this.context.transaction((transactionContext) =>
-      reopenProductionHandler(
+      transitionProductionHandler(
         transactionContext,
         scope,
         projectId,
         productionId,
-        command.expectedRevision,
-        command.reason,
-        snapshotOf(toDetailDto(current), "reopened"),
+        {
+          expectedRevision: command.expectedRevision,
+          from: ["REJECTED", "APPROVED", "RELEASED"],
+          to: "DRAFT",
+          event: "REOPENED",
+          phase: "REOPEN",
+          decision: "REOPENED",
+          reason: command.reason,
+          snapshot: snapshotOf(toDetailDto(current), "reopened"),
+          invalidateRdo: true,
+        },
+      ),
+    );
+    if (!record) throw changedConcurrently();
+    return toDetailDto(record);
+  }
+
+  async submit(
+    scope: ProductionScope,
+    projectId: string,
+    productionId: string,
+    command: ProductionTransition,
+  ) {
+    assertCapability(scope, "submit");
+    const current = await this.detailRecord(scope, projectId, productionId);
+    if (current.status !== "DRAFT") throw immutable();
+    validateApproval(current);
+    return this.transition(scope, projectId, current, {
+      ...command,
+      from: ["DRAFT"],
+      to: "SUBMITTED",
+      event: "SUBMITTED",
+      phase: "SUBMISSION",
+      decision: "SUBMITTED",
+      reason: null,
+    });
+  }
+
+  async check(
+    scope: ProductionScope,
+    projectId: string,
+    productionId: string,
+    command: ProductionTransition,
+  ) {
+    assertCapability(scope, "check");
+    const current = await this.detailRecord(scope, projectId, productionId);
+    if (current.status !== "SUBMITTED") throw immutable();
+    return this.transition(scope, projectId, current, {
+      ...command,
+      from: ["SUBMITTED"],
+      to: "FIELD_CHECKED",
+      event: "FIELD_CHECKED",
+      phase: "FIELD_CHECK",
+      decision: "ACCEPTED",
+      reason: null,
+    });
+  }
+
+  async reject(
+    scope: ProductionScope,
+    projectId: string,
+    productionId: string,
+    command: ProductionDecision,
+  ) {
+    assertCapability(scope, "reject");
+    if (!command.reason) throw transitionReasonRequired();
+    const current = await this.detailRecord(scope, projectId, productionId);
+    if (
+      !["SUBMITTED", "FIELD_CHECKED", "AWAITING_TECHNICAL"].includes(
+        current.status,
+      )
+    )
+      throw immutable();
+    return this.transition(scope, projectId, current, {
+      expectedRevision: command.expectedRevision,
+      from: ["SUBMITTED", "FIELD_CHECKED", "AWAITING_TECHNICAL"],
+      to: "REJECTED",
+      event: "REJECTED",
+      phase: current.status === "SUBMITTED" ? "FIELD_CHECK" : "TECHNICAL_CHECK",
+      decision: "REJECTED",
+      reason: command.reason,
+    });
+  }
+
+  async release(
+    scope: ProductionScope,
+    projectId: string,
+    productionId: string,
+    command: ProductionDecision,
+  ) {
+    assertCapability(scope, "release");
+    const current = await this.detailRecord(scope, projectId, productionId);
+    if (current.status !== "APPROVED") throw immutable();
+    return this.transition(scope, projectId, current, {
+      expectedRevision: command.expectedRevision,
+      from: ["APPROVED"],
+      to: "RELEASED",
+      event: "RELEASED",
+      phase: "RELEASE",
+      decision: "RELEASED",
+      reason: command.reason,
+    });
+  }
+
+  async qualityCheck(
+    scope: ProductionScope,
+    projectId: string,
+    productionId: string,
+    command: ProductionQualityCheck,
+  ) {
+    assertCapability(
+      scope,
+      command.type === "topography"
+        ? "recordTopography"
+        : command.type === "field_inspection"
+          ? "check"
+          : "recordLaboratory",
+    );
+    const record = await this.context.transaction((transactionContext) =>
+      addProductionQualityCheckHandler(
+        transactionContext,
+        scope,
+        projectId,
+        productionId,
+        {
+          expectedRevision: command.expectedRevision,
+          type: command.type.toUpperCase() as
+            | "FIELD_INSPECTION"
+            | "TOPOGRAPHY"
+            | "DENSITY"
+            | "PROCTOR"
+            | "COMPACTION"
+            | "MOISTURE"
+            | "FINISHING",
+          status: command.status.toUpperCase() as
+            | "PENDING"
+            | "ACCEPTED"
+            | "REJECTED",
+          value: command.value ? normalizeDecimal(command.value, 3) : null,
+          unitCode: command.unitCode,
+          notes: command.notes,
+          evidence: command.evidence,
+          acceptedQuantity: command.acceptedQuantity
+            ? {
+                componentId: command.acceptedQuantity.componentId,
+                method:
+                  command.type === "topography" ? "TOPOGRAPHY" : "LABORATORY",
+                value: normalizeDecimal(command.acceptedQuantity.value, 3),
+                unitCode: command.acceptedQuantity.unitCode,
+                volumeCondition: command.acceptedQuantity.volumeCondition
+                  ? (command.acceptedQuantity.volumeCondition.toUpperCase() as
+                      | "BANK"
+                      | "LOOSE"
+                      | "COMPACTED"
+                      | "PLACED")
+                  : null,
+                sourceSnapshot: snapshotOf(command, "technically-accepted"),
+              }
+            : null,
+          snapshot: snapshotOf(command, "quality-recorded"),
+        },
+      ),
+    );
+    if (!record) throw changedConcurrently();
+    return toDetailDto(record);
+  }
+
+  private async detailRecord(
+    scope: ProductionScope,
+    projectId: string,
+    productionId: string,
+  ) {
+    const record = await findProductionHandler(
+      this.context,
+      scope,
+      projectId,
+      productionId,
+    );
+    if (!record) throw notFound();
+    return record;
+  }
+
+  private async transition(
+    scope: ProductionScope,
+    projectId: string,
+    current: ProductionRecord,
+    input: Omit<Parameters<typeof transitionProductionHandler>[4], "snapshot">,
+  ) {
+    const record = await this.context.transaction((transactionContext) =>
+      transitionProductionHandler(
+        transactionContext,
+        scope,
+        projectId,
+        current.id,
+        {
+          ...input,
+          snapshot: snapshotOf(toDetailDto(current), input.event.toLowerCase()),
+        },
       ),
     );
     if (!record) throw changedConcurrently();
@@ -583,12 +975,12 @@ export class ProductionsService {
     );
     if (
       selected.length !== new Set(productionIds).size ||
-      selected.some((record) => record.status !== "APPROVED")
+      selected.length !== records.length ||
+      selected.some((record) => record.status === "DRAFT")
     )
       throw new AppError({
         code: "PRODUCTION_RDO_CONFIRMATION_REQUIRED",
-        message:
-          "Only approved productions from the report shift can be confirmed",
+        message: "Draft productions from the report shift cannot be confirmed",
         statusCode: 409,
       });
     await this.context.transaction((transactionContext) =>
@@ -599,6 +991,7 @@ export class ProductionsService {
         selected.map((record) => ({
           id: record.id,
           revision: record.revision,
+          operationalRevision: record.operationalRevision,
         })),
       ),
     );
@@ -620,42 +1013,47 @@ export class ProductionsService {
     command: ProductionCommand,
     tripVolumesM3: string[] = [],
   ): Promise<ProductionWriteData> {
+    const normalized = normalizeProductionCommand(command);
     const options = await findProductionOptionsContextHandler(
       context,
       scope,
       projectId,
-      shiftInterval(command.productionDate, command.shift),
-      shiftToDb(command.shift),
+      shiftInterval(normalized.productionDate, normalized.shift),
+      shiftToDb(normalized.shift),
     );
     if (!options) throw projectUnavailable();
     if (!options.shiftEnabled) throw shiftNotEnabled();
+    assertProductionDateAllowed(
+      normalized.productionDate,
+      options.project.actualStartedAt,
+    );
     const front = options.fronts.find(
-      (item) => item.id === command.workFrontId,
+      (item) => item.id === normalized.workFrontId,
     );
     const service = options.services.find(
       (item) =>
-        item.id === command.workFrontServiceId &&
-        item.workFrontId === command.workFrontId,
+        item.id === normalized.workFrontServiceId &&
+        item.workFrontId === normalized.workFrontId,
     );
     if (!front || !service) throw resourceUnavailable("work-front-service");
     const assignments = options.assignments.filter(
-      (item) => item.workFrontId === command.workFrontId,
+      (item) => item.workFrontId === normalized.workFrontId,
     );
     const assignmentByMachine = new Map(
       assignments.map((item) => [item.machineId, item]),
     );
-    const responsible = command.responsibleEmploymentId
+    const responsible = normalized.responsibleEmploymentId
       ? options.employeeAllocations.find(
-          (item) => item.employmentId === command.responsibleEmploymentId,
+          (item) => item.employmentId === normalized.responsibleEmploymentId,
         )?.employment
       : null;
     if (
-      command.responsibleEmploymentId &&
+      normalized.responsibleEmploymentId &&
       (!responsible || !responsible.isActive || responsible.state !== "ACTIVE")
     )
       throw resourceUnavailable("responsible");
 
-    const equipment = command.equipment.map((entry) => {
+    const equipment = normalized.equipment.map((entry) => {
       const assignment = assignmentByMachine.get(entry.machineId);
       if (!assignment || !assignment.machine.isActive)
         throw resourceUnavailable("machine");
@@ -683,84 +1081,331 @@ export class ProductionsService {
           ? normalizeDecimal(entry.finalMeterValue, 2)
           : null,
         workedMinutes: entry.workedMinutes,
+        productiveMinutes: entry.productiveMinutes,
+        waitingMinutes: entry.waitingMinutes,
+        stoppedMinutes: entry.stoppedMinutes,
         defaultTripCapacityM3:
           assignment.machine.loadVolumeM3?.toFixed(3) ?? null,
         stops: entry.stops,
       };
     });
+    const materialRevision =
+      command.kind === "material_movement" &&
+      command.materialMovement.materialRevisionId
+        ? await findEarthworkMaterialRevisionForProductionHandler(
+            context,
+            scope,
+            projectId,
+            command.materialMovement.materialRevisionId,
+            shiftInterval(normalized.productionDate, normalized.shift).startAt,
+          )
+        : null;
+    if (
+      command.kind === "material_movement" &&
+      command.materialMovement.materialRevisionId &&
+      !materialRevision
+    )
+      throw resourceUnavailable("earthwork-material-revision");
+    const routeRevision =
+      command.kind === "material_movement" &&
+      command.materialMovement.routeRevisionId
+        ? await findHaulRouteRevisionForProductionHandler(
+            context,
+            scope,
+            projectId,
+            command.materialMovement.routeRevisionId,
+            shiftInterval(normalized.productionDate, normalized.shift).startAt,
+          )
+        : null;
+    if (
+      command.kind === "material_movement" &&
+      command.materialMovement.routeRevisionId &&
+      !routeRevision
+    )
+      throw resourceUnavailable("haul-route-revision");
+    const effectiveMaterial =
+      command.kind === "material_movement"
+        ? {
+            name:
+              materialRevision?.material.name ??
+              command.materialMovement.materialName,
+            category:
+              materialRevision?.material.category ??
+              command.materialMovement.materialCategory,
+            densityTPerM3:
+              materialRevision?.densityTPerM3?.toFixed(6) ??
+              command.materialMovement.densityTPerM3,
+            swellFactor:
+              materialRevision?.swellFactor?.toFixed(6) ??
+              command.materialMovement.swellFactor,
+            looseToCompactedFactor:
+              materialRevision?.looseToCompactedFactor?.toFixed(6) ??
+              command.materialMovement.looseToCompactedFactor,
+          }
+        : null;
+    const effectiveRoute =
+      command.kind === "material_movement"
+        ? {
+            origin:
+              routeRevision?.route.origin ?? command.materialMovement.origin,
+            destination:
+              routeRevision?.route.destination ??
+              command.materialMovement.destination,
+            loadedDistanceKm:
+              routeRevision?.loadedDistanceKm.toFixed(3) ??
+              command.materialMovement.dmtKm,
+            contractualDmtKm:
+              routeRevision?.contractualDmtKm?.toFixed(3) ??
+              command.materialMovement.contractualDmtKm,
+            contractualBand:
+              routeRevision?.contractualBand ??
+              command.materialMovement.contractualBand,
+          }
+        : null;
     const profile = resolvedProfile(
       service.productionProfile,
       service.serviceCode,
     );
-    validateDmt(service.dmtPolicy, command);
-    const directQuantity = command.directQuantity
-      ? normalizeDecimal(command.directQuantity, 3)
+    validateDmt(service.dmtPolicy, {
+      ...normalized,
+      origin: effectiveRoute?.origin ?? normalized.origin,
+      destination: effectiveRoute?.destination ?? normalized.destination,
+      dmtKm: effectiveRoute?.loadedDistanceKm ?? normalized.dmtKm,
+    });
+    const directQuantity = normalized.directQuantity
+      ? normalizeDecimal(normalized.directQuantity, 3)
       : null;
-    const measuredQuantity = command.measuredQuantity
-      ? normalizeDecimal(command.measuredQuantity, 3)
+    const measuredQuantity = null;
+    const conversionFactor = normalized.conversionFactor
+      ? normalizeDecimal(normalized.conversionFactor, 6)
       : null;
-    const conversionFactor = command.conversionFactor
-      ? normalizeDecimal(command.conversionFactor, 6)
-      : null;
-    const entryMode = command.entryMode === "trips" ? "TRIPS" : "DIRECT_TOTAL";
+    const entryMode =
+      normalized.entryMode === "trips"
+        ? "TRIPS"
+        : normalized.entryMode === "truck_summary"
+          ? "TRUCK_SUMMARY"
+          : "DIRECT_TOTAL";
+    if (command.kind === "material_movement") {
+      const summariesWithWeight = command.truckSummaries.filter(
+        (truck) => truck.actualWeightT !== null,
+      ).length;
+      if (
+        summariesWithWeight > 0 &&
+        summariesWithWeight !== command.truckSummaries.length
+      )
+        throw new AppError({
+          code: "PRODUCTION_MIXED_TRANSPORT_BASIS",
+          message:
+            "All truck summaries must use the same operational basis when weighbridge values are informed",
+          statusCode: 422,
+        });
+    }
+    const movementCalculation =
+      command.kind === "material_movement"
+        ? calculateEarthworkMovement({
+            trucks: command.truckSummaries.map((truck) => {
+              const assignment = assignmentByMachine.get(truck.machineId);
+              const specification = assignment?.machine.transportSpecification;
+              if (!assignment || !specification)
+                throw resourceUnavailable("truck");
+              return {
+                capacity: specification.effectiveCapacity.toFixed(3),
+                acceptedTrips: truck.acceptedTrips,
+                partialTripCount: truck.partialTripCount,
+                partialVolume: normalizeDecimal(truck.partialVolume, 3),
+                loadFactor: normalizeDecimal(truck.loadFactor, 6),
+                actualWeightT: truck.actualWeightT
+                  ? normalizeDecimal(truck.actualWeightT, 3)
+                  : null,
+              };
+            }),
+            densityTPerM3: effectiveMaterial?.densityTPerM3 ?? null,
+            swellFactor: effectiveMaterial?.swellFactor ?? null,
+            looseToCompactedFactor:
+              effectiveMaterial?.looseToCompactedFactor ?? null,
+            contractualDmtKm:
+              effectiveRoute?.contractualDmtKm ??
+              effectiveRoute?.loadedDistanceKm ??
+              null,
+          })
+        : null;
+    const effectiveDirectQuantity =
+      movementCalculation?.actualWeightT ??
+      movementCalculation?.looseVolumeM3 ??
+      directQuantity;
     const officialQuantity = calculateProductionMetrics({
       tripVolumesM3,
       measuredQuantity,
-      directQuantity,
+      directQuantity: effectiveDirectQuantity,
       conversionFactor,
       entryMode,
-      dmtKm: command.dmtKm,
+      dmtKm: normalized.dmtKm,
       unitCode: service.unitCode,
-      startTime: command.startTime,
-      endTime: command.endTime,
-      endDayOffset: command.endDayOffset,
+      startTime: normalized.startTime,
+      endTime: normalized.endTime,
+      endDayOffset: normalized.endDayOffset,
       workedMinutes: 0,
       stoppedMinutes: 0,
     }).officialQuantity;
 
     return {
-      workFrontId: command.workFrontId,
-      workFrontServiceId: command.workFrontServiceId,
+      kind:
+        command.kind === "material_movement"
+          ? "MATERIAL_MOVEMENT"
+          : "INDIVIDUAL_ACTIVITY",
+      workFrontId: normalized.workFrontId,
+      workFrontServiceId: normalized.workFrontServiceId,
       serviceCodeSnapshot: service.serviceCode,
-      unitCodeSnapshot: service.unitCode,
+      unitCodeSnapshot:
+        command.kind === "material_movement"
+          ? movementCalculation?.actualWeightT
+            ? "T"
+            : "M3_LOOSE"
+          : explicitUnitCode(
+              service.unitCode,
+              command.individualActivity.volumeCondition,
+            ),
       productionProfileSnapshot: profile,
       dmtPolicySnapshot: service.dmtPolicy,
-      productionDate: civilDateValue(command.productionDate),
-      shift: shiftToDb(command.shift),
-      shiftOrder: command.shift === "day" ? 0 : 1,
+      productionDate: civilDateValue(normalized.productionDate),
+      shift: shiftToDb(normalized.shift),
+      shiftOrder: normalized.shift === "day" ? 0 : 1,
       entryMode,
-      startTime: command.startTime,
-      endTime: command.endTime,
-      endDayOffset: command.endDayOffset,
-      responsibleEmploymentId: command.responsibleEmploymentId,
+      startTime: normalized.startTime,
+      endTime: normalized.endTime,
+      endDayOffset: normalized.endDayOffset,
+      responsibleEmploymentId: normalized.responsibleEmploymentId,
       responsibleNameSnapshot: responsible?.person.displayName ?? null,
-      location: command.location || front.location,
-      startStation: command.startStation,
-      endStation: command.endStation,
-      layer: command.layer,
-      elevation: command.elevation,
-      materialName: command.materialName,
-      materialCategory: command.materialCategory,
-      volumeCondition: command.volumeCondition
-        ? (command.volumeCondition.toUpperCase() as
-            | "CUT"
-            | "LOOSE"
-            | "COMPACTED")
-        : null,
-      directQuantity,
+      location: normalized.location || front.location,
+      startStation: normalized.startStation,
+      endStation: normalized.endStation,
+      layer: normalized.layer,
+      elevation: normalized.elevation,
+      materialName: effectiveMaterial?.name ?? normalized.materialName,
+      materialCategory:
+        effectiveMaterial?.category ?? normalized.materialCategory,
+      volumeCondition:
+        movementCalculation?.actualWeightT !== null &&
+        movementCalculation?.actualWeightT !== undefined
+          ? null
+          : normalized.volumeCondition
+            ? (normalized.volumeCondition.toUpperCase() as
+                | "BANK"
+                | "LOOSE"
+                | "COMPACTED"
+                | "PLACED")
+            : null,
+      directQuantity: effectiveDirectQuantity,
       measuredQuantity,
       officialQuantity,
       conversionFactor,
-      origin: command.origin,
-      destination: command.destination,
-      dmtKm: command.dmtKm ? normalizeDecimal(command.dmtKm, 3) : null,
-      layerThicknessCm: command.layerThicknessCm
-        ? normalizeDecimal(command.layerThicknessCm, 2)
+      origin: effectiveRoute?.origin ?? normalized.origin,
+      destination: effectiveRoute?.destination ?? normalized.destination,
+      dmtKm: effectiveRoute?.loadedDistanceKm
+        ? normalizeDecimal(effectiveRoute.loadedDistanceKm, 3)
         : null,
-      compactionPasses: command.compactionPasses,
-      moistureCondition: command.moistureCondition,
-      evidence: command.evidence,
-      notes: command.notes,
+      layerThicknessCm: normalized.layerThicknessCm
+        ? normalizeDecimal(normalized.layerThicknessCm, 2)
+        : null,
+      compactionPasses: normalized.compactionPasses,
+      moistureCondition: normalized.moistureCondition,
+      evidence: normalized.evidence,
+      notes: normalized.notes,
+      batchFingerprint:
+        command.kind === "material_movement"
+          ? movementFingerprint(projectId, command, {
+              materialName: effectiveMaterial?.name ?? normalized.materialName,
+              origin: effectiveRoute?.origin ?? normalized.origin,
+              destination:
+                effectiveRoute?.destination ?? normalized.destination,
+            })
+          : null,
+      individualActivity:
+        command.kind === "individual_activity"
+          ? {
+              quantityMethod:
+                command.individualActivity.quantityMethod.toUpperCase() as
+                  | "MANUAL"
+                  | "TOPOGRAPHY"
+                  | "LABORATORY",
+              location: normalized.location || front.location,
+              startStation: normalized.startStation,
+              endStation: normalized.endStation,
+              layer: normalized.layer,
+              elevation: normalized.elevation,
+              exceptionalFromMovement:
+                command.individualActivity.exceptionalFromMovement,
+              exceptionReason: command.individualActivity.exceptionReason,
+            }
+          : null,
+      materialMovement:
+        command.kind === "material_movement"
+          ? {
+              materialRevisionId: command.materialMovement.materialRevisionId,
+              routeRevisionId: command.materialMovement.routeRevisionId,
+              origin: command.materialMovement.origin,
+              destination: command.materialMovement.destination,
+              layer: command.materialMovement.layer,
+              materialSnapshot: {
+                revisionId: command.materialMovement.materialRevisionId,
+                name: effectiveMaterial?.name,
+                category: effectiveMaterial?.category,
+                densityTPerM3: effectiveMaterial?.densityTPerM3,
+                swellFactor: effectiveMaterial?.swellFactor,
+                looseToCompactedFactor:
+                  effectiveMaterial?.looseToCompactedFactor,
+              },
+              routeSnapshot: {
+                revisionId: command.materialMovement.routeRevisionId,
+                origin: effectiveRoute?.origin,
+                destination: effectiveRoute?.destination,
+                loadedDistanceKm: effectiveRoute?.loadedDistanceKm,
+                contractualDmtKm: effectiveRoute?.contractualDmtKm,
+                contractualBand: effectiveRoute?.contractualBand,
+              },
+            }
+          : null,
+      components: resolveComponents(
+        command,
+        options.services,
+        movementCalculation,
+      ),
+      truckSummaries:
+        command.kind === "material_movement"
+          ? command.truckSummaries.map((truck) => {
+              const assignment = assignmentByMachine.get(truck.machineId);
+              const specification = assignment?.machine.transportSpecification;
+              if (!assignment || !specification)
+                throw resourceUnavailable("truck");
+              if (
+                truck.driverEmploymentId &&
+                truck.driverEmploymentId !== assignment.operatorEmploymentId
+              )
+                throw resourceUnavailable("driver");
+              return {
+                machineId: truck.machineId,
+                driverEmploymentId: truck.driverEmploymentId,
+                driverNameSnapshot: truck.driverEmploymentId
+                  ? assignment.operator.person.displayName
+                  : null,
+                machineNameSnapshot: assignment.machine.name,
+                identifierSnapshot:
+                  assignment.machine.identifiers[0]?.value ?? null,
+                capacitySnapshot: specification.effectiveCapacity.toFixed(3),
+                capacityUnitCodeSnapshot: specification.capacityUnitCode,
+                acceptedTrips: truck.acceptedTrips,
+                rejectedTrips: truck.rejectedTrips,
+                partialTripCount: truck.partialTripCount,
+                partialVolume: normalizeDecimal(truck.partialVolume, 3),
+                actualWeightT: truck.actualWeightT
+                  ? normalizeDecimal(truck.actualWeightT, 3)
+                  : null,
+                loadFactor: normalizeDecimal(truck.loadFactor, 6),
+                averageCycleMinutes: truck.averageCycleMinutes,
+                occurrenceNotes: truck.occurrenceNotes,
+              };
+            })
+          : [],
       equipment,
     };
   }
@@ -771,6 +1416,7 @@ export function toDetailDto(record: ProductionRecord) {
   return {
     id: record.id,
     projectId: record.projectId,
+    kind: record.kind.toLowerCase(),
     workFrontId: record.workFrontId,
     workFrontServiceId: record.workFrontServiceId,
     serviceCode: record.serviceCodeSnapshot,
@@ -782,6 +1428,7 @@ export function toDetailDto(record: ProductionRecord) {
     status: record.status.toLowerCase(),
     entryMode: record.entryMode.toLowerCase(),
     revision: record.revision,
+    operationalRevision: record.operationalRevision,
     startTime: record.startTime,
     endTime: record.endTime,
     endDayOffset: record.endDayOffset,
@@ -798,7 +1445,10 @@ export function toDetailDto(record: ProductionRecord) {
     elevation: record.elevation,
     materialName: record.materialName,
     materialCategory: record.materialCategory,
-    volumeCondition: record.volumeCondition?.toLowerCase() ?? null,
+    volumeCondition:
+      record.volumeCondition === "CUT"
+        ? "bank"
+        : (record.volumeCondition?.toLowerCase() ?? null),
     directQuantity: record.directQuantity?.toFixed(3) ?? null,
     measuredQuantity: record.measuredQuantity?.toFixed(3) ?? null,
     conversionFactor: record.conversionFactor?.toFixed(6) ?? null,
@@ -810,6 +1460,100 @@ export function toDetailDto(record: ProductionRecord) {
     moistureCondition: record.moistureCondition,
     evidence: productionEvidence(record.evidence),
     notes: record.notes,
+    individualActivity: record.individualActivity
+      ? {
+          quantityMethod:
+            record.individualActivity.quantityMethod.toLowerCase(),
+          exceptionalFromMovement:
+            record.individualActivity.exceptionalFromMovement,
+          exceptionReason: record.individualActivity.exceptionReason,
+        }
+      : null,
+    materialMovement: record.materialMovement
+      ? {
+          materialRevisionId: record.materialMovement.materialRevisionId,
+          routeRevisionId: record.materialMovement.routeRevisionId,
+          origin: record.materialMovement.origin,
+          destination: record.materialMovement.destination,
+          layer: record.materialMovement.layer,
+          materialSnapshot: record.materialMovement.materialSnapshot,
+          routeSnapshot: record.materialMovement.routeSnapshot,
+        }
+      : null,
+    components: record.components.map((component) => ({
+      id: component.id,
+      workFrontId: component.workFrontId,
+      workFrontServiceId: component.workFrontServiceId,
+      type: component.componentType.toLowerCase(),
+      serviceCode: component.serviceCodeSnapshot,
+      unitCode: component.unitCodeSnapshot,
+      volumeCondition:
+        component.volumeCondition === "CUT"
+          ? "bank"
+          : (component.volumeCondition?.toLowerCase() ?? null),
+      quantities: component.quantities.map((quantity) => ({
+        id: quantity.id,
+        kind: quantity.kind.toLowerCase(),
+        method: quantity.method.toLowerCase(),
+        value: quantity.value.toFixed(3),
+        unitCode: quantity.unitCode,
+        volumeCondition:
+          quantity.volumeCondition === "CUT"
+            ? "bank"
+            : (quantity.volumeCondition?.toLowerCase() ?? null),
+        sourceSnapshot: quantity.sourceSnapshot,
+      })),
+    })),
+    truckSummaries: record.truckSummaries.map((truck) => ({
+      id: truck.id,
+      machineId: truck.machineId,
+      machineName: truck.machineNameSnapshot,
+      identifier: truck.identifierSnapshot,
+      driver: truck.driverEmploymentId
+        ? {
+            employmentId: truck.driverEmploymentId,
+            name: truck.driverNameSnapshot,
+          }
+        : null,
+      effectiveCapacity: truck.capacitySnapshot.toFixed(3),
+      capacityUnitCode: truck.capacityUnitCodeSnapshot,
+      acceptedTrips: truck.acceptedTrips,
+      rejectedTrips: truck.rejectedTrips,
+      partialTripCount: truck.partialTripCount,
+      partialVolume: truck.partialVolume.toFixed(3),
+      actualWeightT: truck.actualWeightT?.toFixed(3) ?? null,
+      loadFactor: truck.loadFactor.toFixed(6),
+      averageCycleMinutes: truck.averageCycleMinutes,
+      occurrenceNotes: truck.occurrenceNotes,
+      calculatedVolume: calculateTruckSummaryVolume({
+        capacity: truck.capacitySnapshot.toFixed(3),
+        acceptedTrips: truck.acceptedTrips,
+        partialTripCount: truck.partialTripCount,
+        partialVolume: truck.partialVolume.toFixed(3),
+        loadFactor: truck.loadFactor.toFixed(6),
+        actualWeightT: truck.actualWeightT?.toFixed(3) ?? null,
+      }),
+    })),
+    qualityChecks: record.qualityChecks.map((check) => ({
+      id: check.id,
+      type: check.type.toLowerCase(),
+      status: check.status.toLowerCase(),
+      value: check.value?.toFixed(3) ?? null,
+      unitCode: check.unitCode,
+      notes: check.notes,
+      evidence: productionEvidence(check.evidence),
+      actorUserId: check.actorUserId,
+      createdAt: check.createdAt.toISOString(),
+    })),
+    approvalHistory: record.approvals.map((approval) => ({
+      id: approval.id,
+      revision: approval.revision,
+      phase: approval.phase.toLowerCase(),
+      decision: approval.decision.toLowerCase(),
+      reason: approval.reason,
+      actorUserId: approval.actorUserId,
+      createdAt: approval.createdAt.toISOString(),
+    })),
     metrics,
     equipment: record.equipment.map((item) => ({
       id: item.id,
@@ -860,7 +1604,11 @@ export function toDetailDto(record: ProductionRecord) {
     },
     rdo: {
       linked: record.dailyReportLinks.length > 0,
-      stale: record.dailyReportLinks.some((item) => item.isStale),
+      stale: record.dailyReportLinks.some(
+        (item) =>
+          item.isStale ||
+          item.confirmedOperationalRevision !== record.operationalRevision,
+      ),
     },
     lastReopenReason: record.lastReopenReason,
     createdByUserId: record.createdByUserId,
@@ -873,12 +1621,14 @@ function toSummaryDto(record: ProductionRecord) {
   const detail = toDetailDto(record);
   return {
     id: detail.id,
+    kind: detail.kind,
     serviceCode: detail.serviceCode,
     unitCode: detail.unitCode,
     productionDate: detail.productionDate,
     shift: detail.shift,
     status: detail.status,
     revision: detail.revision,
+    operationalRevision: detail.operationalRevision,
     location: detail.location,
     route:
       detail.origin || detail.destination
@@ -890,7 +1640,9 @@ function toSummaryDto(record: ProductionRecord) {
     operationalVolumeM3: detail.metrics.operationalVolumeM3,
     tripCount: detail.metrics.tripCount,
     equipmentCount: detail.equipment.length,
-    needsApproval: detail.status === "draft",
+    needsApproval: !["approved", "released", "measured"].includes(
+      detail.status,
+    ),
     rdo: detail.rdo,
     updatedAt: detail.updatedAt,
   };
@@ -928,10 +1680,31 @@ function calculateOfficialQuantity(
 }
 
 function calculateMetrics(record: ProductionRecord) {
+  const truckSummaryVolumes = record.truckSummaries.map((truck) =>
+    calculateTruckSummaryVolume({
+      capacity: truck.capacitySnapshot.toFixed(3),
+      acceptedTrips: truck.acceptedTrips,
+      partialTripCount: truck.partialTripCount,
+      partialVolume: truck.partialVolume.toFixed(3),
+      loadFactor: truck.loadFactor.toFixed(6),
+      actualWeightT: truck.actualWeightT?.toFixed(3) ?? null,
+    }),
+  );
   const calculated = calculateProductionMetrics({
-    tripVolumesM3: record.trips.map(
-      (trip) => trip.adjustedVolumeM3?.toFixed(3) ?? trip.capacityM3.toFixed(3),
-    ),
+    tripVolumesM3:
+      record.entryMode === "TRUCK_SUMMARY"
+        ? truckSummaryVolumes
+        : record.trips.map(
+            (trip) =>
+              trip.adjustedVolumeM3?.toFixed(3) ?? trip.capacityM3.toFixed(3),
+          ),
+    summaryTripCount:
+      record.entryMode === "TRUCK_SUMMARY"
+        ? record.truckSummaries.reduce(
+            (sum, truck) => sum + truck.acceptedTrips,
+            0,
+          )
+        : undefined,
     measuredQuantity: record.measuredQuantity?.toFixed(3) ?? null,
     directQuantity: record.directQuantity?.toFixed(3) ?? null,
     conversionFactor: record.conversionFactor?.toFixed(6) ?? null,
@@ -966,7 +1739,8 @@ export function calculateProductionMetrics(input: {
   measuredQuantity: string | null;
   directQuantity: string | null;
   conversionFactor: string | null;
-  entryMode: "DIRECT_TOTAL" | "TRIPS";
+  entryMode: "DIRECT_TOTAL" | "TRUCK_SUMMARY" | "TRIPS";
+  summaryTripCount?: number;
   dmtKm: string | null;
   unitCode: string;
   startTime: string | null;
@@ -1018,10 +1792,12 @@ export function calculateProductionMetrics(input: {
     officialQuantity,
     difference,
     differencePercent,
-    tripCount: input.tripVolumesM3.length,
+    tripCount: input.summaryTripCount ?? input.tripVolumesM3.length,
     tripsPerHour:
       hours && hours > 0
-        ? (input.tripVolumesM3.length / hours).toFixed(2)
+        ? (
+            (input.summaryTripCount ?? input.tripVolumesM3.length) / hours
+          ).toFixed(2)
         : null,
     quantityPerHour:
       hours && hours > 0 ? (Number(officialQuantity) / hours).toFixed(3) : null,
@@ -1046,7 +1822,8 @@ function validateApproval(record: ProductionRecord) {
     {
       unitCodeSnapshot: record.unitCodeSnapshot,
       entryMode: record.entryMode,
-      volumeCondition: record.volumeCondition,
+      volumeCondition:
+        record.volumeCondition === "CUT" ? "BANK" : record.volumeCondition,
       responsibleEmploymentId: record.responsibleEmploymentId,
       startTime: record.startTime,
       endTime: record.endTime,
@@ -1062,12 +1839,51 @@ function validateApproval(record: ProductionRecord) {
         role: item.role,
         defaultTripCapacityM3: item.defaultTripCapacityM3?.toFixed(3) ?? null,
       })),
+      truckSummaries: record.truckSummaries.map((truck) => ({
+        capacitySnapshot: truck.capacitySnapshot.toFixed(3),
+      })),
     },
     {
       operationalQuantity: metrics.officialQuantity,
       tripCount: metrics.tripCount,
     },
   );
+}
+
+function validateTechnicalApproval(record: ProductionRecord) {
+  const latestByType = new Map<
+    ProductionRecord["qualityChecks"][number]["type"],
+    ProductionRecord["qualityChecks"][number]
+  >();
+  for (const check of record.qualityChecks) latestByType.set(check.type, check);
+  const rejected = [...latestByType.values()].filter(
+    (check) => check.status === "REJECTED",
+  );
+  if (rejected.length)
+    throw new AppError({
+      code: "PRODUCTION_QUALITY_REJECTED",
+      message: "Rejected quality checks prevent technical approval",
+      statusCode: 422,
+      data: { types: rejected.map((check) => check.type.toLowerCase()) },
+    });
+  const requiredTypes =
+    record.productionProfileSnapshot === "COMPACTION"
+      ? ["COMPACTION"]
+      : record.productionProfileSnapshot === "GRADING"
+        ? ["FINISHING"]
+        : [];
+  const missing = requiredTypes.filter(
+    (type) =>
+      latestByType.get(type as "COMPACTION" | "FINISHING")?.status !==
+      "ACCEPTED",
+  );
+  if (missing.length)
+    throw new AppError({
+      code: "PRODUCTION_QUALITY_PENDING",
+      message: "Required quality checks are still pending",
+      statusCode: 422,
+      data: { types: missing.map((type) => type.toLowerCase()) },
+    });
 }
 
 function validateApprovalData(
@@ -1095,6 +1911,7 @@ function validateApprovalData(
       role: ProductionWriteData["equipment"][number]["role"];
       defaultTripCapacityM3: string | null;
     }>;
+    truckSummaries: Array<{ capacitySnapshot: string }>;
   },
   metrics: { operationalQuantity: string; tripCount: number },
 ) {
@@ -1122,6 +1939,10 @@ function validateApprovalData(
     if (!isVolumetric(data.unitCodeSnapshot) && !data.conversionFactor)
       missing.push("conversion-factor");
   }
+  if (data.entryMode === "TRUCK_SUMMARY") {
+    if (metrics.tripCount <= 0) missing.push("truck-summary-trips");
+    if (!data.truckSummaries.length) missing.push("trucks");
+  }
   if (
     data.dmtPolicySnapshot === "REQUIRED" &&
     (!data.dmtKm || !data.origin || !data.destination)
@@ -1148,7 +1969,11 @@ function validateApprovalData(
 
 function validateDmt(
   policy: "NOT_APPLICABLE" | "OPTIONAL" | "REQUIRED",
-  command: ProductionCommand,
+  command: {
+    dmtKm: string | null;
+    origin: string | null;
+    destination: string | null;
+  },
 ) {
   if (
     policy === "NOT_APPLICABLE" &&
@@ -1192,8 +2017,13 @@ function summarizeForDailyReport(
       ...toSummaryDto(record),
       selected: Boolean(link),
       confirmedRevision: link?.confirmedRevision ?? null,
-      stale: Boolean(
-        link?.isStale || (link && link.confirmedRevision !== record.revision),
+      confirmedOperationalRevision: link?.confirmedOperationalRevision ?? null,
+      stale:
+        !link ||
+        link.isStale ||
+        link.confirmedOperationalRevision !== record.operationalRevision,
+      qualityPending: !["approved", "released", "measured"].includes(
+        record.status.toLowerCase(),
       ),
     };
   });
@@ -1286,6 +2116,7 @@ function summarizeForDailyReport(
       };
     }),
     hasDrafts: records.some((record) => record.status === "DRAFT"),
+    hasPendingQuality: rows.some((row) => row.qualityPending),
     needsReconfirmation: rows.some((row) => row.stale),
   };
 }
@@ -1293,15 +2124,24 @@ function summarizeForDailyReport(
 function capabilities(_scope: ProductionScope) {
   return {
     createDraft: true,
+    submit: true,
+    check: true,
+    recordTopography: true,
+    recordLaboratory: true,
+    approve: true,
+    reject: true,
+    release: true,
+    reopen: true,
+    viewHistory: true,
+    measure: true,
     publishDirect: true,
     approveOthers: true,
-    reopen: true,
   };
 }
 
 function assertCapability(
   scope: ProductionScope,
-  capability: "createDraft" | "publishDirect" | "approveOthers" | "reopen",
+  capability: keyof ReturnType<typeof capabilities>,
 ) {
   if (!capabilities(scope)[capability])
     throw new AppError({
@@ -1336,6 +2176,285 @@ function assertShiftCollectionBound(records: ProductionRecord[]) {
       statusCode: 409,
       data: { limit: 200 },
     });
+}
+
+function normalizeProductionCommand(command: ProductionCommand) {
+  const common = {
+    productionDate: command.productionDate,
+    shift: command.shift,
+    startTime: command.startTime,
+    endTime: command.endTime,
+    endDayOffset: command.endDayOffset,
+    responsibleEmploymentId: command.responsibleEmploymentId,
+    evidence: command.evidence,
+    notes: command.notes,
+    equipment: command.equipment,
+  };
+  if (command.kind === "individual_activity") {
+    const activity = command.individualActivity;
+    return {
+      ...common,
+      kind: command.kind,
+      entryMode: command.entryMode,
+      workFrontId: activity.workFrontId,
+      workFrontServiceId: activity.workFrontServiceId,
+      location: activity.location,
+      startStation: activity.startStation,
+      endStation: activity.endStation,
+      layer: activity.layer,
+      elevation: activity.elevation,
+      materialName: activity.materialName,
+      materialCategory: activity.materialCategory,
+      volumeCondition: activity.volumeCondition,
+      directQuantity: activity.operationalQuantity,
+      conversionFactor: activity.conversionFactor,
+      origin: null,
+      destination: null,
+      dmtKm: null,
+      layerThicknessCm: activity.layerThicknessCm,
+      compactionPasses: activity.compactionPasses,
+      moistureCondition: activity.moistureCondition,
+    };
+  }
+  const movement = command.materialMovement;
+  return {
+    ...common,
+    kind: command.kind,
+    entryMode: command.entryMode,
+    workFrontId: movement.workFrontId,
+    workFrontServiceId: movement.workFrontServiceId,
+    location: null,
+    startStation: null,
+    endStation: null,
+    layer: movement.layer,
+    elevation: null,
+    materialName: movement.materialName,
+    materialCategory: movement.materialCategory,
+    volumeCondition: movement.volumeCondition,
+    directQuantity: null,
+    conversionFactor: null,
+    origin: movement.origin,
+    destination: movement.destination,
+    dmtKm: movement.dmtKm,
+    layerThicknessCm: movement.layerThicknessCm,
+    compactionPasses: movement.compactionPasses,
+    moistureCondition: movement.moistureCondition,
+  };
+}
+
+function resolveComponents(
+  command: ProductionCommand,
+  services: Array<{
+    id: string;
+    workFrontId: string;
+    serviceCode: string;
+    unitCode: string;
+  }>,
+  movementCalculation: ReturnType<typeof calculateEarthworkMovement> | null,
+): ProductionWriteData["components"] {
+  if (command.kind === "individual_activity") {
+    const activity = command.individualActivity;
+    const service = services.find(
+      (item) =>
+        item.id === activity.workFrontServiceId &&
+        item.workFrontId === activity.workFrontId,
+    );
+    if (!service) throw resourceUnavailable("work-front-service");
+    const volumeCondition = dbVolumeCondition(activity.volumeCondition);
+    return [
+      {
+        workFrontId: activity.workFrontId,
+        workFrontServiceId: activity.workFrontServiceId,
+        componentType: "INDIVIDUAL",
+        position: 0,
+        serviceCodeSnapshot: service.serviceCode,
+        unitCodeSnapshot: explicitUnitCode(
+          service.unitCode,
+          activity.volumeCondition,
+        ),
+        volumeCondition,
+        quantities: activity.operationalQuantity
+          ? [
+              {
+                kind: "OPERATIONAL",
+                method: activity.quantityMethod.toUpperCase() as
+                  | "MANUAL"
+                  | "TOPOGRAPHY"
+                  | "LABORATORY",
+                value: normalizeDecimal(activity.operationalQuantity, 3),
+                unitCode: explicitUnitCode(
+                  service.unitCode,
+                  activity.volumeCondition,
+                ),
+                volumeCondition,
+                sourceSnapshot: {
+                  enteredBy: "wizard",
+                  accepted: false,
+                },
+              },
+            ]
+          : [],
+      },
+    ];
+  }
+  return command.materialMovement.components.map((component, position) => {
+    const service = services.find(
+      (item) =>
+        item.id === component.workFrontServiceId &&
+        item.workFrontId === component.workFrontId,
+    );
+    if (!service) throw resourceUnavailable("movement-component-service");
+    const volumeCondition = dbVolumeCondition(component.volumeCondition);
+    const quantities: ProductionWriteData["components"][number]["quantities"] =
+      [];
+    if (component.operationalQuantity)
+      quantities.push({
+        kind: "OPERATIONAL",
+        method: "MANUAL",
+        value: normalizeDecimal(component.operationalQuantity, 3),
+        unitCode: component.unitCode,
+        volumeCondition,
+        sourceSnapshot: { enteredBy: "wizard", accepted: false },
+      });
+    else if (component.type === "transport" && movementCalculation)
+      quantities.push({
+        kind: "OPERATIONAL",
+        method: movementCalculation.actualWeightT
+          ? "WEIGHBRIDGE"
+          : "TRUCK_SUMMARY",
+        value:
+          movementCalculation.actualWeightT ??
+          movementCalculation.looseVolumeM3,
+        unitCode: movementCalculation.actualWeightT ? "T" : "M3_LOOSE",
+        volumeCondition: movementCalculation.actualWeightT ? null : "LOOSE",
+        sourceSnapshot: {
+          truckSummary: true,
+          rejectedTripsExcluded: true,
+        },
+      });
+    const estimated =
+      component.type === "cut"
+        ? movementCalculation?.estimatedBankVolumeM3
+        : ["fill", "compaction"].includes(component.type)
+          ? movementCalculation?.estimatedCompactedVolumeM3
+          : null;
+    if (estimated)
+      quantities.push({
+        kind: "ESTIMATED",
+        method: "CONVERTED",
+        value: estimated,
+        unitCode: component.type === "cut" ? "M3_BANK" : "M3_COMPACTED",
+        volumeCondition: component.type === "cut" ? "BANK" : "COMPACTED",
+        sourceSnapshot: {
+          materialFactors: true,
+          technicallyAccepted: false,
+        },
+      });
+    return {
+      workFrontId: component.workFrontId,
+      workFrontServiceId: component.workFrontServiceId,
+      componentType: component.type.toUpperCase() as Exclude<
+        ProductionWriteData["components"][number]["componentType"],
+        "INDIVIDUAL"
+      >,
+      position,
+      serviceCodeSnapshot: service.serviceCode,
+      unitCodeSnapshot: component.unitCode,
+      volumeCondition,
+      quantities,
+    };
+  });
+}
+
+function dbVolumeCondition(
+  value: "bank" | "loose" | "compacted" | "placed" | null,
+) {
+  return value
+    ? (value.toUpperCase() as "BANK" | "LOOSE" | "COMPACTED" | "PLACED")
+    : null;
+}
+
+function explicitUnitCode(
+  unitCode: string,
+  condition: "bank" | "loose" | "compacted" | "placed" | null,
+) {
+  if (unitCode.toUpperCase() !== "M3" || !condition) return unitCode;
+  return `M3_${condition.toUpperCase()}`;
+}
+
+function movementFingerprint(
+  projectId: string,
+  command: Extract<ProductionCommand, { kind: "material_movement" }>,
+  resolved: {
+    materialName: string | null;
+    origin: string | null;
+    destination: string | null;
+  },
+) {
+  const movement = command.materialMovement;
+  const canonical = JSON.stringify({
+    projectId,
+    productionDate: command.productionDate,
+    shift: command.shift,
+    materialRevisionId: movement.materialRevisionId,
+    material: resolved.materialName?.trim().toLocaleLowerCase("pt-BR") ?? null,
+    origin: resolved.origin?.trim().toLocaleLowerCase("pt-BR") ?? null,
+    destination:
+      resolved.destination?.trim().toLocaleLowerCase("pt-BR") ?? null,
+    routeRevisionId: movement.routeRevisionId,
+    layer: movement.layer?.trim().toLocaleLowerCase("pt-BR") ?? null,
+    components: movement.components.map((component) => ({
+      workFrontId: component.workFrontId,
+      workFrontServiceId: component.workFrontServiceId,
+      type: component.type,
+    })),
+  });
+  return createHash("sha256").update(canonical).digest("hex");
+}
+
+function productionDateLimits(actualStartedAt: Date | null) {
+  const maximum = todayInBusinessZone();
+  const sevenDaysAgo = new Date(civilDateValue(maximum));
+  sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 7);
+  const projectStart = actualStartedAt
+    ? dateInBusinessZone(actualStartedAt)
+    : null;
+  const minimumByWindow = civilDate(sevenDaysAgo);
+  return {
+    minimum:
+      projectStart && projectStart > minimumByWindow
+        ? projectStart
+        : minimumByWindow,
+    maximum,
+    timeZone: BUSINESS_TIME_ZONE,
+  };
+}
+
+function assertProductionDateAllowed(
+  productionDate: string,
+  actualStartedAt: Date | null,
+) {
+  const limits = productionDateLimits(actualStartedAt);
+  if (productionDate < limits.minimum || productionDate > limits.maximum)
+    throw new AppError({
+      code: "PRODUCTION_DATE_OUT_OF_RANGE",
+      message: "Production date is outside the allowed operational window",
+      statusCode: 422,
+      data: limits,
+    });
+}
+
+function todayInBusinessZone() {
+  return dateInBusinessZone(new Date());
+}
+
+function dateInBusinessZone(value: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: BUSINESS_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(value);
 }
 
 function shiftToDb(shift: "day" | "night") {
@@ -1605,5 +2724,13 @@ function revisionRequired() {
     code: "VALIDATION_ERROR",
     message: "Expected revision is required when updating a production",
     statusCode: 400,
+  });
+}
+
+function transitionReasonRequired() {
+  return new AppError({
+    code: "PRODUCTION_TRANSITION_REASON_REQUIRED",
+    message: "A reason is required for this production transition",
+    statusCode: 422,
   });
 }

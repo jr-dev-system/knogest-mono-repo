@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   productionCommandSchema,
+  productionQualityCheckSchema,
   productionTripSchema,
 } from "./productions.dto";
 import { calculateProductionMetrics } from "./productions.service";
@@ -14,26 +15,47 @@ describe("production command", () => {
   it("accepts an incomplete draft so it can be continued during the shift", () => {
     expect(
       productionCommandSchema.parse({
-        workFrontId: frontId,
-        workFrontServiceId: serviceId,
+        kind: "individual_activity",
         productionDate: "2026-07-28",
         shift: "day",
-        entryMode: "trips",
+        individualActivity: {
+          workFrontId: frontId,
+          workFrontServiceId: serviceId,
+        },
       }),
     ).toMatchObject({
       approveNow: false,
+      submitNow: false,
       equipment: [],
-      entryMode: "trips",
+      entryMode: "direct_total",
     });
+  });
+
+  it("requires a reason for an individual activity exceptional to a movement", () => {
+    expect(() =>
+      productionCommandSchema.parse({
+        kind: "individual_activity",
+        productionDate: "2026-07-28",
+        shift: "day",
+        individualActivity: {
+          workFrontId: frontId,
+          workFrontServiceId: serviceId,
+          exceptionalFromMovement: true,
+          exceptionReason: null,
+        },
+      }),
+    ).toThrow();
   });
 
   it("rejects duplicate machines and decreasing meter readings", () => {
     const result = productionCommandSchema.safeParse({
-      workFrontId: frontId,
-      workFrontServiceId: serviceId,
+      kind: "individual_activity",
       productionDate: "2026-07-28",
       shift: "day",
-      entryMode: "direct_total",
+      individualActivity: {
+        workFrontId: frontId,
+        workFrontServiceId: serviceId,
+      },
       equipment: [
         {
           machineId,
@@ -62,10 +84,35 @@ describe("production command", () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it("allows only accepted topography or laboratory checks to set the accepted quantity", () => {
+    const quantity = {
+      componentId: serviceId,
+      value: "98.750",
+      unitCode: "M3_BANK",
+      volumeCondition: "bank" as const,
+    };
+    expect(
+      productionQualityCheckSchema.safeParse({
+        expectedRevision: 2,
+        type: "topography",
+        status: "accepted",
+        acceptedQuantity: quantity,
+      }).success,
+    ).toBe(true);
+    expect(
+      productionQualityCheckSchema.safeParse({
+        expectedRevision: 2,
+        type: "field_inspection",
+        status: "accepted",
+        acceptedQuantity: quantity,
+      }).success,
+    ).toBe(false);
+  });
 });
 
 describe("production metrics", () => {
-  it("keeps trip volume operational and makes measured quantity official", () => {
+  it("keeps the legacy measured projection compatible without changing trip volume", () => {
     expect(
       calculateProductionMetrics({
         tripVolumesM3: ["10.000", "12.500", "10.000"],

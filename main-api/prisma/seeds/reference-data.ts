@@ -15,6 +15,25 @@ export async function seedReferenceData(_prisma: PrismaClient): Promise<void> {
       "M3_KM",
       "Metro cúbico por quilômetro",
     ],
+    [
+      "00000000-0000-4000-8000-00000000a009",
+      "M3_BANK",
+      "Metro cúbico em corte",
+    ],
+    ["00000000-0000-4000-8000-00000000a010", "M3_LOOSE", "Metro cúbico solto"],
+    [
+      "00000000-0000-4000-8000-00000000a011",
+      "M3_COMPACTED",
+      "Metro cúbico compactado",
+    ],
+    [
+      "00000000-0000-4000-8000-00000000a012",
+      "M3_PLACED",
+      "Metro cúbico aplicado",
+    ],
+    ["00000000-0000-4000-8000-00000000a013", "M", "Metro"],
+    ["00000000-0000-4000-8000-00000000a014", "KM", "Quilômetro"],
+    ["00000000-0000-4000-8000-00000000a015", "T_KM", "Tonelada-quilômetro"],
   ] as const) {
     await prisma.measurementUnit.upsert({
       where: { id: unit[0] },

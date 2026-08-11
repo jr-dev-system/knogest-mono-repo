@@ -186,6 +186,14 @@ describe("project daily reports", () => {
         meterType: "HOUR_METER",
       },
     });
+    await app.prisma.machineTransportSpecification.create({
+      data: {
+        machineId: machine.id,
+        nominalCapacity: "10.000",
+        effectiveCapacity: "10.000",
+        capacityUnitCode: "M3_LOOSE",
+      },
+    });
     await app.prisma.machineOwnershipPeriod.create({
       data: {
         corporationId: pilot.corporation.id,
@@ -599,7 +607,7 @@ describe("project daily reports", () => {
     expect(report.machineEntries[0]?.endMeterReadingId).toBeNull();
   });
 
-  it("links only approved production revisions and invalidates the RDO link after reopening", async () => {
+  it("links submitted operational revisions and invalidates only after operational reopening", async () => {
     const scope = await setup();
     const project = await app.prisma.project.findUniqueOrThrow({
       where: { id: scope.projectId },
@@ -631,8 +639,8 @@ describe("project daily reports", () => {
         serviceCode: "cut",
         unitCode: "M3",
         quantity: "5000.00",
-        productionProfile: "TRANSPORT",
-        dmtPolicy: "REQUIRED",
+        productionProfile: "EXCAVATION",
+        dmtPolicy: "OPTIONAL",
       },
     });
     await app.prisma.projectWorkFrontMachineAssignment.create({
@@ -679,30 +687,13 @@ describe("project daily reports", () => {
         createdByUserId: session.userId,
       })),
     });
-    const baseProduction = {
-      workFrontId: front.id,
-      workFrontServiceId: service.id,
+    const commonProduction = {
       productionDate: scope.reportDate,
       shift: "day",
       startTime: "07:00",
       endTime: "18:00",
       endDayOffset: 0,
       responsibleEmploymentId: scope.employmentId,
-      location: "Estacas 10 a 25",
-      startStation: "10+000",
-      endStation: "25+000",
-      materialName: "Solo de 1ª categoria",
-      materialCategory: "Material comum",
-      volumeCondition: "loose",
-      conversionFactor: null,
-      origin: "Corte A",
-      destination: "Aterro B",
-      dmtKm: "5.000",
-      layer: null,
-      elevation: null,
-      layerThicknessCm: null,
-      compactionPasses: null,
-      moistureCondition: null,
       evidence: [
         {
           kind: "ticket",
@@ -713,6 +704,19 @@ describe("project daily reports", () => {
       ],
       notes: null,
     };
+    const equipment = {
+      machineId: scope.machineId,
+      role: "transport",
+      operatorEmploymentId: scope.employmentId,
+      workedMinutes: 600,
+      productiveMinutes: 540,
+      waitingMinutes: 30,
+      stoppedMinutes: 30,
+      initialMeterValue: null,
+      finalMeterValue: null,
+      defaultTripCapacityM3: null,
+      stops: [],
+    };
 
     const options = await app.inject({
       method: "GET",
@@ -720,101 +724,167 @@ describe("project daily reports", () => {
       headers: { authorization: scope.authorization },
     });
     expect(options.statusCode, options.body).toBe(200);
+    const productionOptions = options
+      .json()
+      .data.workFronts.find((item: { id: string }) => item.id === front.id);
     expect(
-      options
-        .json()
-        .data.workFronts.find((item: { id: string }) => item.id === front.id)
-        .machines.map((machine: { id: string }) => machine.id),
-    ).toEqual([scope.machineId]);
-
-    const manualIneligibleMachine = await app.inject({
-      method: "POST",
-      url: `/api/v1/projects/${scope.projectId}/productions`,
-      headers: { authorization: scope.authorization },
-      payload: {
-        ...baseProduction,
-        approveNow: false,
-        entryMode: "direct_total",
-        directQuantity: "1.000",
-        measuredQuantity: null,
-        equipment: [
-          {
-            machineId: yellowMachine.id,
-            role: "transport",
-            operatorEmploymentId: scope.employmentId,
-            workedMinutes: 10,
-            initialMeterValue: null,
-            finalMeterValue: null,
-            defaultTripCapacityM3: "99.000",
-            stops: [],
-          },
-        ],
-      },
-    });
-    expect(manualIneligibleMachine.statusCode).toBe(409);
-    expect(manualIneligibleMachine.json().code).toBe(
-      "PRODUCTION_RESOURCE_UNAVAILABLE",
+      productionOptions.equipment.map((machine: { id: string }) => machine.id),
+    ).toEqual(
+      expect.arrayContaining([
+        scope.machineId,
+        yellowMachine.id,
+        whiteWithoutVolume.id,
+      ]),
     );
+    expect(
+      productionOptions.trucks.map((machine: { id: string }) => machine.id),
+    ).toEqual([scope.machineId]);
+    expect(options.json().data.dateLimits).toMatchObject({
+      maximum: dateInSaoPauloDaysAgo(0),
+      timeZone: "America/Sao_Paulo",
+    });
 
     const direct = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${scope.projectId}/productions`,
       headers: { authorization: scope.authorization },
       payload: {
-        ...baseProduction,
-        approveNow: true,
+        ...commonProduction,
+        kind: "individual_activity",
+        submitNow: true,
         entryMode: "direct_total",
-        directQuantity: "100.125",
-        measuredQuantity: "96.500",
+        individualActivity: {
+          workFrontId: front.id,
+          workFrontServiceId: service.id,
+          quantityMethod: "manual",
+          location: "Estacas 10 a 25",
+          startStation: "10+000",
+          endStation: "25+000",
+          layer: null,
+          elevation: null,
+          materialName: "Solo de 1ª categoria",
+          materialCategory: "Material comum",
+          volumeCondition: "bank",
+          operationalQuantity: "100.125",
+          conversionFactor: null,
+          layerThicknessCm: null,
+          compactionPasses: null,
+          moistureCondition: null,
+          exceptionalFromMovement: false,
+          exceptionReason: null,
+        },
+        truckSummaries: [],
         equipment: [
-          {
-            machineId: scope.machineId,
-            role: "transport",
-            operatorEmploymentId: scope.employmentId,
-            workedMinutes: 600,
-            initialMeterValue: "2168.10",
-            finalMeterValue: "2174.60",
-            defaultTripCapacityM3: null,
-            stops: [],
-          },
+          { ...equipment, machineId: yellowMachine.id, role: "excavation" },
         ],
       },
     });
     expect(direct.statusCode, direct.body).toBe(201);
-    expect(direct.json().data.metrics.officialQuantity).toBe("96.500");
-    expect(direct.json().data.equipment[0].defaultTripCapacityM3).toBe(
-      "10.000",
-    );
-    expect(direct.json().data.approval.direct).toBe(true);
+    expect(direct.json().data).toMatchObject({
+      kind: "individual_activity",
+      status: "submitted",
+      unitCode: "M3_BANK",
+      operationalRevision: 1,
+    });
+    expect(direct.json().data.metrics.officialQuantity).toBe("100.125");
+
+    const material = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/earthwork-materials`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        code: "solo-1",
+        name: "Solo de 1ª categoria",
+        classification: "Solo argiloso",
+        category: "Material comum",
+        densityTPerM3: "1.800000",
+        swellFactor: "1.250000",
+        looseToCompactedFactor: "0.800000",
+        effectiveFrom: `${scope.reportDate}T00:00:00-03:00`,
+      },
+    });
+    expect(material.statusCode, material.body).toBe(201);
+    const route = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/haul-routes`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        code: "corte-a-aterro-b",
+        name: "Corte A → Aterro B",
+        origin: "Corte A",
+        destination: "Aterro B",
+        loadedDistanceKm: "5.000",
+        emptyReturnDistanceKm: "4.500",
+        contractualDmtKm: "5.000",
+        contractualBand: "0-5 km",
+        effectiveFrom: `${scope.reportDate}T00:00:00-03:00`,
+      },
+    });
+    expect(route.statusCode, route.body).toBe(201);
 
     const draft = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${scope.projectId}/productions`,
       headers: { authorization: scope.authorization },
       payload: {
-        ...baseProduction,
-        approveNow: false,
+        ...commonProduction,
+        kind: "material_movement",
+        submitNow: false,
         entryMode: "trips",
-        directQuantity: null,
-        measuredQuantity: null,
-        equipment: [
+        materialMovement: {
+          workFrontId: front.id,
+          workFrontServiceId: service.id,
+          materialRevisionId: material.json().data.revision.id,
+          routeRevisionId: route.json().data.revision.id,
+          materialName: "Solo de 1ª categoria",
+          materialCategory: "Material comum",
+          densityTPerM3: "1.800000",
+          swellFactor: "1.250000",
+          looseToCompactedFactor: "0.800000",
+          origin: "Corte A",
+          destination: "Aterro B",
+          dmtKm: "5.000",
+          contractualDmtKm: "5.000",
+          contractualBand: "0-5 km",
+          layer: "Camada 1",
+          volumeCondition: "loose",
+          layerThicknessCm: null,
+          compactionPasses: null,
+          moistureCondition: null,
+          components: [
+            {
+              workFrontId: front.id,
+              workFrontServiceId: service.id,
+              type: "cut",
+              operationalQuantity: "18.500",
+              unitCode: "M3_BANK",
+              volumeCondition: "bank",
+            },
+            {
+              workFrontId: front.id,
+              workFrontServiceId: service.id,
+              type: "transport",
+              operationalQuantity: null,
+              unitCode: "M3_LOOSE",
+              volumeCondition: "loose",
+            },
+          ],
+        },
+        truckSummaries: [
           {
             machineId: scope.machineId,
-            role: "transport",
-            operatorEmploymentId: scope.employmentId,
-            workedMinutes: 600,
-            initialMeterValue: null,
-            finalMeterValue: null,
-            defaultTripCapacityM3: "99.000",
-            stops: [
-              {
-                durationMinutes: 30,
-                reason: "Manutenção preventiva",
-                notes: null,
-              },
-            ],
+            driverEmploymentId: scope.employmentId,
+            acceptedTrips: 0,
+            rejectedTrips: 0,
+            partialTripCount: 0,
+            partialVolume: "0",
+            actualWeightT: null,
+            loadFactor: "1",
+            averageCycleMinutes: null,
+            occurrenceNotes: null,
           },
         ],
+        equipment: [equipment],
       },
     });
     expect(draft.statusCode, draft.body).toBe(201);
@@ -890,46 +960,117 @@ describe("project daily reports", () => {
     expect(removedTrip.statusCode, removedTrip.body).toBe(200);
     expect(removedTrip.json().data.metrics.officialQuantity).toBe("19.500");
 
-    const updated = await app.inject({
-      method: "PUT",
-      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}`,
+    const submitted = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/submit`,
+      headers: { authorization: scope.authorization },
+      payload: { expectedRevision: 5 },
+    });
+    expect(submitted.statusCode, submitted.body).toBe(200);
+    expect(submitted.json().data).toMatchObject({
+      status: "submitted",
+      operationalRevision: 5,
+    });
+    const checked = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/check`,
+      headers: { authorization: scope.authorization },
+      payload: { expectedRevision: 6 },
+    });
+    expect(checked.statusCode, checked.body).toBe(200);
+    const quality = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/quality-checks`,
       headers: { authorization: scope.authorization },
       payload: {
-        ...baseProduction,
-        expectedRevision: 5,
-        approveNow: false,
-        entryMode: "trips",
-        directQuantity: null,
-        measuredQuantity: "18.000",
-        equipment: [
-          {
-            machineId: scope.machineId,
-            role: "transport",
-            operatorEmploymentId: scope.employmentId,
-            workedMinutes: 600,
-            initialMeterValue: null,
-            finalMeterValue: null,
-            defaultTripCapacityM3: "10.000",
-            stops: [],
-          },
-        ],
+        expectedRevision: 7,
+        type: "field_inspection",
+        status: "accepted",
+        value: null,
+        unitCode: null,
+        notes: "Conferência de campo aceita",
+        evidence: [],
       },
     });
-    expect(updated.statusCode, updated.body).toBe(200);
-    expect(updated.json().data.metrics).toMatchObject({
-      officialQuantity: "18.000",
-      operationalVolumeM3: "19.500",
-      difference: "-1.500",
-      transportMomentM3Km: "97.500",
+    expect(quality.statusCode, quality.body).toBe(200);
+    const cutComponent = quality
+      .json()
+      .data.components.find(
+        (component: { type: string }) => component.type === "cut",
+      );
+    const technicalAcceptance = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/quality-checks`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        expectedRevision: 8,
+        type: "topography",
+        status: "accepted",
+        value: "18.750",
+        unitCode: "M3_BANK",
+        notes: "Volume topográfico aceito",
+        evidence: [],
+        acceptedQuantity: {
+          componentId: cutComponent.id,
+          value: "18.750",
+          unitCode: "M3_BANK",
+          volumeCondition: "bank",
+        },
+      },
     });
+    expect(technicalAcceptance.statusCode, technicalAcceptance.body).toBe(200);
+    expect(
+      technicalAcceptance
+        .json()
+        .data.components.find(
+          (component: { id: string }) => component.id === cutComponent.id,
+        ).quantities,
+    ).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          kind: "technically_accepted",
+          method: "topography",
+          value: "18.750",
+          unitCode: "M3_BANK",
+        }),
+      ]),
+    );
     const approved = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/approve`,
       headers: { authorization: scope.authorization },
-      payload: { expectedRevision: 6 },
+      payload: { expectedRevision: 9 },
     });
     expect(approved.statusCode, approved.body).toBe(200);
-    expect(approved.json().data.approval.direct).toBe(false);
+    expect(approved.json().data).toMatchObject({
+      status: "approved",
+      operationalRevision: 5,
+    });
+    const released = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/release`,
+      headers: { authorization: scope.authorization },
+      payload: { expectedRevision: approved.json().data.revision },
+    });
+    expect(released.statusCode, released.body).toBe(200);
+    expect(released.json().data).toMatchObject({
+      status: "released",
+      operationalRevision: 5,
+    });
+    const history = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/history?limit=20`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(history.statusCode, history.body).toBe(200);
+    expect(history.json().data.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ event: "submitted" }),
+        expect.objectContaining({ event: "field_checked" }),
+        expect.objectContaining({ event: "approved" }),
+        expect.objectContaining({ event: "released" }),
+      ]),
+    );
 
     const report = await app.inject({
       method: "POST",
@@ -939,6 +1080,13 @@ describe("project daily reports", () => {
     });
     expect(report.statusCode, report.body).toBe(201);
     const reportId = report.json().data.id as string;
+    const pendingConfirmation = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/daily-reports/${reportId}/productions`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(pendingConfirmation.statusCode, pendingConfirmation.body).toBe(200);
+    expect(pendingConfirmation.json().data.needsReconfirmation).toBe(true);
     const unconfirmed = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${scope.projectId}/daily-reports/${reportId}/finalize`,
@@ -970,7 +1118,7 @@ describe("project daily reports", () => {
       url: `/api/v1/projects/${scope.projectId}/productions/${draftId}/reopen`,
       headers: { authorization: scope.authorization },
       payload: {
-        expectedRevision: approved.json().data.revision,
+        expectedRevision: released.json().data.revision,
         reason: "Correção do volume medido",
       },
     });

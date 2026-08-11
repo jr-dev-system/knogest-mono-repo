@@ -323,6 +323,16 @@ export async function createMachineHandler(
       },
       select: { id: true },
     });
+    if (input.type === "WHITE_LINE" && input.loadVolumeM3)
+      await context.prisma.machineTransportSpecification.create({
+        data: {
+          machineId: machine.id,
+          nominalCapacity: input.loadVolumeM3,
+          effectiveCapacity: input.loadVolumeM3,
+          capacityUnitCode: "M3_LOOSE",
+          maxSupportedWeightT: input.maxSupportedWeightT,
+        },
+      });
     await context.prisma.machineOwnershipPeriod.create({
       data: {
         corporationId: input.corporationId,
@@ -445,6 +455,26 @@ export async function updateMachineLoadSpecificationHandler(
       maxSupportedWeightT: input.maxSupportedWeightT,
     },
   });
+  if (input.loadVolumeM3)
+    await context.prisma.machineTransportSpecification.upsert({
+      where: { machineId: input.machineId },
+      create: {
+        machineId: input.machineId,
+        nominalCapacity: input.loadVolumeM3,
+        effectiveCapacity: input.loadVolumeM3,
+        capacityUnitCode: "M3_LOOSE",
+        maxSupportedWeightT: input.maxSupportedWeightT,
+      },
+      update: {
+        nominalCapacity: input.loadVolumeM3,
+        effectiveCapacity: input.loadVolumeM3,
+        maxSupportedWeightT: input.maxSupportedWeightT,
+      },
+    });
+  else
+    await context.prisma.machineTransportSpecification.deleteMany({
+      where: { machineId: input.machineId },
+    });
   return findMachineDetailHandler(context, input);
 }
 

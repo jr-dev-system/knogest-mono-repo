@@ -389,7 +389,7 @@ export class DailyReportsService {
             throw new AppError({
               code: "PRODUCTION_RDO_CONFIRMATION_REQUIRED",
               message:
-                "Productions from this shift must be approved and confirmed before finalizing the daily report",
+                "Non-draft productions from this shift must have their operational revision confirmed before finalizing the daily report",
               statusCode: 409,
               data: {
                 productionCount: productionReadiness.count,

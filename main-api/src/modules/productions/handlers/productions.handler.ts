@@ -31,9 +31,19 @@ export const productionDetailInclude = {
   },
   revisions: { orderBy: { revision: "desc" as const }, take: 20 },
   dailyReportLinks: { orderBy: { confirmedAt: "desc" as const } },
+  individualActivity: true,
+  materialMovement: true,
+  components: {
+    orderBy: { position: "asc" as const },
+    include: { quantities: { orderBy: { kind: "asc" as const } } },
+  },
+  truckSummaries: { orderBy: { machineNameSnapshot: "asc" as const } },
+  qualityChecks: { orderBy: { createdAt: "asc" as const } },
+  approvals: { orderBy: { createdAt: "asc" as const } },
 } satisfies Prisma.ProjectProductionInclude;
 
 export type ProductionWriteData = {
+  kind: "INDIVIDUAL_ACTIVITY" | "MATERIAL_MOVEMENT";
   workFrontId: string;
   workFrontServiceId: string;
   serviceCodeSnapshot: string;
@@ -50,7 +60,7 @@ export type ProductionWriteData = {
   productionDate: Date;
   shift: "DAY" | "NIGHT";
   shiftOrder: number;
-  entryMode: "DIRECT_TOTAL" | "TRIPS";
+  entryMode: "DIRECT_TOTAL" | "TRUCK_SUMMARY" | "TRIPS";
   startTime: string | null;
   endTime: string | null;
   endDayOffset: number;
@@ -63,7 +73,7 @@ export type ProductionWriteData = {
   elevation: string | null;
   materialName: string | null;
   materialCategory: string | null;
-  volumeCondition: "CUT" | "LOOSE" | "COMPACTED" | null;
+  volumeCondition: "BANK" | "LOOSE" | "COMPACTED" | "PLACED" | null;
   directQuantity: string | null;
   measuredQuantity: string | null;
   officialQuantity: string;
@@ -76,6 +86,81 @@ export type ProductionWriteData = {
   moistureCondition: string | null;
   evidence: Prisma.InputJsonValue;
   notes: string | null;
+  batchFingerprint: string | null;
+  individualActivity: {
+    quantityMethod: "MANUAL" | "TOPOGRAPHY" | "LABORATORY";
+    location: string | null;
+    startStation: string | null;
+    endStation: string | null;
+    layer: string | null;
+    elevation: string | null;
+    exceptionalFromMovement: boolean;
+    exceptionReason: string | null;
+  } | null;
+  materialMovement: {
+    materialRevisionId: string | null;
+    routeRevisionId: string | null;
+    origin: string;
+    destination: string;
+    layer: string | null;
+    materialSnapshot: Prisma.InputJsonValue;
+    routeSnapshot: Prisma.InputJsonValue;
+  } | null;
+  components: Array<{
+    workFrontId: string;
+    workFrontServiceId: string;
+    componentType:
+      | "INDIVIDUAL"
+      | "CUT"
+      | "LOADING"
+      | "TRANSPORT"
+      | "UNLOADING"
+      | "SPREADING"
+      | "COMPACTION"
+      | "FILL"
+      | "FINISHING";
+    position: number;
+    serviceCodeSnapshot: string;
+    unitCodeSnapshot: string;
+    volumeCondition: "BANK" | "LOOSE" | "COMPACTED" | "PLACED" | null;
+    quantities: Array<{
+      kind:
+        | "OPERATIONAL"
+        | "ESTIMATED"
+        | "TECHNICALLY_ACCEPTED"
+        | "CONTRACT_MEASURED";
+      method:
+        | "MANUAL"
+        | "TRUCK_SUMMARY"
+        | "TRIP_EVENTS"
+        | "WEIGHBRIDGE"
+        | "CONVERTED"
+        | "TOPOGRAPHY"
+        | "LABORATORY"
+        | "CONTRACT_MEASUREMENT";
+      value: string;
+      unitCode: string;
+      volumeCondition: "BANK" | "LOOSE" | "COMPACTED" | "PLACED" | null;
+      sourceSnapshot: Prisma.InputJsonValue;
+    }>;
+  }>;
+  truckSummaries: Array<{
+    machineId: string;
+    driverEmploymentId: string | null;
+    driverNameSnapshot: string | null;
+    machineNameSnapshot: string;
+    identifierSnapshot: string | null;
+    capacitySnapshot: string;
+    capacityUnitCodeSnapshot: string;
+    acceptedTrips: number;
+    rejectedTrips: number;
+    partialTripCount: number;
+    partialVolume: string;
+    actualWeightT: string | null;
+    loadFactor: string;
+    averageCycleMinutes: number | null;
+    occurrenceNotes: string | null;
+  }>;
   equipment: Array<{
     machineId: string;
     machineNameSnapshot: string;
@@ -97,6 +182,9 @@ export type ProductionWriteData = {
     initialMeterValue: string | null;
     finalMeterValue: string | null;
     workedMinutes: number | null;
+    productiveMinutes: number | null;
+    waitingMinutes: number | null;
+    stoppedMinutes: number | null;
     defaultTripCapacityM3: string | null;
     stops: Array<{
       durationMinutes: number;
@@ -128,7 +216,7 @@ export async function findProductionOptionsContextHandler(
       id: projectId,
       status: "ACTIVE",
     },
-    select: { id: true, name: true, status: true },
+    select: { id: true, name: true, status: true, actualStartedAt: true },
   });
   if (!project) return null;
 
@@ -181,8 +269,6 @@ export async function findProductionOptionsContextHandler(
             machine: {
               is: {
                 isActive: true,
-                type: "WHITE_LINE",
-                loadVolumeM3: { gt: 0 },
               },
             },
           },
@@ -190,6 +276,7 @@ export async function findProductionOptionsContextHandler(
           include: {
             machine: {
               include: {
+                transportSpecification: true,
                 identifiers: {
                   where: {
                     companyId: scope.companyId,
@@ -252,12 +339,20 @@ export async function createProductionHandler(
   return context.prisma.projectProduction.create({
     data: {
       ...scopeWhere(scope, projectId),
-      ...withoutEquipment(data),
+      ...productionScalars(data),
       status: input.approved ? "APPROVED" : "DRAFT",
       createdByUserId: scope.actorUserId,
       approvedByUserId: input.approved ? scope.actorUserId : null,
       approvedAt: input.approved ? now : null,
       equipment: { create: equipmentCreate(data.equipment) },
+      ...(data.individualActivity
+        ? { individualActivity: { create: data.individualActivity } }
+        : {}),
+      ...(data.materialMovement
+        ? { materialMovement: { create: data.materialMovement } }
+        : {}),
+      components: { create: componentCreate(data.components) },
+      truckSummaries: { create: data.truckSummaries },
       revisions: {
         create: {
           revision: 1,
@@ -283,6 +378,23 @@ export async function countShiftProductionsHandler(
   });
 }
 
+export async function findProductionByFingerprintHandler(
+  context: HandlerContext,
+  scope: ProductionScope,
+  projectId: string,
+  batchFingerprint: string,
+  exceptProductionId?: string,
+) {
+  return context.prisma.projectProduction.findFirst({
+    where: {
+      ...scopeWhere(scope, projectId),
+      batchFingerprint,
+      ...(exceptProductionId ? { id: { not: exceptProductionId } } : {}),
+    },
+    select: { id: true },
+  });
+}
+
 export async function replaceProductionHandler(
   context: HandlerContext,
   scope: ProductionScope,
@@ -299,7 +411,10 @@ export async function replaceProductionHandler(
       status: "DRAFT",
       revision: expectedRevision,
     },
-    data: { revision: { increment: 1 } },
+    data: {
+      revision: { increment: 1 },
+      operationalRevision: { increment: 1 },
+    },
   });
   if (bumped.count !== 1) return null;
 
@@ -345,10 +460,37 @@ export async function replaceProductionHandler(
     }
   }
 
+  await Promise.all([
+    context.prisma.projectProductionIndividualActivity.deleteMany({
+      where: { productionId },
+    }),
+    context.prisma.projectMaterialMovement.deleteMany({
+      where: { productionId },
+    }),
+    context.prisma.projectProductionComponent.deleteMany({
+      where: { productionId },
+    }),
+    context.prisma.projectProductionTruckSummary.deleteMany({
+      where: { productionId },
+    }),
+    context.prisma.projectDailyReportProduction.updateMany({
+      where: { productionId },
+      data: { isStale: true },
+    }),
+  ]);
+
   return context.prisma.projectProduction.update({
     where: { id: productionId },
     data: {
-      ...withoutEquipment(data),
+      ...productionScalars(data),
+      ...(data.individualActivity
+        ? { individualActivity: { create: data.individualActivity } }
+        : {}),
+      ...(data.materialMovement
+        ? { materialMovement: { create: data.materialMovement } }
+        : {}),
+      components: { create: componentCreate(data.components) },
+      truckSummaries: { create: data.truckSummaries },
       revisions: {
         create: {
           revision: expectedRevision + 1,
@@ -383,7 +525,16 @@ export async function listProductionsHandler(
     limit: number;
     productionDate?: Date;
     shift?: "DAY" | "NIGHT";
-    status?: "DRAFT" | "APPROVED";
+    status?:
+      | "DRAFT"
+      | "SUBMITTED"
+      | "FIELD_CHECKED"
+      | "AWAITING_TECHNICAL"
+      | "APPROVED"
+      | "REJECTED"
+      | "RELEASED"
+      | "MEASURED";
+    kind?: "INDIVIDUAL_ACTIVITY" | "MATERIAL_MOVEMENT";
     workFrontId?: string;
     sortDirection: SortDirection;
   },
@@ -395,6 +546,7 @@ export async function listProductionsHandler(
       ...(input.productionDate ? { productionDate: input.productionDate } : {}),
       ...(input.shift ? { shift: input.shift } : {}),
       ...(input.status ? { status: input.status } : {}),
+      ...(input.kind ? { kind: input.kind } : {}),
       ...(input.workFrontId ? { workFrontId: input.workFrontId } : {}),
       ...(boundary ? { OR: boundary } : {}),
     },
@@ -408,64 +560,112 @@ export async function listProductionsHandler(
   });
 }
 
-export async function approveProductionHandler(
+export async function listProductionHistoryHandler(
   context: HandlerContext,
   scope: ProductionScope,
   projectId: string,
   productionId: string,
-  expectedRevision: number,
-  snapshot: Prisma.InputJsonValue,
-  event: "APPROVED" | "DIRECT_APPROVED" = "APPROVED",
+  input: {
+    boundary: CursorBoundary | null;
+    limit: number;
+    sortDirection: SortDirection;
+  },
 ) {
-  const updated = await context.prisma.projectProduction.updateMany({
+  const production = await context.prisma.projectProduction.findFirst({
+    where: { id: productionId, ...scopeWhere(scope, projectId) },
+    select: { id: true },
+  });
+  if (!production) return null;
+  const operator = input.sortDirection === "asc" ? "gt" : "lt";
+  const boundary = input.boundary;
+  if (boundary && typeof boundary.value !== "number")
+    throw invalidCursorError();
+  return context.prisma.projectProductionRevision.findMany({
     where: {
-      id: productionId,
-      ...scopeWhere(scope, projectId),
-      status: "DRAFT",
-      revision: expectedRevision,
-    },
-    data: {
-      status: "APPROVED",
-      revision: { increment: 1 },
-      approvedByUserId: scope.actorUserId,
-      approvedAt: new Date(),
-    },
-  });
-  if (updated.count !== 1) return null;
-  await context.prisma.projectProductionRevision.create({
-    data: {
       productionId,
-      revision: expectedRevision + 1,
-      event,
-      snapshot,
-      actorUserId: scope.actorUserId,
+      ...(boundary
+        ? {
+            OR: [
+              { revision: { [operator]: boundary.value as number } },
+              {
+                revision: boundary.value as number,
+                id: { [operator]: boundary.id },
+              },
+            ],
+          }
+        : {}),
     },
+    orderBy: [{ revision: input.sortDirection }, { id: input.sortDirection }],
+    take: input.limit + 1,
   });
-  return findProductionHandler(context, scope, projectId, productionId);
 }
 
-export async function reopenProductionHandler(
+export async function transitionProductionHandler(
   context: HandlerContext,
   scope: ProductionScope,
   projectId: string,
   productionId: string,
-  expectedRevision: number,
-  reason: string,
-  snapshot: Prisma.InputJsonValue,
+  input: {
+    expectedRevision: number;
+    from: Array<
+      | "DRAFT"
+      | "SUBMITTED"
+      | "FIELD_CHECKED"
+      | "AWAITING_TECHNICAL"
+      | "APPROVED"
+      | "REJECTED"
+      | "RELEASED"
+    >;
+    to:
+      | "DRAFT"
+      | "SUBMITTED"
+      | "FIELD_CHECKED"
+      | "AWAITING_TECHNICAL"
+      | "APPROVED"
+      | "REJECTED"
+      | "RELEASED";
+    event:
+      | "SUBMITTED"
+      | "FIELD_CHECKED"
+      | "AWAITING_TECHNICAL"
+      | "APPROVED"
+      | "REJECTED"
+      | "RELEASED"
+      | "REOPENED";
+    phase:
+      | "SUBMISSION"
+      | "FIELD_CHECK"
+      | "TECHNICAL_CHECK"
+      | "RELEASE"
+      | "REOPEN";
+    decision: "SUBMITTED" | "ACCEPTED" | "REJECTED" | "RELEASED" | "REOPENED";
+    reason: string | null;
+    snapshot: Prisma.InputJsonValue;
+    invalidateRdo?: boolean;
+  },
 ) {
+  const now = new Date();
   const updated = await context.prisma.projectProduction.updateMany({
     where: {
       id: productionId,
       ...scopeWhere(scope, projectId),
-      status: "APPROVED",
-      revision: expectedRevision,
+      status: { in: input.from },
+      revision: input.expectedRevision,
     },
     data: {
-      status: "DRAFT",
+      status: input.to,
       revision: { increment: 1 },
-      approvedByUserId: null,
-      approvedAt: null,
-      lastReopenReason: reason,
+      ...(input.invalidateRdo ? { operationalRevision: { increment: 1 } } : {}),
+      ...(input.to === "APPROVED" || input.to === "RELEASED"
+        ? { approvedByUserId: scope.actorUserId, approvedAt: now }
+        : {}),
+      ...(input.to === "DRAFT"
+        ? {
+            approvedByUserId: null,
+            approvedAt: null,
+            lastReopenReason: input.reason,
+          }
+        : {}),
     },
   });
   if (updated.count !== 1) return null;
@@ -473,17 +673,145 @@ export async function reopenProductionHandler(
     context.prisma.projectProductionRevision.create({
       data: {
         productionId,
-        revision: expectedRevision + 1,
-        event: "REOPENED",
-        reason,
-        snapshot,
+        revision: input.expectedRevision + 1,
+        event: input.event,
+        reason: input.reason,
+        snapshot: input.snapshot,
         actorUserId: scope.actorUserId,
       },
     }),
-    context.prisma.projectDailyReportProduction.updateMany({
-      where: { productionId },
-      data: { isStale: true },
+    context.prisma.projectProductionApproval.create({
+      data: {
+        productionId,
+        revision: input.expectedRevision + 1,
+        phase: input.phase,
+        decision: input.decision,
+        reason: input.reason,
+        snapshot: input.snapshot,
+        actorUserId: scope.actorUserId,
+      },
     }),
+    ...(input.invalidateRdo
+      ? [
+          context.prisma.projectDailyReportProduction.updateMany({
+            where: { productionId },
+            data: { isStale: true },
+          }),
+        ]
+      : []),
+  ]);
+  return findProductionHandler(context, scope, projectId, productionId);
+}
+
+export async function addProductionQualityCheckHandler(
+  context: HandlerContext,
+  scope: ProductionScope,
+  projectId: string,
+  productionId: string,
+  input: {
+    expectedRevision: number;
+    type:
+      | "FIELD_INSPECTION"
+      | "TOPOGRAPHY"
+      | "DENSITY"
+      | "PROCTOR"
+      | "COMPACTION"
+      | "MOISTURE"
+      | "FINISHING";
+    status: "PENDING" | "ACCEPTED" | "REJECTED";
+    value: string | null;
+    unitCode: string | null;
+    notes: string | null;
+    evidence: Prisma.InputJsonValue;
+    acceptedQuantity: {
+      componentId: string;
+      method: "TOPOGRAPHY" | "LABORATORY";
+      value: string;
+      unitCode: string;
+      volumeCondition: "BANK" | "LOOSE" | "COMPACTED" | "PLACED" | null;
+      sourceSnapshot: Prisma.InputJsonValue;
+    } | null;
+    snapshot: Prisma.InputJsonValue;
+  },
+) {
+  if (input.acceptedQuantity) {
+    const component = await context.prisma.projectProductionComponent.findFirst(
+      {
+        where: {
+          id: input.acceptedQuantity.componentId,
+          productionId,
+          production: scopeWhere(scope, projectId),
+        },
+        select: { id: true },
+      },
+    );
+    if (!component) return null;
+  }
+  const updated = await context.prisma.projectProduction.updateMany({
+    where: {
+      id: productionId,
+      ...scopeWhere(scope, projectId),
+      status: {
+        in: ["FIELD_CHECKED", "AWAITING_TECHNICAL", "APPROVED"],
+      },
+      revision: input.expectedRevision,
+    },
+    data: {
+      revision: { increment: 1 },
+      status: "AWAITING_TECHNICAL",
+    },
+  });
+  if (updated.count !== 1) return null;
+  await Promise.all([
+    context.prisma.projectProductionQualityCheck.create({
+      data: {
+        productionId,
+        type: input.type,
+        status: input.status,
+        value: input.value,
+        unitCode: input.unitCode,
+        notes: input.notes,
+        evidence: input.evidence,
+        actorUserId: scope.actorUserId,
+      },
+    }),
+    context.prisma.projectProductionRevision.create({
+      data: {
+        productionId,
+        revision: input.expectedRevision + 1,
+        event: "QUALITY_RECORDED",
+        snapshot: input.snapshot,
+        actorUserId: scope.actorUserId,
+      },
+    }),
+    ...(input.acceptedQuantity
+      ? [
+          context.prisma.projectProductionQuantity.upsert({
+            where: {
+              componentId_kind: {
+                componentId: input.acceptedQuantity.componentId,
+                kind: "TECHNICALLY_ACCEPTED",
+              },
+            },
+            create: {
+              componentId: input.acceptedQuantity.componentId,
+              kind: "TECHNICALLY_ACCEPTED",
+              method: input.acceptedQuantity.method,
+              value: input.acceptedQuantity.value,
+              unitCode: input.acceptedQuantity.unitCode,
+              volumeCondition: input.acceptedQuantity.volumeCondition,
+              sourceSnapshot: input.acceptedQuantity.sourceSnapshot,
+            },
+            update: {
+              method: input.acceptedQuantity.method,
+              value: input.acceptedQuantity.value,
+              unitCode: input.acceptedQuantity.unitCode,
+              volumeCondition: input.acceptedQuantity.volumeCondition,
+              sourceSnapshot: input.acceptedQuantity.sourceSnapshot,
+            },
+          }),
+        ]
+      : []),
   ]);
   return findProductionHandler(context, scope, projectId, productionId);
 }
@@ -544,6 +872,7 @@ export async function addProductionTripHandler(
     },
     data: {
       revision: { increment: 1 },
+      operationalRevision: { increment: 1 },
       officialQuantity: input.officialQuantity,
     },
   });
@@ -569,6 +898,10 @@ export async function addProductionTripHandler(
       snapshot,
       actorUserId: scope.actorUserId,
     },
+  });
+  await context.prisma.projectDailyReportProduction.updateMany({
+    where: { productionId },
+    data: { isStale: true },
   });
   return {
     duplicate: trip,
@@ -606,6 +939,7 @@ export async function removeProductionTripHandler(
     },
     data: {
       revision: { increment: 1 },
+      operationalRevision: { increment: 1 },
       officialQuantity,
     },
   });
@@ -621,6 +955,10 @@ export async function removeProductionTripHandler(
       snapshot,
       actorUserId: scope.actorUserId,
     },
+  });
+  await context.prisma.projectDailyReportProduction.updateMany({
+    where: { productionId },
+    data: { isStale: true },
   });
   return {
     missing: false as const,
@@ -670,7 +1008,11 @@ export async function confirmDailyReportProductionsHandler(
   context: HandlerContext,
   scope: ProductionScope,
   reportId: string,
-  productions: Array<{ id: string; revision: number }>,
+  productions: Array<{
+    id: string;
+    revision: number;
+    operationalRevision: number;
+  }>,
 ) {
   const ids = productions.map((item) => item.id);
   await context.prisma.projectDailyReportProduction.deleteMany({
@@ -689,12 +1031,14 @@ export async function confirmDailyReportProductionsHandler(
         dailyReportId: reportId,
         productionId: production.id,
         confirmedRevision: production.revision,
+        confirmedOperationalRevision: production.operationalRevision,
         isStale: false,
         confirmedByUserId: scope.actorUserId,
         confirmedAt,
       },
       update: {
         confirmedRevision: production.revision,
+        confirmedOperationalRevision: production.operationalRevision,
         isStale: false,
         confirmedByUserId: scope.actorUserId,
         confirmedAt,
@@ -729,9 +1073,10 @@ export async function dailyReportProductionReadinessHandler(
       id: true,
       status: true,
       revision: true,
+      operationalRevision: true,
       dailyReportLinks: {
         where: { dailyReportId: input.reportId },
-        select: { confirmedRevision: true, isStale: true },
+        select: { confirmedOperationalRevision: true, isStale: true },
       },
     },
   });
@@ -741,15 +1086,28 @@ export async function dailyReportProductionReadinessHandler(
     hasUnconfirmed: productions.some((production) => {
       const link = production.dailyReportLinks[0];
       return (
-        !link || link.isStale || link.confirmedRevision !== production.revision
+        !link ||
+        link.isStale ||
+        link.confirmedOperationalRevision !== production.operationalRevision
       );
     }),
   };
 }
 
-function withoutEquipment(data: ProductionWriteData) {
-  const { equipment, ...scalars } = data;
+function productionScalars(data: ProductionWriteData) {
+  const {
+    equipment,
+    individualActivity,
+    materialMovement,
+    components,
+    truckSummaries,
+    ...scalars
+  } = data;
   void equipment;
+  void individualActivity;
+  void materialMovement;
+  void components;
+  void truckSummaries;
   return scalars;
 }
 
@@ -763,6 +1121,13 @@ function equipmentCreate(items: ProductionWriteData["equipment"]) {
   return items.map((item) => ({
     ...equipmentScalars(item),
     stops: { create: item.stops },
+  }));
+}
+
+function componentCreate(items: ProductionWriteData["components"]) {
+  return items.map(({ quantities, ...component }) => ({
+    ...component,
+    quantities: { create: quantities },
   }));
 }
 

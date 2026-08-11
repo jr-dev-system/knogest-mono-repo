@@ -49,9 +49,16 @@ Atividades executadas são obrigatórias; interferências são opcionais. O RDO
 exige ao menos uma atividade e um participante. Máquinas são opcionais.
 
 Na revisão, o RDO também consulta as produções da mesma obra, data e turno.
-Rascunhos aparecem com alerta. Somente revisões aprovadas podem ser vinculadas,
-e a finalização exige que todas as produções do turno estejam aprovadas e
-confirmadas.
+Rascunhos aparecem com alerta e são o único estado de produção que bloqueia o
+fechamento. Produções enviadas, conferidas, aguardando técnica, aprovadas,
+rejeitadas ou liberadas preservam o fato diário e podem ser vinculadas. A
+interface destaca qualidade pendente sem bloquear o RDO.
+
+A confirmação fixa `operationalRevision`, não a revisão técnica geral.
+Topografia, laboratório, aprovação, rejeição ou liberação posteriores não
+invalidam o fato diário. Edição de campos operacionais, viagens, reabertura ou
+uma produção retroativa nova para o mesmo turno torna o resumo obsoleto e exige
+reconfirmação antes de uma nova finalização/validação operacional.
 
 ## Jornadas
 
@@ -111,6 +118,7 @@ Conflitos funcionais retornam `409` com códigos públicos:
 - `DAILY_REPORT_RESOURCE_UNAVAILABLE`;
 - `DAILY_REPORT_METER_READING_CONFLICT`.
 - `PROJECT_SHIFT_NOT_ENABLED`.
+- `PRODUCTION_RDO_CONFIRMATION_REQUIRED`.
 
 Detalhes de conflito contêm somente identificadores, nomes ou categorias
 seguras dos recursos afetados.
@@ -138,9 +146,10 @@ interrompe a sequência; falha ao finalizar mantém o rascunho e apresenta o
 erro no formulário.
 
 Antes da finalização, um `AlertDialog` informa que jornadas e medidores serão
-gravados, as revisões aprovadas de produção serão vinculadas e o RDO ficará
-imutável. Existindo produção em rascunho, a sequência é interrompida. O detalhe
-finalizado é somente leitura e exibe **Copiar mensagem** no footer.
+gravados, as revisões operacionais não rascunho serão vinculadas e o RDO ficará
+imutável. Existindo produção em rascunho, a sequência é interrompida; qualidade
+pendente é apenas sinalizada. O detalhe finalizado é somente leitura e exibe
+**Copiar mensagem** no footer.
 
 A mensagem é determinística em português e contém título/data, obra,
 responsáveis, localização/contrato/turno, horário/escala, checklists, chuva,

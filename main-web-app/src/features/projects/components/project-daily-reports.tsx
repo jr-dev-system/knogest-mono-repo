@@ -606,7 +606,7 @@ export function ProjectDailyReports({
       setIssues([
         {
           location: "Produção",
-          message: `${drafts.length} lançamento(s) de produção ainda estão em rascunho. Aprove-os antes de finalizar o RDO.`,
+          message: `${drafts.length} lançamento(s) de produção ainda estão em rascunho. Envie-os antes de finalizar o RDO.`,
         },
       ]);
       return;
@@ -1637,13 +1637,29 @@ function DailyReportReview({
         <section className="grid gap-3 p-4">
           <div className="flex items-center justify-between gap-3">
             <h3 className="font-bold">Produções do turno</h3>
-            {productions.some(
-              (production) => production.status === "draft",
-            ) && (
-              <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-amber-700">
-                Aprovação pendente
-              </span>
-            )}
+            <div className="flex flex-wrap justify-end gap-2">
+              {productions.some(
+                (production) => production.status === "draft",
+              ) && (
+                <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-amber-700">
+                  Envio pendente
+                </span>
+              )}
+              {productions.some((production) =>
+                ["submitted", "field_checked", "awaiting_technical"].includes(
+                  production.status,
+                ),
+              ) && (
+                <span className="rounded-full bg-sky-500/15 px-2.5 py-1 text-xs font-bold text-sky-700">
+                  Qualidade pendente — não bloqueia o RDO
+                </span>
+              )}
+              {productions.some((production) => production.rdo.stale) && (
+                <span className="rounded-full bg-amber-500/15 px-2.5 py-1 text-xs font-bold text-amber-700">
+                  Reconfirmação operacional necessária
+                </span>
+              )}
+            </div>
           </div>
           {productionsLoading ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -1668,12 +1684,16 @@ function DailyReportReview({
                   <span
                     className={cn(
                       "text-xs font-bold",
-                      production.status === "approved"
+                      ["approved", "released", "measured"].includes(
+                        production.status,
+                      )
                         ? "text-emerald-700"
-                        : "text-amber-700",
+                        : production.status === "rejected"
+                          ? "text-destructive"
+                          : "text-amber-700",
                     )}
                   >
-                    {production.status === "approved" ? "Aprovada" : "Rascunho"}
+                    {productionStatusLabel(production.status)}
                   </span>
                 </div>
               ))}
@@ -1732,6 +1752,21 @@ function ReviewLine({ label, value }: { label: string; value: string }) {
       </span>
     </div>
   );
+}
+
+function productionStatusLabel(status: ProjectProductionSummary["status"]) {
+  return (
+    {
+      draft: "Rascunho",
+      submitted: "Enviada",
+      field_checked: "Conferida em campo",
+      awaiting_technical: "Aguardando técnica",
+      approved: "Aprovada",
+      rejected: "Rejeitada",
+      released: "Liberada",
+      measured: "Medida",
+    } as Record<ProjectProductionSummary["status"], string>
+  )[status];
 }
 
 function ReviewList({ values, empty }: { values: string[]; empty: string }) {

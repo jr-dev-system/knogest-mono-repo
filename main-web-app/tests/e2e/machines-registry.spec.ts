@@ -5,6 +5,8 @@ async function login(page: import("@playwright/test").Page) {
   await page.getByLabel("Email corporativo").fill("master@pilot.test");
   await page.getByLabel("Senha").fill("correct e2e password");
   await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page).toHaveURL(/\/home\/company$/);
+  await page.getByRole("button", { name: /Pilot E2E Company/ }).click();
   await expect(page).toHaveURL(/\/home$/);
 }
 
@@ -12,7 +14,7 @@ test("creates, lists, and opens a synthetic Machine detail", async ({
   page,
 }) => {
   await login(page);
-  await page.getByRole("link", { name: "Máquinas" }).click();
+  await page.getByRole("link", { name: "Máquinas", exact: true }).click();
   await page.getByRole("button", { name: "Nova máquina" }).click();
   await page.getByLabel("Nome").fill("Synthetic E2E Machine");
   await page.locator('select[name="type"]').selectOption("YELLOW_LINE");

@@ -11,10 +11,13 @@ import {
 import {
   dailyReportProductionConfirmSchema,
   productionCommandSchema,
+  productionDecisionSchema,
+  productionHistoryQuerySchema,
   productionListQuerySchema,
   productionOptionsQuerySchema,
   productionParamsSchema,
   productionReopenSchema,
+  productionQualityCheckSchema,
   productionTransitionSchema,
   productionTripDeleteQuerySchema,
   productionTripSchema,
@@ -31,7 +34,16 @@ const nullableDecimal = { ...decimal, nullable: true } as const;
 const shift = { type: "string", enum: ["day", "night"] } as const;
 const productionStatus = {
   type: "string",
-  enum: ["draft", "approved"],
+  enum: [
+    "draft",
+    "submitted",
+    "field_checked",
+    "awaiting_technical",
+    "approved",
+    "rejected",
+    "released",
+    "measured",
+  ],
 } as const;
 const equipmentRole = {
   type: "string",
@@ -120,6 +132,24 @@ const equipmentCommandSchema = {
       minimum: 0,
       maximum: 1440,
     },
+    productiveMinutes: {
+      type: "integer",
+      nullable: true,
+      minimum: 0,
+      maximum: 1440,
+    },
+    waitingMinutes: {
+      type: "integer",
+      nullable: true,
+      minimum: 0,
+      maximum: 1440,
+    },
+    stoppedMinutes: {
+      type: "integer",
+      nullable: true,
+      minimum: 0,
+      maximum: 1440,
+    },
     defaultTripCapacityM3: nullableDecimal,
     stops: { type: "array", maxItems: 20, items: stopCommandSchema },
   },
@@ -136,36 +166,48 @@ const evidenceSchema = {
   },
 } as const;
 
-const productionCommandOpenApiSchema = {
+const volumeCondition = {
+  type: "string",
+  nullable: true,
+  enum: ["bank", "loose", "compacted", "placed"],
+} as const;
+const productionCommandCommonProperties = {
+  expectedRevision: { type: "integer", minimum: 1 },
+  submitNow: { type: "boolean" },
+  approveNow: { type: "boolean", deprecated: true },
+  productionDate: { type: "string", format: "date" },
+  shift,
+  startTime: {
+    type: "string",
+    nullable: true,
+    pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+  },
+  endTime: {
+    type: "string",
+    nullable: true,
+    pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+  },
+  endDayOffset: { type: "integer", minimum: 0, maximum: 1 },
+  responsibleEmploymentId: { ...uuid, nullable: true },
+  evidence: { type: "array", maxItems: 20, items: evidenceSchema },
+  notes: { type: "string", nullable: true, maxLength: 10_000 },
+  equipment: {
+    type: "array",
+    maxItems: 100,
+    items: equipmentCommandSchema,
+  },
+} as const;
+const individualActivityCommandSchema = {
   type: "object",
   additionalProperties: false,
-  required: [
-    "workFrontId",
-    "workFrontServiceId",
-    "productionDate",
-    "shift",
-    "entryMode",
-  ],
+  required: ["workFrontId", "workFrontServiceId"],
   properties: {
-    expectedRevision: { type: "integer", minimum: 1 },
-    approveNow: { type: "boolean", default: false },
     workFrontId: uuid,
     workFrontServiceId: uuid,
-    productionDate: { type: "string", format: "date" },
-    shift,
-    entryMode: { type: "string", enum: ["direct_total", "trips"] },
-    startTime: {
+    quantityMethod: {
       type: "string",
-      nullable: true,
-      pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
+      enum: ["manual", "topography", "laboratory"],
     },
-    endTime: {
-      type: "string",
-      nullable: true,
-      pattern: "^(?:[01]\\d|2[0-3]):[0-5]\\d$",
-    },
-    endDayOffset: { type: "integer", minimum: 0, maximum: 1, default: 0 },
-    responsibleEmploymentId: { ...uuid, nullable: true },
     location: { type: "string", nullable: true, maxLength: 240 },
     startStation: { type: "string", nullable: true, maxLength: 80 },
     endStation: { type: "string", nullable: true, maxLength: 80 },
@@ -173,17 +215,9 @@ const productionCommandOpenApiSchema = {
     elevation: { type: "string", nullable: true, maxLength: 80 },
     materialName: { type: "string", nullable: true, maxLength: 160 },
     materialCategory: { type: "string", nullable: true, maxLength: 120 },
-    volumeCondition: {
-      type: "string",
-      nullable: true,
-      enum: ["cut", "loose", "compacted"],
-    },
-    directQuantity: nullableDecimal,
-    measuredQuantity: nullableDecimal,
+    volumeCondition,
+    operationalQuantity: nullableDecimal,
     conversionFactor: nullableDecimal,
-    origin: { type: "string", nullable: true, maxLength: 240 },
-    destination: { type: "string", nullable: true, maxLength: 240 },
-    dmtKm: nullableDecimal,
     layerThicknessCm: nullableDecimal,
     compactionPasses: {
       type: "integer",
@@ -191,19 +225,148 @@ const productionCommandOpenApiSchema = {
       minimum: 0,
       maximum: 100,
     },
-    moistureCondition: {
+    moistureCondition: { type: "string", nullable: true, maxLength: 120 },
+    exceptionalFromMovement: { type: "boolean" },
+    exceptionReason: { type: "string", nullable: true, maxLength: 500 },
+  },
+} as const;
+const movementComponentCommandSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["workFrontId", "workFrontServiceId", "type", "unitCode"],
+  properties: {
+    workFrontId: uuid,
+    workFrontServiceId: uuid,
+    type: {
       type: "string",
-      nullable: true,
-      maxLength: 120,
+      enum: [
+        "cut",
+        "loading",
+        "transport",
+        "unloading",
+        "spreading",
+        "compaction",
+        "fill",
+        "finishing",
+      ],
     },
-    evidence: { type: "array", maxItems: 20, items: evidenceSchema },
-    notes: { type: "string", nullable: true, maxLength: 10_000 },
-    equipment: {
+    operationalQuantity: nullableDecimal,
+    unitCode: { type: "string", minLength: 1, maxLength: 32 },
+    volumeCondition,
+  },
+} as const;
+const materialMovementCommandSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "workFrontId",
+    "workFrontServiceId",
+    "materialName",
+    "origin",
+    "destination",
+    "dmtKm",
+    "components",
+  ],
+  properties: {
+    workFrontId: uuid,
+    workFrontServiceId: uuid,
+    materialRevisionId: { ...uuid, nullable: true },
+    routeRevisionId: { ...uuid, nullable: true },
+    materialName: { type: "string", minLength: 1, maxLength: 160 },
+    materialCategory: { type: "string", nullable: true, maxLength: 120 },
+    densityTPerM3: nullableDecimal,
+    swellFactor: nullableDecimal,
+    looseToCompactedFactor: nullableDecimal,
+    origin: { type: "string", minLength: 1, maxLength: 240 },
+    destination: { type: "string", minLength: 1, maxLength: 240 },
+    dmtKm: decimal,
+    contractualDmtKm: nullableDecimal,
+    contractualBand: { type: "string", nullable: true, maxLength: 80 },
+    layer: { type: "string", nullable: true, maxLength: 80 },
+    volumeCondition,
+    layerThicknessCm: nullableDecimal,
+    compactionPasses: {
+      type: "integer",
+      nullable: true,
+      minimum: 0,
+      maximum: 100,
+    },
+    moistureCondition: { type: "string", nullable: true, maxLength: 120 },
+    components: {
       type: "array",
-      maxItems: 100,
-      items: equipmentCommandSchema,
+      minItems: 1,
+      maxItems: 12,
+      items: movementComponentCommandSchema,
     },
   },
+} as const;
+const truckSummaryCommandSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["machineId", "acceptedTrips"],
+  properties: {
+    machineId: uuid,
+    driverEmploymentId: { ...uuid, nullable: true },
+    acceptedTrips: { type: "integer", minimum: 0, maximum: 10_000 },
+    rejectedTrips: { type: "integer", minimum: 0, maximum: 10_000 },
+    partialTripCount: { type: "integer", minimum: 0, maximum: 10_000 },
+    partialVolume: decimal,
+    actualWeightT: nullableDecimal,
+    loadFactor: decimal,
+    averageCycleMinutes: {
+      type: "integer",
+      nullable: true,
+      minimum: 0,
+      maximum: 1440,
+    },
+    occurrenceNotes: { type: "string", nullable: true, maxLength: 500 },
+  },
+} as const;
+const productionCommandOpenApiSchema = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["kind", "productionDate", "shift", "individualActivity"],
+      properties: {
+        ...productionCommandCommonProperties,
+        kind: { type: "string", const: "individual_activity" },
+        entryMode: { type: "string", const: "direct_total" },
+        individualActivity: individualActivityCommandSchema,
+        truckSummaries: {
+          type: "array",
+          maxItems: 100,
+          items: truckSummaryCommandSchema,
+        },
+      },
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "kind",
+        "productionDate",
+        "shift",
+        "materialMovement",
+        "truckSummaries",
+      ],
+      properties: {
+        ...productionCommandCommonProperties,
+        kind: { type: "string", const: "material_movement" },
+        entryMode: {
+          type: "string",
+          enum: ["truck_summary", "trips"],
+        },
+        materialMovement: materialMovementCommandSchema,
+        truckSummaries: {
+          type: "array",
+          minItems: 1,
+          maxItems: 100,
+          items: truckSummaryCommandSchema,
+        },
+      },
+    },
+  ],
 } as const;
 
 const metricsSchema = {
@@ -242,12 +405,14 @@ const summarySchema = {
   additionalProperties: false,
   required: [
     "id",
+    "kind",
     "serviceCode",
     "unitCode",
     "productionDate",
     "shift",
     "status",
     "revision",
+    "operationalRevision",
     "location",
     "route",
     "dmtKm",
@@ -262,12 +427,17 @@ const summarySchema = {
   ],
   properties: {
     id: uuid,
+    kind: {
+      type: "string",
+      enum: ["individual_activity", "material_movement"],
+    },
     serviceCode: { type: "string" },
     unitCode: { type: "string" },
     productionDate: { type: "string", format: "date" },
     shift,
     status: productionStatus,
     revision: { type: "integer" },
+    operationalRevision: { type: "integer" },
     location: nullableString,
     route: {
       type: "object",
@@ -299,6 +469,7 @@ const productionDetailSchema = {
   additionalProperties: true,
   required: [
     "id",
+    "kind",
     "projectId",
     "workFrontId",
     "workFrontServiceId",
@@ -311,6 +482,7 @@ const productionDetailSchema = {
     "status",
     "entryMode",
     "revision",
+    "operationalRevision",
     "metrics",
     "equipment",
     "trips",
@@ -321,6 +493,10 @@ const productionDetailSchema = {
   ],
   properties: {
     id: uuid,
+    kind: {
+      type: "string",
+      enum: ["individual_activity", "material_movement"],
+    },
     projectId: uuid,
     workFrontId: uuid,
     workFrontServiceId: uuid,
@@ -331,8 +507,12 @@ const productionDetailSchema = {
     productionDate: { type: "string", format: "date" },
     shift,
     status: productionStatus,
-    entryMode: { type: "string", enum: ["direct_total", "trips"] },
+    entryMode: {
+      type: "string",
+      enum: ["direct_total", "truck_summary", "trips"],
+    },
     revision: { type: "integer" },
+    operationalRevision: { type: "integer" },
     evidence: { type: "array", items: evidenceSchema },
     metrics: metricsSchema,
     equipment: {
@@ -340,6 +520,22 @@ const productionDetailSchema = {
       items: { type: "object", additionalProperties: true },
     },
     trips: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    components: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    truckSummaries: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    qualityChecks: {
+      type: "array",
+      items: { type: "object", additionalProperties: true },
+    },
+    approvalHistory: {
       type: "array",
       items: { type: "object", additionalProperties: true },
     },
@@ -353,36 +549,83 @@ const productionDetailSchema = {
 const capabilitiesSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["createDraft", "publishDirect", "approveOthers", "reopen"],
+  required: [
+    "createDraft",
+    "submit",
+    "check",
+    "recordTopography",
+    "recordLaboratory",
+    "approve",
+    "reject",
+    "release",
+    "reopen",
+    "viewHistory",
+    "measure",
+  ],
   properties: {
     createDraft: { type: "boolean" },
+    submit: { type: "boolean" },
+    check: { type: "boolean" },
+    recordTopography: { type: "boolean" },
+    recordLaboratory: { type: "boolean" },
+    approve: { type: "boolean" },
+    reject: { type: "boolean" },
+    release: { type: "boolean" },
     publishDirect: { type: "boolean" },
     approveOthers: { type: "boolean" },
     reopen: { type: "boolean" },
+    viewHistory: { type: "boolean" },
+    measure: { type: "boolean" },
   },
 } as const;
 
 const productionOptionsSchema = {
   type: "object",
   additionalProperties: true,
-  required: ["workFronts"],
+  required: ["workFronts", "dateLimits"],
   properties: {
+    dateLimits: {
+      type: "object",
+      required: ["minimum", "maximum", "timeZone"],
+      properties: {
+        minimum: { type: "string", format: "date" },
+        maximum: { type: "string", format: "date" },
+        timeZone: { type: "string" },
+      },
+    },
     workFronts: {
       type: "array",
       items: {
         type: "object",
         additionalProperties: true,
-        required: ["machines"],
+        required: ["equipment", "trucks"],
         properties: {
-          machines: {
+          equipment: {
             type: "array",
             items: {
               type: "object",
               additionalProperties: true,
               required: ["loadVolumeM3", "maxSupportedWeightT"],
               properties: {
-                loadVolumeM3: { type: "string" },
+                loadVolumeM3: { type: "string", nullable: true },
                 maxSupportedWeightT: { type: "string", nullable: true },
+              },
+            },
+          },
+          trucks: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: true,
+              required: [
+                "nominalCapacity",
+                "effectiveCapacity",
+                "capacityUnitCode",
+              ],
+              properties: {
+                nominalCapacity: { type: "string" },
+                effectiveCapacity: { type: "string" },
+                capacityUnitCode: { type: "string" },
               },
             },
           },
@@ -447,6 +690,10 @@ export const v1ProductionsController = async (app: FastifyInstance) => {
             productionDate: { type: "string", format: "date" },
             shift,
             status: productionStatus,
+            kind: {
+              type: "string",
+              enum: ["individual_activity", "material_movement"],
+            },
             workFrontId: uuid,
             sortBy: {
               type: "string",
@@ -566,6 +813,74 @@ export const v1ProductionsController = async (app: FastifyInstance) => {
     },
   );
 
+  app.get(
+    "/projects/:projectId/productions/:productionId/history",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(productionParamsSchema),
+        validateQuery(productionHistoryQuerySchema),
+      ],
+      schema: {
+        tags: ["Project productions"],
+        summary: "List the append-only production history",
+        security: [{ bearerAuth: [] }],
+        params: productionParams,
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+            cursor: { type: "string" },
+            sortBy: {
+              type: "string",
+              enum: ["revision"],
+              default: "revision",
+            },
+            sortDirection: {
+              type: "string",
+              enum: ["asc", "desc"],
+              default: "desc",
+            },
+          },
+        },
+        response: {
+          200: successSchema({
+            type: "object",
+            required: ["data", "pageInfo"],
+            properties: {
+              data: {
+                type: "array",
+                items: { type: "object", additionalProperties: true },
+              },
+              pageInfo: {
+                type: "object",
+                required: ["hasNextPage", "nextCursor"],
+                properties: {
+                  hasNextPage: { type: "boolean" },
+                  nextCursor: { type: "string", nullable: true },
+                },
+              },
+            },
+          }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId, productionId } = request.params as z.infer<
+        typeof productionParamsSchema
+      >;
+      const data = await service.history(
+        scopeFromRequest(request),
+        projectId,
+        productionId!,
+        request.query as z.infer<typeof productionHistoryQuerySchema>,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
   app.post(
     "/projects/:projectId/productions",
     {
@@ -628,6 +943,173 @@ export const v1ProductionsController = async (app: FastifyInstance) => {
         projectId,
         productionId!,
         request.body as z.infer<typeof productionCommandSchema>,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  for (const transition of ["submit", "check"] as const) {
+    app.post(
+      `/projects/:projectId/productions/:productionId/${transition}`,
+      {
+        preHandler: [
+          app.requireCompanyScope,
+          validateParams(productionParamsSchema),
+          validateBody(productionTransitionSchema),
+        ],
+        schema: {
+          tags: ["Project productions"],
+          summary:
+            transition === "submit"
+              ? "Submit an operational production"
+              : "Field-check a submitted production",
+          security: [{ bearerAuth: [] }],
+          params: productionParams,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["expectedRevision"],
+            properties: { expectedRevision: { type: "integer", minimum: 1 } },
+          },
+          response: {
+            200: successSchema(productionDetailSchema),
+            ...commonErrors,
+          },
+        },
+      },
+      async (request, reply) => {
+        const { projectId, productionId } = request.params as z.infer<
+          typeof productionParamsSchema
+        >;
+        const command = request.body as z.infer<
+          typeof productionTransitionSchema
+        >;
+        const data = await service[transition](
+          scopeFromRequest(request),
+          projectId,
+          productionId!,
+          command,
+        );
+        return jsonResponse.success({ reply, data });
+      },
+    );
+  }
+
+  for (const transition of ["reject", "release"] as const) {
+    app.post(
+      `/projects/:projectId/productions/:productionId/${transition}`,
+      {
+        preHandler: [
+          app.requireCompanyScope,
+          validateParams(productionParamsSchema),
+          validateBody(productionDecisionSchema),
+        ],
+        schema: {
+          tags: ["Project productions"],
+          summary:
+            transition === "reject"
+              ? "Reject a submitted production"
+              : "Release an approved production",
+          security: [{ bearerAuth: [] }],
+          params: productionParams,
+          body: {
+            type: "object",
+            additionalProperties: false,
+            required: ["expectedRevision"],
+            properties: {
+              expectedRevision: { type: "integer", minimum: 1 },
+              reason: { type: "string", nullable: true, maxLength: 500 },
+            },
+          },
+          response: {
+            200: successSchema(productionDetailSchema),
+            ...commonErrors,
+          },
+        },
+      },
+      async (request, reply) => {
+        const { projectId, productionId } = request.params as z.infer<
+          typeof productionParamsSchema
+        >;
+        const data = await service[transition](
+          scopeFromRequest(request),
+          projectId,
+          productionId!,
+          request.body as z.infer<typeof productionDecisionSchema>,
+        );
+        return jsonResponse.success({ reply, data });
+      },
+    );
+  }
+
+  app.post(
+    "/projects/:projectId/productions/:productionId/quality-checks",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(productionParamsSchema),
+        validateBody(productionQualityCheckSchema),
+      ],
+      schema: {
+        tags: ["Project productions"],
+        summary: "Record an append-only production quality check",
+        security: [{ bearerAuth: [] }],
+        params: productionParams,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["expectedRevision", "type", "status"],
+          properties: {
+            expectedRevision: { type: "integer", minimum: 1 },
+            type: {
+              type: "string",
+              enum: [
+                "field_inspection",
+                "topography",
+                "density",
+                "proctor",
+                "compaction",
+                "moisture",
+                "finishing",
+              ],
+            },
+            status: {
+              type: "string",
+              enum: ["pending", "accepted", "rejected"],
+            },
+            value: nullableDecimal,
+            unitCode: { type: "string", nullable: true, maxLength: 32 },
+            notes: { type: "string", nullable: true, maxLength: 500 },
+            evidence: { type: "array", maxItems: 20, items: evidenceSchema },
+            acceptedQuantity: {
+              type: "object",
+              nullable: true,
+              additionalProperties: false,
+              required: ["componentId", "value", "unitCode"],
+              properties: {
+                componentId: uuid,
+                value: decimal,
+                unitCode: { type: "string", minLength: 1, maxLength: 32 },
+                volumeCondition,
+              },
+            },
+          },
+        },
+        response: {
+          200: successSchema(productionDetailSchema),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId, productionId } = request.params as z.infer<
+        typeof productionParamsSchema
+      >;
+      const data = await service.qualityCheck(
+        scopeFromRequest(request),
+        projectId,
+        productionId!,
+        request.body as z.infer<typeof productionQualityCheckSchema>,
       );
       return jsonResponse.success({ reply, data });
     },

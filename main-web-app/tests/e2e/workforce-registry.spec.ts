@@ -8,6 +8,8 @@ async function login(page: import("@playwright/test").Page) {
   await page.getByLabel("Email corporativo").fill("master@pilot.test");
   await page.getByLabel("Senha").fill("correct e2e password");
   await page.getByRole("button", { name: "Entrar" }).click();
+  await expect(page).toHaveURL(/\/home\/company$/);
+  await page.getByRole("button", { name: /Pilot E2E Company/ }).click();
   await expect(page).toHaveURL(/\/home$/);
 }
 
@@ -15,7 +17,7 @@ test("creates, lists, and opens a synthetic Employee detail", async ({
   page,
 }) => {
   await login(page);
-  await page.getByRole("link", { name: "Funcionários" }).click();
+  await page.getByRole("link", { name: "Funcionários", exact: true }).click();
   await page.getByRole("button", { name: "Novo funcionário" }).click();
   await page.getByLabel("CPF").fill(syntheticCpfFixture);
   await page.getByLabel("Nome completo").fill("Synthetic E2E Worker");
@@ -38,7 +40,7 @@ test("rehires a terminated Employee and keeps period history visible", async ({
   page,
 }) => {
   await login(page);
-  await page.getByRole("link", { name: "Funcionários" }).click();
+  await page.getByRole("link", { name: "Funcionários", exact: true }).click();
   await page.locator('select[name="state"]').selectOption("terminated");
   await page.getByRole("button", { name: "Filtrar" }).click();
   await expect(page.getByText("Synthetic Rehire Fixture")).toBeVisible();
@@ -52,11 +54,13 @@ test("rehires a terminated Employee and keeps period history visible", async ({
 
   await page.reload();
   await expect(page.getByText("Ativo")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Recontratar funcionário" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Recontratar funcionário" }),
+  ).toHaveCount(0);
   await expect(page.getByText("Atual")).toBeVisible();
   await expect(page.getByText("Encerrado")).toBeVisible();
 
-  await page.getByRole("link", { name: "Funcionários" }).click();
+  await page.getByRole("link", { name: "Funcionários", exact: true }).click();
   await expect(page.getByText("Synthetic Rehire Fixture")).toBeVisible();
   await expect(page.getByText("Disponível")).toBeVisible();
 });

@@ -3826,9 +3826,18 @@ export function ProjectDetail({
                     pageInfo: { hasNextPage: false, nextCursor: null },
                     capabilities: {
                       createDraft: true,
+                      submit: true,
+                      check: true,
+                      recordTopography: true,
+                      recordLaboratory: true,
+                      approve: true,
+                      reject: true,
+                      release: true,
                       publishDirect: true,
                       approveOthers: true,
                       reopen: true,
+                      viewHistory: true,
+                      measure: false,
                     },
                   }
                 }

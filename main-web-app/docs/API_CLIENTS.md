@@ -49,9 +49,20 @@ action de finalização chama
 de domínio é `success`; um `200` do protocolo da Server Action não basta.
 
 O fluxo de produção usa os clientes gerados para opções do turno, listagem,
-detalhe, rascunho, aprovação, reabertura e viagens rápidas. O componente nunca
-incrementa viagens apenas em estado local: cada toque envia UUID de
-idempotência e substitui o detalhe pela revisão retornada pela API.
+detalhe, comando discriminado, catálogos, workflow, qualidade, histórico e
+viagens legadas. `productions.actions.ts` é a fronteira server-only;
+componentes não repetem tipos de transporte gerados. O wizard envia
+`individualActivity` ou `materialMovement`, nunca `officialQuantity`.
+
+Materiais e rotas criados inline passam primeiro pelas rotas versionadas do
+catálogo e o comando de produção recebe os IDs das revisões retornadas. O
+resumo por caminhão é salvo junto ao agregado; a capacidade efetiva vem das
+opções da API e é somente leitura. A prévia decimal é apresentação local, mas o
+snapshot devolvido pela API sempre substitui o estado do componente.
+
+No modo compatível de eventos, o componente nunca incrementa viagens apenas em
+estado local: cada toque envia UUID de idempotência e substitui o detalhe pela
+revisão retornada pela API.
 
 O cadastro de equipe envia `shift` em cada alocação e pode reconciliar
 `weeklySchedule` e `breakTemplates` na mesma chamada de mobilização. Máquinas
@@ -84,7 +95,9 @@ de metadados da frente. A interface consome `produced`, `minimumQuantity` e
 `maximumQuantity` do snapshot, sem recalcular a regra de domínio.
 
 O cadastro de máquina envia `loadVolumeM3` e `maxSupportedWeightT` somente para
-`WHITE_LINE`. A edição usa
+`WHITE_LINE`. A API mantém esses campos compatíveis sincronizados com
+`MachineTransportSpecification`, que define capacidade nominal/efetiva,
+unidade e peso máximo para a seleção de caminhões. A edição usa
 `PATCH /machines/:machineId/load-specification`, enviando cada campo como string
 decimal ou `null`. Em produção, a capacidade é somente leitura e vem das opções
 do turno; valores legados enviados no comando são ignorados pela API.
@@ -94,10 +107,12 @@ Antes de finalizar o RDO, a interface:
 1. salva o rascunho do relatório;
 2. consulta todas as produções da data e turno;
 3. interrompe se encontrar rascunhos;
-4. confirma os IDs das produções aprovadas;
+4. confirma os IDs de todas as produções não rascunho e fixa suas
+   `operationalRevision`;
 5. chama a finalização do RDO.
 
-Falha em qualquer etapa mantém o RDO em rascunho e mostra o erro de domínio.
+Qualidade pendente é exibida, mas não interrompe a sequência. Falha em qualquer
+etapa mantém o RDO em rascunho e mostra o erro de domínio.
 
 ## Testes e manutencao
 

@@ -59,19 +59,33 @@ type indevido.
 Produção de terraplenagem usa os seguintes códigos públicos:
 
 - `PRODUCTION_PROJECT_UNAVAILABLE`: obra inativa ou indisponível;
+- `PRODUCTION_DATE_OUT_OF_RANGE`: data fora da janela operacional calculada em
+  `America/Sao_Paulo`;
 - `PROJECT_SHIFT_NOT_ENABLED`: turno não habilitado para a obra;
 - `PRODUCTION_RESOURCE_UNAVAILABLE`: frente, serviço, responsável, operador ou
-  máquina não elegível no turno;
+  máquina não elegível no turno, ou revisão de material/rota fora da obra ou
+  vigência;
 - `PRODUCTION_IMMUTABLE`: operação incompatível com estado ou forma de
   lançamento;
 - `PRODUCTION_REVISION_CONFLICT`: revisão otimista desatualizada;
 - `PRODUCTION_APPROVAL_INCOMPLETE`: campos técnicos obrigatórios ausentes;
+- `PRODUCTION_TRANSITION_REASON_REQUIRED`: rejeição ou reabertura sem motivo;
+- `PRODUCTION_QUALITY_PENDING`: ensaio obrigatório ainda não aceito;
+- `PRODUCTION_QUALITY_REJECTED`: verificação técnica rejeitada impede aprovação;
+- `PRODUCTION_CATALOG_CONFLICT`: código ou período de vigência conflita com o
+  histórico do material/rota;
+- `PRODUCTION_DUPLICATE_BATCH`: fingerprint do lote já existe; `details` pode
+  conter somente `existingProductionId`;
+- `PRODUCTION_BATCH_IDENTITY_IMMUTABLE`: alteração de material, rota, origem,
+  destino, camada ou composição deve criar outro lote;
+- `PRODUCTION_MIXED_TRANSPORT_BASIS`: o lote mistura resumos com e sem peso de
+  balança;
 - `PRODUCTION_DMT_REQUIRED`: rota ou DMT obrigatória incompleta;
 - `PRODUCTION_DMT_NOT_APPLICABLE`: DMT informada para serviço incompatível;
 - `PRODUCTION_EQUIPMENT_HAS_TRIPS`: tentativa de remover caminhão com viagens;
 - `PRODUCTION_SHIFT_LIMIT_EXCEEDED`: limite de 200 lançamentos no turno;
-- `PRODUCTION_RDO_CONFIRMATION_REQUIRED`: produção em rascunho, não confirmada
-  ou com revisão invalidada;
+- `PRODUCTION_RDO_CONFIRMATION_REQUIRED`: produção em rascunho, revisão
+  operacional não confirmada ou confirmação operacional invalidada;
 - `IDEMPOTENCY_PAYLOAD_CONFLICT`: chave de viagem reutilizada com outro
   payload.
 

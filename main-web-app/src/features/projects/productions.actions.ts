@@ -5,24 +5,118 @@ import { z } from "zod";
 
 import { deleteApiV1ProjectsProjectidProductionsProductionidTripsTripid } from "@/generated/clients/deleteApiV1ProjectsProjectidProductionsProductionidTripsTripid";
 import { getApiV1ProjectsProjectidDailyReportsReportidProductions } from "@/generated/clients/getApiV1ProjectsProjectidDailyReportsReportidProductions";
+import { getApiV1ProjectsProjectidEarthworkMaterials } from "@/generated/clients/getApiV1ProjectsProjectidEarthworkMaterials";
+import { getApiV1ProjectsProjectidHaulRoutes } from "@/generated/clients/getApiV1ProjectsProjectidHaulRoutes";
 import { getApiV1ProjectsProjectidProductions } from "@/generated/clients/getApiV1ProjectsProjectidProductions";
 import { getApiV1ProjectsProjectidProductionsOptions } from "@/generated/clients/getApiV1ProjectsProjectidProductionsOptions";
 import { getApiV1ProjectsProjectidProductionsProductionid } from "@/generated/clients/getApiV1ProjectsProjectidProductionsProductionid";
 import { postApiV1ProjectsProjectidDailyReportsReportidProductionsConfirm } from "@/generated/clients/postApiV1ProjectsProjectidDailyReportsReportidProductionsConfirm";
+import { postApiV1ProjectsProjectidEarthworkMaterials } from "@/generated/clients/postApiV1ProjectsProjectidEarthworkMaterials";
+import { postApiV1ProjectsProjectidHaulRoutes } from "@/generated/clients/postApiV1ProjectsProjectidHaulRoutes";
 import { postApiV1ProjectsProjectidProductions } from "@/generated/clients/postApiV1ProjectsProjectidProductions";
 import { postApiV1ProjectsProjectidProductionsProductionidApprove } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidApprove";
+import { postApiV1ProjectsProjectidProductionsProductionidCheck } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidCheck";
+import { postApiV1ProjectsProjectidProductionsProductionidQualityChecks } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidQualityChecks";
+import { postApiV1ProjectsProjectidProductionsProductionidReject } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidReject";
+import { postApiV1ProjectsProjectidProductionsProductionidRelease } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidRelease";
 import { postApiV1ProjectsProjectidProductionsProductionidReopen } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidReopen";
+import { postApiV1ProjectsProjectidProductionsProductionidSubmit } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidSubmit";
 import { postApiV1ProjectsProjectidProductionsProductionidTrips } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidTrips";
 import { putApiV1ProjectsProjectidProductionsProductionid } from "@/generated/clients/putApiV1ProjectsProjectidProductionsProductionid";
 import { ApiClientError } from "@/lib/api/api-client-error";
 
 import type {
   ProjectDailyReportProductionSummary,
+  EarthworkCatalogPage,
+  EarthworkMaterialOption,
+  HaulRouteOption,
   ProjectProductionCommand,
   ProjectProductionDetail,
   ProjectProductionMutationResult,
   ProjectProductionOptions,
 } from "./productions.types";
+
+export async function getEarthworkCatalogOptionsAction(input: {
+  projectId: string;
+  search?: string;
+}) {
+  const projectId = uuid.parse(input.projectId);
+  const params = {
+    limit: 100,
+    search: input.search,
+    active: true,
+    sortBy: "name" as const,
+    sortDirection: "asc" as const,
+  };
+  const [materials, routes] = await Promise.all([
+    getApiV1ProjectsProjectidEarthworkMaterials({ projectId, params }),
+    getApiV1ProjectsProjectidHaulRoutes({ projectId, params }),
+  ]);
+  return {
+    materials: materials.data as EarthworkCatalogPage<EarthworkMaterialOption>,
+    routes: routes.data as EarthworkCatalogPage<HaulRouteOption>,
+  };
+}
+
+export async function createEarthworkMaterialAction(input: {
+  projectId: string;
+  code: string;
+  name: string;
+  classification?: string;
+  category?: string;
+  densityTPerM3?: string;
+  swellFactor?: string;
+  looseToCompactedFactor?: string;
+  effectiveFrom: string;
+}) {
+  const response = await postApiV1ProjectsProjectidEarthworkMaterials({
+    projectId: uuid.parse(input.projectId),
+    data: {
+      code: input.code,
+      name: input.name,
+      classification: input.classification,
+      category: input.category,
+      densityTPerM3: input.densityTPerM3,
+      swellFactor: input.swellFactor,
+      looseToCompactedFactor: input.looseToCompactedFactor,
+      effectiveFrom: z.iso
+        .datetime({ offset: true })
+        .parse(input.effectiveFrom),
+    },
+  });
+  return response.data as EarthworkMaterialOption;
+}
+
+export async function createHaulRouteAction(input: {
+  projectId: string;
+  code: string;
+  name: string;
+  origin: string;
+  destination: string;
+  loadedDistanceKm: string;
+  emptyReturnDistanceKm?: string;
+  contractualDmtKm?: string;
+  contractualBand?: string;
+  effectiveFrom: string;
+}) {
+  const response = await postApiV1ProjectsProjectidHaulRoutes({
+    projectId: uuid.parse(input.projectId),
+    data: {
+      code: input.code,
+      name: input.name,
+      origin: input.origin,
+      destination: input.destination,
+      loadedDistanceKm: input.loadedDistanceKm,
+      emptyReturnDistanceKm: input.emptyReturnDistanceKm,
+      contractualDmtKm: input.contractualDmtKm,
+      contractualBand: input.contractualBand,
+      effectiveFrom: z.iso
+        .datetime({ offset: true })
+        .parse(input.effectiveFrom),
+    },
+  });
+  return response.data as HaulRouteOption;
+}
 
 const uuid = z.string().uuid();
 
@@ -144,6 +238,123 @@ export async function approveProjectProductionAction(
         data: { expectedRevision },
       });
     revalidate(parsedProjectId);
+    return {
+      kind: "success",
+      production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function transitionProjectProductionAction(input: {
+  projectId: string;
+  productionId: string;
+  expectedRevision: number;
+  transition: "submit" | "check" | "approve" | "release";
+  reason?: string;
+}): Promise<ProjectProductionMutationResult> {
+  const projectId = uuid.parse(input.projectId);
+  const productionId = uuid.parse(input.productionId);
+  try {
+    const response =
+      input.transition === "submit"
+        ? await postApiV1ProjectsProjectidProductionsProductionidSubmit({
+            projectId,
+            productionId,
+            data: { expectedRevision: input.expectedRevision },
+          })
+        : input.transition === "check"
+          ? await postApiV1ProjectsProjectidProductionsProductionidCheck({
+              projectId,
+              productionId,
+              data: { expectedRevision: input.expectedRevision },
+            })
+          : input.transition === "approve"
+            ? await postApiV1ProjectsProjectidProductionsProductionidApprove({
+                projectId,
+                productionId,
+                data: { expectedRevision: input.expectedRevision },
+              })
+            : await postApiV1ProjectsProjectidProductionsProductionidRelease({
+                projectId,
+                productionId,
+                data: {
+                  expectedRevision: input.expectedRevision,
+                  reason: input.reason,
+                },
+              });
+    revalidate(projectId);
+    return {
+      kind: "success",
+      production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function rejectProjectProductionAction(input: {
+  projectId: string;
+  productionId: string;
+  expectedRevision: number;
+  reason: string;
+}): Promise<ProjectProductionMutationResult> {
+  const projectId = uuid.parse(input.projectId);
+  try {
+    const response =
+      await postApiV1ProjectsProjectidProductionsProductionidReject({
+        projectId,
+        productionId: uuid.parse(input.productionId),
+        data: {
+          expectedRevision: input.expectedRevision,
+          reason: z.string().trim().min(3).max(500).parse(input.reason),
+        },
+      });
+    revalidate(projectId);
+    return {
+      kind: "success",
+      production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function recordProjectProductionQualityAction(input: {
+  projectId: string;
+  productionId: string;
+  expectedRevision: number;
+  type:
+    | "field_inspection"
+    | "topography"
+    | "density"
+    | "proctor"
+    | "compaction"
+    | "moisture"
+    | "finishing";
+  status: "pending" | "accepted" | "rejected";
+  value?: string;
+  unitCode?: string;
+  notes?: string;
+}): Promise<ProjectProductionMutationResult> {
+  const projectId = uuid.parse(input.projectId);
+  try {
+    const response =
+      await postApiV1ProjectsProjectidProductionsProductionidQualityChecks({
+        projectId,
+        productionId: uuid.parse(input.productionId),
+        data: {
+          expectedRevision: input.expectedRevision,
+          type: input.type,
+          status: input.status,
+          value: input.value,
+          unitCode: input.unitCode,
+          notes: input.notes,
+          evidence: [],
+        },
+      });
+    revalidate(projectId);
     return {
       kind: "success",
       production: response.data as ProjectProductionDetail,
