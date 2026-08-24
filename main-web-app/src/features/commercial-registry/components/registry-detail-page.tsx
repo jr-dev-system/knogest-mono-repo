@@ -22,6 +22,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
+import { useActionNotification } from "@/hooks/useActionNotification";
 import {
   canonicalDecimalToBrazilian,
   formatBrazilianDecimalInput,
@@ -212,6 +213,9 @@ export function RegistryDetailPage({
     handleUpdateSupplierAction,
     initialOfferState ?? { ok: false, message: "" },
   );
+  useActionNotification(saveState, { notifyOnError: false });
+  useActionNotification(removeState);
+  useActionNotification(supplierState, { notifyOnError: false });
   const entityLabel =
     record.entityType === "individual" ? "Pessoa física" : "Pessoa jurídica";
   const primaryName =
@@ -753,18 +757,6 @@ export function RegistryDetailPage({
             </div>
           )}
 
-          {removeState.message && (
-            <p
-              role="status"
-              className={
-                removeState.ok
-                  ? "border-t border-border px-5 py-3 text-sm font-semibold text-emerald-800"
-                  : "border-t border-border px-5 py-3 text-sm font-semibold text-red-900"
-              }
-            >
-              {removeState.message}
-            </p>
-          )}
         </section>
       )}
 

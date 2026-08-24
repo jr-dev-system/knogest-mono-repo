@@ -12,6 +12,16 @@ async function login(page: import("@playwright/test").Page) {
   await expect(page).toHaveURL(/\/home$/);
 }
 
+async function expectTopCenterToast(
+  page: import("@playwright/test").Page,
+  message: string,
+) {
+  await expect(page.getByText(message)).toBeVisible();
+  const toaster = page.locator("[data-sonner-toaster]");
+  await expect(toaster).toHaveAttribute("data-y-position", "top");
+  await expect(toaster).toHaveAttribute("data-x-position", "center");
+}
+
 test("removes a synthetic Client only after backend confirmation", async ({
   page,
 }) => {
@@ -21,13 +31,11 @@ test("removes a synthetic Client only after backend confirmation", async ({
   await page.getByLabel("CPF ou CNPJ").fill(syntheticCpfFixture);
   await page.getByLabel("Nome completo").fill("Synthetic E2E Client");
   await page.getByRole("button", { name: "Novo cliente" }).click();
-  await expect(page.getByText("Cliente cadastrado.")).toBeVisible();
+  await expectTopCenterToast(page, "Cliente cadastrado.");
   await expect(page.getByText("Synthetic E2E Client")).toBeVisible();
 
   page.once("dialog", (dialog) => dialog.accept());
   await page.getByRole("button", { name: "Remover" }).click();
-  await expect(
-    page.getByText("Cliente removido do uso operacional."),
-  ).toBeVisible();
+  await expectTopCenterToast(page, "Cliente removido do uso operacional.");
   await expect(page.getByText("Synthetic E2E Client")).toHaveCount(0);
 });

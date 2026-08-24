@@ -1,27 +1,21 @@
 "use client";
 
 import * as React from "react";
-import { useActionState } from "react";
-import { useFormStatus } from "react-dom";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   CalendarArrowDown,
   ChevronRight,
   Eye,
   FileSearch,
-  Plus,
   Search,
   UserRound,
   type LucideIcon,
 } from "lucide-react";
 
-import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
-import { OperationsModal } from "@/components/ui/operations-modal";
-import { createJobRoleForEmployee } from "@/features/job-roles/job-roles.actions";
-import { formatCpf } from "../cpf-mask";
+import { EmployeeCreationWizard } from "./employee-creation-wizard";
 import type { EmployeeActionState } from "../employees-action-state";
 import type { EmployeeListItem, EmployeesListQuery } from "../employees.server";
 
@@ -30,58 +24,19 @@ type EmployeeAction = (
   formData: FormData,
 ) => Promise<EmployeeActionState>;
 
-function SubmitButton({ formId }: { formId?: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button form={formId} type="submit" disabled={pending}>
-      <Plus className="size-4" />
-      {pending ? "Salvando" : "Cadastrar funcionário"}
-    </Button>
-  );
-}
-
-function Field({
-  label,
-  name,
-  required = false,
-  type = "text",
-}: {
-  label: string;
-  name: string;
-  required?: boolean;
-  type?: string;
-}) {
-  return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      <span>{label}</span>
-      <Input name={name} required={required} type={type} className="h-11" />
-    </label>
-  );
-}
-
 export function EmployeesPageView({
   action,
-  initialState,
   pageInfo,
   query,
   rows,
   jobRoles,
 }: {
   action: EmployeeAction;
-  initialState: EmployeeActionState;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
   query: EmployeesListQuery;
   rows: EmployeeListItem[];
   jobRoles: Array<{ id: string; name: string; isActive: boolean }>;
 }) {
-  const [state, formAction] = useActionState(action, initialState);
-  const [roles, setRoles] = React.useState(jobRoles);
-  const [newRoleName, setNewRoleName] = React.useState("");
-  const [showRoleCreator, setShowRoleCreator] = React.useState(false);
-  const [roleMessage, setRoleMessage] = React.useState("");
-  const [isCreatingRole, setIsCreatingRole] = React.useState(false);
-  const [selectedRoleId, setSelectedRoleId] = React.useState("");
-  const [isEmployeeModalOpen, setIsEmployeeModalOpen] = React.useState(false);
   const hasFilters = Boolean(query.search || query.availability || query.state);
   const nextParams = new URLSearchParams();
   if (query.search) nextParams.set("search", query.search);
@@ -149,166 +104,11 @@ export function EmployeesPageView({
               </Button>
             </form>
 
-            <OperationsModal
-              icon={UserRound}
-              open={isEmployeeModalOpen}
-              onOpenChange={setIsEmployeeModalOpen}
-              size="lg"
-              title="Cadastrar funcionário"
-              description="Registre os dados do vínculo e a função que será confirmada na alocação da obra."
-              footer={
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsEmployeeModalOpen(false)}
-                  >
-                    Cancelar
-                  </Button>
-                  <SubmitButton formId="employee-create-form" />
-                </>
-              }
-              trigger={
-                <Button>
-                  <Plus className="size-4" />
-                  Novo funcionário
-                </Button>
-              }
-            >
-              <form
-                id="employee-create-form"
-                action={formAction}
-                className="grid gap-4"
-              >
-                <FormSection title="Dados pessoais">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="grid gap-1.5 text-sm font-semibold">
-                      <span>CPF</span>
-                      <Input
-                        name="document"
-                        required
-                        inputMode="numeric"
-                        autoComplete="off"
-                        placeholder="000.000.000-00"
-                        maxLength={14}
-                        onChange={(event) => {
-                          event.currentTarget.value = formatCpf(
-                            event.currentTarget.value,
-                          );
-                        }}
-                        className="h-11"
-                        aria-describedby="cpf-help"
-                      />
-                    </label>
-                    <Field label="Nome completo" name="fullName" required />
-                  </div>
-                </FormSection>
-                <FormSection title="Vínculo">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Field
-                      label="Matrícula"
-                      name="companyRegistrationNumber"
-                      required
-                    />
-                    <Field
-                      label="Admissão"
-                      name="admissionDate"
-                      required
-                      type="date"
-                    />
-                  </div>
-                </FormSection>
-                <FormSection
-                  title="Função"
-                  description="A função fica registrada no vínculo e será confirmada ao alocar o funcionário na obra."
-                >
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Função</span>
-                    <select
-                      name="jobRoleId"
-                      required
-                      value={selectedRoleId}
-                      onChange={(event) =>
-                        setSelectedRoleId(event.target.value)
-                      }
-                      className="min-h-11 rounded-md border border-input bg-background px-3"
-                    >
-                      <option value="">Selecione a função</option>
-                      {roles
-                        .filter((role) => role.isActive)
-                        .map((role) => (
-                          <option key={role.id} value={role.id}>
-                            {role.name}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  {showRoleCreator ? (
-                    <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto]">
-                      <Input
-                        value={newRoleName}
-                        onChange={(event) => setNewRoleName(event.target.value)}
-                        placeholder="Nome da nova função"
-                        maxLength={120}
-                        className="min-h-11"
-                      />
-                      <Button
-                        type="button"
-                        variant="outline"
-                        disabled={!newRoleName.trim() || isCreatingRole}
-                        onClick={async () => {
-                          setIsCreatingRole(true);
-                          setRoleMessage("");
-                          const data = new FormData();
-                          data.set("name", newRoleName);
-                          const result = await createJobRoleForEmployee(data);
-                          setIsCreatingRole(false);
-                          setRoleMessage(result.message);
-                          const role = result.ok ? result.data : undefined;
-                          if (role) {
-                            setRoles((current) => [...current, role]);
-                            setSelectedRoleId(role.id);
-                            setNewRoleName("");
-                            setShowRoleCreator(false);
-                          }
-                        }}
-                      >
-                        {isCreatingRole ? "Criando…" : "Criar e selecionar"}
-                      </Button>
-                    </div>
-                  ) : (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="justify-self-start min-h-11"
-                      onClick={() => setShowRoleCreator(true)}
-                    >
-                      Criar nova função
-                    </Button>
-                  )}
-                  {roleMessage && (
-                    <p
-                      role="status"
-                      className="text-sm font-medium text-muted-foreground"
-                    >
-                      {roleMessage}
-                    </p>
-                  )}
-                </FormSection>
-                {!state.ok && state.message && (
-                  <FormErrorDeclaration
-                    title="Não foi possível cadastrar o funcionário."
-                    description="O servidor recusou o envio. Revise o formulário antes de tentar novamente."
-                    issues={[
-                      {
-                        location: "API",
-                        message: state.message,
-                      },
-                    ]}
-                  />
-                )}
-              </form>
-            </OperationsModal>
+            <EmployeeCreationWizard
+              action={action}
+              initialRoles={jobRoles}
+              onCreated={() => toast.success("Funcionário cadastrado.")}
+            />
           </div>
         </div>
 

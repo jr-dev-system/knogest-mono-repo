@@ -8,6 +8,7 @@ import { ArrowLeft, Gauge, Save, Scale, Tag, Truck } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useActionNotification } from "@/hooks/useActionNotification";
 import type { MachineActionState } from "../machines-action-state";
 import type { MachineDetail } from "../machines.server";
 import { formatMeterReading, meterTypeLabel } from "../meter-format";
@@ -29,6 +30,8 @@ export function MachineDetailPage({
     ok: false,
     message: "",
   });
+
+  useActionNotification(state);
 
   useEffect(() => {
     if (state.ok) router.refresh();
@@ -148,21 +151,7 @@ export function MachineDetailPage({
                 />
               </label>
             </div>
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              {state.message ? (
-                <p
-                  role={state.ok ? "status" : "alert"}
-                  className={
-                    state.ok
-                      ? "text-sm font-semibold text-emerald-800"
-                      : "text-sm font-semibold text-destructive"
-                  }
-                >
-                  {state.message}
-                </p>
-              ) : (
-                <span />
-              )}
+            <div className="flex justify-end">
               <Button type="submit" disabled={pending}>
                 <Save className="size-4" />
                 {pending ? "Salvando..." : "Salvar capacidade"}

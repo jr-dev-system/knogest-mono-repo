@@ -50,6 +50,9 @@ function failureMessage(error: unknown) {
     if (error.code === "VALIDATION_ERROR") {
       return "Revise CPF, nome, matrícula e admissão.";
     }
+    if (error.code === "JOB_ROLE_UNAVAILABLE") {
+      return "A função selecionada não está mais disponível. Selecione outra para continuar.";
+    }
     if (
       error.code === "EMPLOYEE_ALLOCATION_UNAVAILABLE" ||
       error.code === "EMPLOYEE_ALLOCATION_CURRENT_STATE_CONFLICT" ||
@@ -60,7 +63,9 @@ function failureMessage(error: unknown) {
     if (error.code === "EMPLOYEE_REALLOCATION_DESTINATION_UNAVAILABLE") {
       return "A empresa ou obra de destino não está mais disponível.";
     }
-    if (error.code === "EMPLOYEE_REALLOCATION_DESTINATION_EMPLOYMENT_REQUIRED") {
+    if (
+      error.code === "EMPLOYEE_REALLOCATION_DESTINATION_EMPLOYMENT_REQUIRED"
+    ) {
       return "A pessoa não possui vínculo ativo na empresa de destino.";
     }
     if (error.code === "EMPLOYEE_ALLOCATION_TERMS_UNCHANGED") {
@@ -69,11 +74,16 @@ function failureMessage(error: unknown) {
     if (error.code === "EMPLOYMENT_TERMINATION_MANAGER_BLOCKED") {
       return "Transfira a gerência atual da obra antes de encerrar o vínculo.";
     }
-    if (error.code === "EMPLOYMENT_TERMINATION_TECHNICAL_RESPONSIBILITY_BLOCKED") {
+    if (
+      error.code === "EMPLOYMENT_TERMINATION_TECHNICAL_RESPONSIBILITY_BLOCKED"
+    ) {
       return "Defina outra responsabilidade técnica antes de encerrar o vínculo.";
     }
     if (error.status === 401 || error.status === 403) {
       return "Sua sessão não tem permissão para concluir esta operação.";
+    }
+    if (error.status && error.status >= 500) {
+      return "Não foi possível cadastrar o funcionário agora. Tente novamente em instantes.";
     }
     return error.message;
   }

@@ -235,6 +235,28 @@ export function BaseFormModal<TData extends FieldValues>({
     }
   };
 
+  const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    if (isWizard) {
+      const submitter = (event.nativeEvent as SubmitEvent).submitter;
+      const isExplicitFinalAction =
+        submitter instanceof HTMLElement &&
+        submitter.dataset.wizardSubmit === "true";
+
+      if (!isLastStep) {
+        event.preventDefault();
+        void handleNextStep();
+        return;
+      }
+
+      if (!isExplicitFinalAction) {
+        event.preventDefault();
+        return;
+      }
+    }
+
+    void form.handleSubmit(handleSubmitWrapper, handleInvalidSubmit)(event);
+  };
+
   const handleKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
     if (
       event.key === "Enter" &&
@@ -262,7 +284,7 @@ export function BaseFormModal<TData extends FieldValues>({
       <form
         className="flex max-h-[calc(100vh-9rem)] min-h-0 flex-col"
         onKeyDown={handleKeyDown}
-        onSubmit={form.handleSubmit(handleSubmitWrapper, handleInvalidSubmit)}
+        onSubmit={handleFormSubmit}
       >
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-4">
           {isWizard && steps && activeStep ? (
@@ -343,6 +365,7 @@ export function BaseFormModal<TData extends FieldValues>({
               ) : (
                 <Button
                   type="submit"
+                  data-wizard-submit="true"
                   size="lg"
                   className="min-h-11"
                   disabled={navigationDisabled}

@@ -69,6 +69,12 @@ O cadastro de equipe envia `shift` em cada alocação e pode reconciliar
 usam `operatorAssignments` por turno; frentes usam `machineAssignments` com o
 par `machineId + shift`. Ao trocar data ou turno na produção, a interface
 reconsulta as opções antes de substituir responsáveis, frente e máquinas.
+
+No cadastro de funcionário, a criação inline de função chama a Server Action
+que encapsula `POST /api/v1/job-roles`. `JOB_ROLE_ALREADY_EXISTS` é apresentado
+como duplicidade na empresa; falhas inesperadas usam mensagem segura e mantêm o
+`requestId` retornado no resultado da action para suporte, sem expor o erro
+interno da API.
 Cada alocação envia `monthlyWorkloadHours` como inteiro entre 1 e 744. O RDO
 não recebe nem devolve snapshot dessa carga: `completedFullShift` faz a API
 resolver as horas normais pela janela efetiva do próprio relatório.

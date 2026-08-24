@@ -303,7 +303,6 @@ export function ProjectWizardIdentity({
       if (result.kind === "failure") {
         setAddressAutofill({ status: "manual", filled: new Set() });
         toast.error(`${result.message} Preencha o endereço manualmente.`, {
-          position: "top-center",
           duration: 3500,
         });
         return;
@@ -339,7 +338,7 @@ export function ProjectWizardIdentity({
       setAddressAutofill({ status: "manual", filled: new Set() });
       toast.error(
         "Não foi possível consultar o CEP. Preencha o endereço manualmente.",
-        { position: "top-center", duration: 3500 },
+        { duration: 3500 },
       );
     } finally {
       setIsCepLoading(false);

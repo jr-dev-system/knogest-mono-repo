@@ -407,7 +407,7 @@ describe("Project wizard polish", () => {
     await waitFor(() =>
       expect(toast.error).toHaveBeenCalledWith(
         "CEP não encontrado. Preencha o endereço manualmente.",
-        { position: "top-center", duration: 3500 },
+        { duration: 3500 },
       ),
     );
     expect(input("Logradouro").disabled).toBe(false);

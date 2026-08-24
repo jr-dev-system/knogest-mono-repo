@@ -10,6 +10,16 @@ async function login(page: import("@playwright/test").Page) {
   await expect(page).toHaveURL(/\/home$/);
 }
 
+async function expectTopCenterToast(
+  page: import("@playwright/test").Page,
+  message: string,
+) {
+  await expect(page.getByText(message)).toBeVisible();
+  const toaster = page.locator("[data-sonner-toaster]");
+  await expect(toaster).toHaveAttribute("data-y-position", "top");
+  await expect(toaster).toHaveAttribute("data-x-position", "center");
+}
+
 test("creates, lists, and opens a synthetic Machine detail", async ({
   page,
 }) => {
@@ -23,7 +33,7 @@ test("creates, lists, and opens a synthetic Machine detail", async ({
   await page.getByLabel("Patrimônio").fill("MCH-E2E-001");
   await page.getByLabel("Leitura inicial").fill("12.50");
   await page.getByRole("button", { name: "Cadastrar máquina" }).click();
-  await expect(page.getByText("Máquina cadastrada.")).toBeVisible();
+  await expectTopCenterToast(page, "Máquina cadastrada.");
   await expect(page.getByText("Synthetic E2E Machine")).toBeVisible();
   await expect(page.getByText("MCH-E2E-001")).toBeVisible();
   await expect(page.getByText("12,50 h")).toBeVisible();

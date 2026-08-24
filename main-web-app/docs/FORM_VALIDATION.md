@@ -15,8 +15,27 @@
 - Mensagens devem ser orientadas à ação do usuário. Use “Informe o logradouro.”, “Selecione o cliente.” ou “Informe um valor válido.”; nunca exponha nomes técnicos (`address.street`) nem textos internos da biblioteca (`Muito pequeno`, `expected string`, `uuid`).
 - Erros de API e Server Actions também usam `FormErrorDeclaration`, com localização `API`, em vez de toast ou parágrafo solto dentro do formulário.
 - Ações operacionais pontuais, como **Iniciar obra**, podem exigir confirmação em `AlertDialog` antes de chamar a Server Action. Depois da confirmação, erros de API e Server Actions são exibidos em toast; o título identifica a ação que falhou e a descrição usa a mensagem segura ou os bloqueios devolvidos pela API.
-- Toast fica reservado para feedback transitório que não bloqueia o envio, como falha temporária de consulta ViaCEP que libera preenchimento manual.
+- O Sonner global fica no topo central. Use toast para sucessos, avisos, informações e falhas operacionais recuperáveis que não exigem correção no formulário, como cadastro concluído, remoção confirmada e falha temporária de consulta ViaCEP.
+- Erros que exigem correção durante o preenchimento continuam no `FormErrorDeclaration`, que preserva contexto, foco e orientação de correção. Quando a ação operacional também precisar confirmar uma falha recuperável, ela pode emitir toast sem substituir essa declaração.
 - Ao criar novos campos em wizard, preencha `fieldLabels` no `WizardStep` ou no `BaseFormModal` para evitar nomes técnicos como `managerEmploymentId` na declaração de erro.
+
+## Funcionários
+
+O cadastro de funcionário usa o assistente padrão em quatro etapas: **Função**,
+**Dados cadastrais**, **Vínculo** e **Revisão**. Cada avanço valida somente os
+campos da etapa atual; na revisão, ações **Editar** retornam ao grupo correto
+sem descartar o rascunho. A função é obrigatória no primeiro passo, pode ser
+criada no próprio fluxo e deve estar ativa para iniciar o vínculo.
+Uma submissão nativa do navegador antes da revisão é tratada como avanço da
+etapa atual. Mesmo com a revisão visível, o cadastro só pode ser enviado pela
+ação final explícita do rodapé; eventos residuais da transição são ignorados.
+
+Erros de criação de função ou de cadastro aparecem no `FormErrorDeclaration`
+da etapa atual. Erros inesperados de servidor são apresentados com mensagem
+segura e orientada à tentativa, sem expor `Internal server error`. Ao criar uma
+função, duplicidades mostram que o nome já existe na empresa; falhas inesperadas
+mantêm o nome digitado e exibem o código de atendimento (`requestId`) quando a
+API o devolve.
 
 ## Máscaras
 

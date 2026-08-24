@@ -3,6 +3,7 @@
 import * as React from "react";
 import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
+import { toast } from "sonner";
 import {
   ChevronRight,
   Eye,
@@ -126,6 +127,7 @@ export function MachinesPageView({
     if (nextState.ok) {
       resetMachineForm();
       setIsMachineModalOpen(false);
+      if (nextState.message) toast.success(nextState.message);
     }
     return nextState;
   }
@@ -382,14 +384,6 @@ export function MachinesPageView({
               </form>
             </OperationsModal>
           </div>
-          {state.ok && state.message && (
-            <p
-              role="status"
-              className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-950"
-            >
-              {state.message}
-            </p>
-          )}
         </div>
 
         <div className="overflow-x-auto">

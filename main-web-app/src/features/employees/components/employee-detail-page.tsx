@@ -16,6 +16,7 @@ import type { ReactNode } from "react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useActionNotification } from "@/hooks/useActionNotification";
 import type { EmployeeActionState } from "../employees-action-state";
 import type { EmployeeDetail } from "../employees.server";
 
@@ -68,6 +69,10 @@ export function EmployeeDetailPage({
     initialState,
   );
 
+  useActionNotification(state);
+  useActionNotification(jobRoleState);
+  useActionNotification(terminationState);
+
   return (
     <div className="space-y-4">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -86,18 +91,6 @@ export function EmployeeDetailPage({
           >
             <input type="hidden" name="employmentId" value={record.id} />
             <RehireButton />
-            {state.message && (
-              <p
-                role="status"
-                className={`rounded-md border px-3 py-2 text-sm font-semibold ${
-                  state.ok
-                    ? "border-emerald-200 bg-emerald-50 text-emerald-950"
-                    : "border-red-200 bg-red-50 text-red-950"
-                }`}
-              >
-                {state.message}
-              </p>
-            )}
           </form>
         )}
       </div>
@@ -253,18 +246,6 @@ export function EmployeeDetailPage({
             <div className="flex items-end">
               <JobRoleSubmit />
             </div>
-            {jobRoleState.message && (
-              <p
-                role="status"
-                className={
-                  jobRoleState.ok
-                    ? "text-sm font-medium text-emerald-700 sm:col-span-3"
-                    : "text-sm font-medium text-destructive sm:col-span-3"
-                }
-              >
-                {jobRoleState.message}
-              </p>
-            )}
           </form>
         )}
       </section>
@@ -282,11 +263,6 @@ export function EmployeeDetailPage({
             </label>
             <TerminateSubmit />
           </form>
-          {terminationState.message && (
-            <p role="status" className={terminationState.ok ? "mt-2 text-sm font-medium text-emerald-700" : "mt-2 text-sm font-medium text-destructive"}>
-              {terminationState.message}
-            </p>
-          )}
         </section>
       )}
       <AllocationPanel
@@ -342,6 +318,10 @@ function AllocationPanel({
     reallocateAction,
     initialState,
   );
+  useActionNotification(allocateState);
+  useActionNotification(releaseState);
+  useActionNotification(termsState);
+  useActionNotification(reallocateState);
   const allocation = record.currentAllocation;
   const [destinationCompanyId, setDestinationCompanyId] = useState(companyId);
   if (!allocation)
@@ -375,18 +355,6 @@ function AllocationPanel({
           <div className="md:col-span-2">
             <AllocationSubmit label="Alocar funcionário" />
           </div>
-          {allocateState.message && (
-            <p
-              role="status"
-              className={
-                allocateState.ok
-                  ? "text-sm text-emerald-700"
-                  : "text-sm text-destructive"
-              }
-            >
-              {allocateState.message}
-            </p>
-          )}
         </form>
       </section>
     ) : null;
@@ -412,11 +380,6 @@ function AllocationPanel({
             <Input name="reason" required maxLength={500} />
           </label>
           <AllocationSubmit label="Liberar agora" />
-          {releaseState.message && (
-            <p role="status" className="text-sm">
-              {releaseState.message}
-            </p>
-          )}
         </form>
         <form
           action={termsFormAction}
@@ -426,11 +389,6 @@ function AllocationPanel({
           <input type="hidden" name="allocationId" value={allocation.id} />
           <TermsFields defaults={allocation} includeReason />
           <AllocationSubmit label="Atualizar termos" />
-          {termsState.message && (
-            <p role="status" className="text-sm">
-              {termsState.message}
-            </p>
-          )}
         </form>
         <form
           action={reallocateFormAction}
@@ -477,11 +435,6 @@ function AllocationPanel({
           </label>
           <TermsFields defaults={allocation} includeReason />
           <AllocationSubmit label="Realocar" />
-          {reallocateState.message && (
-            <p role="status" className="text-sm">
-              {reallocateState.message}
-            </p>
-          )}
         </form>
       </div>
     </section>

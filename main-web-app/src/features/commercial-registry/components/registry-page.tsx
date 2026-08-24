@@ -24,6 +24,7 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
+import { useActionNotification } from "@/hooks/useActionNotification";
 import {
   formatBrazilianPhone,
   formatCep,
@@ -333,6 +334,9 @@ export function RegistryPage({
     },
     initialState,
   );
+
+  useActionNotification(state, { notifyOnError: false });
+  useActionNotification(removeState);
 
   return (
     <div className="space-y-4">
@@ -842,18 +846,6 @@ export function RegistryPage({
               {rows.length} registros nesta página
               {hasFilters ? " · filtros ativos" : ""}
             </p>
-            {removeState.message && (
-              <p
-                role="status"
-                className={
-                  removeState.ok
-                    ? "font-semibold text-emerald-800"
-                    : "font-semibold text-red-900"
-                }
-              >
-                {removeState.message}
-              </p>
-            )}
           </div>
           <div className="flex items-center gap-2">
             {pageInfo.nextCursor ? (

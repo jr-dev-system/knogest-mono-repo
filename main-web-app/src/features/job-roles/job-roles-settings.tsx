@@ -5,6 +5,7 @@ import { useFormStatus } from "react-dom";
 import { Pencil, Plus, Power } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useActionNotification } from "@/hooks/useActionNotification";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { createJobRoleAction, deactivateJobRoleAction, renameJobRoleAction, type JobRoleActionState } from "./job-roles.actions";
 
@@ -17,8 +18,8 @@ function Submit({ children }: { children: React.ReactNode }) {
 }
 
 function Feedback({ state }: { state: JobRoleActionState }) {
-  if (!state.message) return null;
-  return <p role="status" className={state.ok ? "text-sm font-medium text-emerald-700" : "text-sm font-medium text-destructive"}>{state.message}</p>;
+  useActionNotification(state);
+  return null;
 }
 
 function RoleRow({ role }: { role: Role }) {

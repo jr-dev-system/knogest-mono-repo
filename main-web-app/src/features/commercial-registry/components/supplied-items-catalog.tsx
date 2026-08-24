@@ -31,6 +31,7 @@ import { Button } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
+import { useActionNotification } from "@/hooks/useActionNotification";
 import {
   canonicalDecimalToBrazilian,
   decimalInputToCanonicalFixed,
@@ -327,11 +328,8 @@ export function SuppliedItemsCatalog({
     async (state, formData) => {
       const result = await saveSupplierOfferAction(state, formData);
       if (result.ok && result.message) {
-        toast.success(result.message);
         setItemOfferDraft(emptyItemOfferDraft);
         if (itemOffersTarget) await loadItemOffers(itemOffersTarget.id);
-      } else if (result.message) {
-        toast.error(result.message);
       }
       return result;
     },
@@ -361,9 +359,12 @@ export function SuppliedItemsCatalog({
     handleSaveItemOfferAction,
     initialState,
   );
-  useActionToast(removeItemState);
-  useActionToast(removeCategoryState);
-  useActionToast(addSupplierState);
+  useActionNotification(saveItemState);
+  useActionNotification(removeItemState);
+  useActionNotification(saveCategoryState);
+  useActionNotification(removeCategoryState);
+  useActionNotification(addSupplierState);
+  useActionNotification(saveItemOfferState);
 
   const searchSuppliers = useCallback(
     (search: string, excludedSupplierIds?: string[]) => {
@@ -1883,23 +1884,6 @@ function FloatingItemActionMenu({
     </div>,
     document.body,
   );
-}
-
-function useActionToast(state: RegistryActionState) {
-  const lastMessageRef = useRef("");
-
-  useEffect(() => {
-    if (!state.message) return;
-    const messageKey = `${state.ok ? "ok" : "error"}:${state.message}`;
-    if (lastMessageRef.current === messageKey) return;
-    lastMessageRef.current = messageKey;
-
-    if (state.ok) {
-      toast.success(state.message);
-      return;
-    }
-    toast.error(state.message);
-  }, [state.message, state.ok]);
 }
 
 function Metric({ label, value }: { label: string; value: string }) {

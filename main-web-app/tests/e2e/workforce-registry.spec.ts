@@ -13,18 +13,40 @@ async function login(page: import("@playwright/test").Page) {
   await expect(page).toHaveURL(/\/home$/);
 }
 
+async function expectTopCenterToast(
+  page: import("@playwright/test").Page,
+  message: string,
+) {
+  await expect(page.getByText(message)).toBeVisible();
+  const toaster = page.locator("[data-sonner-toaster]");
+  await expect(toaster).toHaveAttribute("data-y-position", "top");
+  await expect(toaster).toHaveAttribute("data-x-position", "center");
+}
+
 test("creates, lists, and opens a synthetic Employee detail", async ({
   page,
 }) => {
   await login(page);
   await page.getByRole("link", { name: "Funcionários", exact: true }).click();
   await page.getByRole("button", { name: "Novo funcionário" }).click();
+  await expect(
+    page.getByRole("navigation", { name: "Progresso do formulário" }),
+  ).toBeVisible();
+  await page.getByLabel("Função").selectOption({ label: "Encarregado E2E" });
+  await page.getByRole("button", { name: "Avançar" }).click();
   await page.getByLabel("CPF").fill(syntheticCpfFixture);
   await page.getByLabel("Nome completo").fill("Synthetic E2E Worker");
+  await page.getByRole("button", { name: "Avançar" }).click();
   await page.getByLabel("Matrícula").fill("E2E-001");
   await page.getByLabel("Admissão").fill("2026-07-01");
+  await page.getByRole("button", { name: "Avançar" }).click();
+  await expect(
+    page.getByRole("region", { name: "Revisão do cadastro" }),
+  ).toBeVisible();
+  await expect(page.getByText("Synthetic E2E Worker")).toBeVisible();
+  await expect(page.getByText("E2E-001")).toBeVisible();
   await page.getByRole("button", { name: "Cadastrar funcionário" }).click();
-  await expect(page.getByText("Funcionário cadastrado.")).toBeVisible();
+  await expectTopCenterToast(page, "Funcionário cadastrado.");
   await expect(page.getByText("Synthetic E2E Worker")).toBeVisible();
   await expect(page.getByText("***.***.247-25")).toBeVisible();
   await expect(page.getByText("Disponível")).toBeVisible();
@@ -50,7 +72,7 @@ test("rehires a terminated Employee and keeps period history visible", async ({
   await expect(page.getByText("Encerrado")).toBeVisible();
   await expect(page.getByText("Synthetic termination fixture")).toBeVisible();
   await page.getByRole("button", { name: "Recontratar funcionário" }).click();
-  await expect(page.getByText("Funcionário recontratado.")).toBeVisible();
+  await expectTopCenterToast(page, "Funcionário recontratado.");
 
   await page.reload();
   await expect(page.getByText("Ativo")).toBeVisible();

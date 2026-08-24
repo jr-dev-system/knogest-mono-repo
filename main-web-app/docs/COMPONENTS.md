@@ -61,8 +61,9 @@ Validação, mensagens em português, opcionais e máscaras seguem
 
 Anatomia: cabeçalho com ícone, título e descrição; corpo rolável com seções;
 erros bloqueantes via `FormErrorDeclaration`; e rodapé fixo, fora da rolagem,
-com cancelar e ação primária. Feedback positivo pós-envio pode usar
-`role="status"` fora do formulário.
+com cancelar e ação primária. Feedback transitório pós-envio usa o Sonner
+global no topo central; `role="status"` fica reservado para estados que fazem
+parte do conteúdo, como carregamento ou indicador operacional persistente.
 Funcionários, clientes e fornecedores de combustível são as referências do
 padrão reutilizável.
 
