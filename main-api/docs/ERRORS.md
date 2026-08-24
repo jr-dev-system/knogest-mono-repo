@@ -103,3 +103,9 @@ categorias seguras.
 
 Os três casos usam `422`. Limites quantitativos podem aparecer em `blockers`,
 sem expor payload, SQL ou detalhes de persistência.
+
+## Funções da empresa
+
+- `JOB_ROLE_ALREADY_EXISTS` retorna `409` quando o nome normalizado da função
+  já existe na mesma empresa. O mesmo nome pode existir em outra empresa da
+  corporação.

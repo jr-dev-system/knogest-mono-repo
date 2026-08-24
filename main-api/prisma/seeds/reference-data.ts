@@ -35,6 +35,23 @@ export async function seedReferenceData(_prisma: PrismaClient): Promise<void> {
     ["00000000-0000-4000-8000-00000000a014", "KM", "Quilômetro"],
     ["00000000-0000-4000-8000-00000000a015", "T_KM", "Tonelada-quilômetro"],
   ] as const) {
+    const existingGlobalUnit = await prisma.measurementUnit.findFirst({
+      where: {
+        corporationId: null,
+        companyId: null,
+        code: unit[1],
+      },
+      select: { id: true },
+    });
+
+    if (existingGlobalUnit) {
+      await prisma.measurementUnit.update({
+        where: { id: existingGlobalUnit.id },
+        data: { name: unit[2] },
+      });
+      continue;
+    }
+
     await prisma.measurementUnit.upsert({
       where: { id: unit[0] },
       update: { code: unit[1], name: unit[2] },

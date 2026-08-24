@@ -177,6 +177,64 @@ describe("workforce Person and Employment registry", () => {
     ]);
   });
 
+  it("creates job roles per Company and maps normalized duplicates to a conflict", async () => {
+    const pilot = await provision("create-job-role");
+    const firstCompanyAuthorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+    const secondCompanyAuthorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[1].id,
+    });
+
+    const created = await app.inject({
+      method: "POST",
+      url: "/api/v1/job-roles",
+      headers: { authorization: firstCompanyAuthorization },
+      payload: { name: "Topógrafo" },
+    });
+
+    expect(created.statusCode).toBe(201);
+    expect(created.json().data).toMatchObject({
+      name: "Topógrafo",
+      isActive: true,
+    });
+
+    const duplicate = await app.inject({
+      method: "POST",
+      url: "/api/v1/job-roles",
+      headers: { authorization: firstCompanyAuthorization },
+      payload: { name: "  topógrafo  " },
+    });
+
+    expect(duplicate.statusCode).toBe(409);
+    expect(duplicate.json()).toMatchObject({
+      code: "JOB_ROLE_ALREADY_EXISTS",
+    });
+
+    const secondCompanyList = await app.inject({
+      method: "GET",
+      url: "/api/v1/job-roles",
+      headers: { authorization: secondCompanyAuthorization },
+    });
+    expect(secondCompanyList.statusCode).toBe(200);
+    expect(secondCompanyList.json().data).not.toEqual(
+      expect.arrayContaining([expect.objectContaining({ name: "Topógrafo" })]),
+    );
+
+    const isolated = await app.inject({
+      method: "POST",
+      url: "/api/v1/job-roles",
+      headers: { authorization: secondCompanyAuthorization },
+      payload: { name: "TOPÓGRAFO" },
+    });
+    expect(isolated.statusCode).toBe(201);
+    expect(isolated.json().data.id).not.toBe(created.json().data.id);
+  });
+
   it("creates a Person, Employment, and first open Employment Period atomically", async () => {
     const pilot = await provision("create");
     const authorization = await authFor({

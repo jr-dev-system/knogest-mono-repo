@@ -984,9 +984,15 @@ export async function createJobRoleHandler(
   context: HandlerContext,
   input: { corporationId: string; companyId: string; name: string },
 ) {
+  const { corporationId, companyId, name } = input;
   try {
     return await context.prisma.jobRole.create({
-      data: { ...input, normalizedName: normalizeRoleName(input.name) },
+      data: {
+        corporationId,
+        companyId,
+        name,
+        normalizedName: normalizeRoleName(name),
+      },
       select: {
         id: true,
         name: true,

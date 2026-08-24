@@ -158,4 +158,60 @@ describe("development fixtures", () => {
     expect(await prisma.fuelSupplier.count()).toBe(4);
     expect(await prisma.project.count()).toBe(4);
   });
+
+  it("reconciles reference units inserted by migrations with generated IDs", async () => {
+    await prisma.measurementUnit.deleteMany();
+    await prisma.measurementUnit.createMany({
+      data: [
+        {
+          id: "00000000-0000-4000-8000-00000000b001",
+          code: "M3_BANK",
+          name: "Migration name",
+        },
+        {
+          id: "00000000-0000-4000-8000-00000000b002",
+          code: "M3_LOOSE",
+          name: "Migration name",
+        },
+        {
+          id: "00000000-0000-4000-8000-00000000b003",
+          code: "M3_COMPACTED",
+          name: "Migration name",
+        },
+        {
+          id: "00000000-0000-4000-8000-00000000b004",
+          code: "M3_PLACED",
+          name: "Migration name",
+        },
+        {
+          id: "00000000-0000-4000-8000-00000000b005",
+          code: "M",
+          name: "Migration name",
+        },
+        {
+          id: "00000000-0000-4000-8000-00000000b006",
+          code: "KM",
+          name: "Migration name",
+        },
+        {
+          id: "00000000-0000-4000-8000-00000000b007",
+          code: "T_KM",
+          name: "Migration name",
+        },
+      ],
+    });
+
+    await seedReferenceData(prisma);
+    await seedReferenceData(prisma);
+
+    expect(await prisma.measurementUnit.count()).toBe(15);
+    await expect(
+      prisma.measurementUnit.findUniqueOrThrow({
+        where: { id: "00000000-0000-4000-8000-00000000b001" },
+      }),
+    ).resolves.toMatchObject({
+      code: "M3_BANK",
+      name: "Metro cúbico em corte",
+    });
+  });
 });
