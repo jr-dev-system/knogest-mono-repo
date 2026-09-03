@@ -1,4 +1,21 @@
-# Máquinas e especificação de carga
+# Catálogo de modelos e unidades de máquina
+
+O catálogo pertence à empresa e separa o **modelo** da **unidade física**. Um
+modelo define fabricante, modelo, tipo, medidor, descrição, capacidade e a
+regra de operador; uma ou mais unidades registram nome, placa/patrimônio,
+leituras, disponibilidade e histórico operacional.
+
+`POST /machine-models` cria o modelo e ao menos uma unidade no mesmo comando.
+`POST /machine-models/:machineModelId/units` acrescenta unidades a um modelo.
+Listagem e detalhe de modelos são paginados e mantêm as unidades físicas como
+referências usadas por obras, frentes, RDOs e produção.
+
+Todo modelo declara `requiresOperator`. Quando verdadeiro, `requiredJobRoleId`
+é obrigatório e precisa apontar para uma função ativa da mesma empresa; quando
+falso, a função é nula e a unidade não aceita operador em mobilizações. Modelos
+legados usam a função padrão **Qualquer um**, que conserva a exigência de
+operador sem restringir a função do funcionário. Alterações de requisito ou
+função são bloqueadas enquanto alguma unidade do modelo estiver mobilizada.
 
 Máquinas podem ser de linha amarela (`YELLOW_LINE`) ou linha branca
 (`WHITE_LINE`). Somente a linha branca aceita as especificações opcionais:
@@ -11,7 +28,7 @@ decimais. Linha amarela não persiste esses campos. O banco e a API repetem a
 restrição; valores incompatíveis retornam
 `422 MACHINE_LOAD_SPEC_NOT_APPLICABLE`.
 
-O cadastro, a listagem e o detalhe expõem ambos os campos. Máquinas de linha
+O catálogo, a listagem de unidades e o detalhe expõem ambos os campos. Máquinas de linha
 branca existentes podem ser atualizadas por
 `PATCH /machines/:machineId/load-specification`; string decimal define o valor
 e `null` o remove.

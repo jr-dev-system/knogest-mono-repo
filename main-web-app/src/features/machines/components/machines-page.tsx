@@ -1,155 +1,64 @@
 "use client";
 
-import * as React from "react";
-import { useActionState, useRef, useState } from "react";
 import Link from "next/link";
-import { toast } from "sonner";
 import {
   ChevronRight,
   Eye,
   FileSearch,
   Gauge,
-  Plus,
   Search,
   Tag,
   Truck,
   type LucideIcon,
 } from "lucide-react";
 
-import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FormSection } from "@/components/ui/form-section";
-import { OperationsModal } from "@/components/ui/operations-modal";
 import type { MachineActionState } from "../machines-action-state";
-import type { MachineListItem, MachinesListQuery } from "../machines.server";
-import {
-  formatMeterReading,
-  meterTypeLabel,
-  meterUnit,
-  type MeterType,
-} from "../meter-format";
+import type {
+  MachineModelListItem,
+  MachinesListQuery,
+} from "../machines.server";
+import { formatMeterReading } from "../meter-format";
+import { MachineModelCreationWizard } from "./machine-model-creation-wizard";
 
 type MachineAction = (
   state: MachineActionState,
   formData: FormData,
 ) => Promise<MachineActionState>;
 
-function SubmitButton({
-  formId,
-  pending,
-}: {
-  formId?: string;
-  pending: boolean;
-}) {
-  return (
-    <Button form={formId} type="submit" disabled={pending}>
-      <Plus className="size-4" />
-      {pending ? "Salvando" : "Cadastrar máquina"}
-    </Button>
-  );
-}
-
-function Field({
-  defaultValue,
-  label,
-  name,
-  inputMode,
-  placeholder,
-  required = false,
-  type = "text",
-}: {
-  defaultValue?: string;
-  label: string;
-  name: string;
-  inputMode?: React.HTMLAttributes<HTMLInputElement>["inputMode"];
-  placeholder?: string;
-  required?: boolean;
-  type?: string;
-}) {
-  return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      <span>{label}</span>
-      <Input
-        name={name}
-        required={required}
-        type={type}
-        inputMode={inputMode}
-        placeholder={placeholder}
-        defaultValue={defaultValue}
-        className="h-11"
-      />
-    </label>
-  );
-}
-
 export function MachinesPageView({
   action,
-  initialState,
   pageInfo,
   query,
   rows,
+  jobRoles = [],
 }: {
   action: MachineAction;
-  initialState: MachineActionState;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
   query: MachinesListQuery;
-  rows: MachineListItem[];
+  rows: MachineModelListItem[];
+  jobRoles?: { id: string; name: string }[];
 }) {
-  const [isMachineModalOpen, setIsMachineModalOpen] = useState(false);
-  const [meterType, setMeterType] = useState<MeterType>("HOUR_METER");
-  const [machineDraft, setMachineDraft] = useState<Record<string, string>>({});
-  const formRef = useRef<HTMLFormElement>(null);
-  const hasFilters = Boolean(query.search || query.availability || query.type);
+  const hasFilters = Boolean(query.search || query.type);
   const nextParams = new URLSearchParams();
   if (query.search) nextParams.set("search", query.search);
   if (query.type) nextParams.set("type", query.type);
-  if (query.availability) nextParams.set("availability", query.availability);
   if (query.sortBy) nextParams.set("sortBy", query.sortBy);
   if (query.sortDirection) nextParams.set("sortDirection", query.sortDirection);
   if (pageInfo.nextCursor) nextParams.set("cursor", pageInfo.nextCursor);
 
-  function resetMachineForm() {
-    formRef.current?.reset();
-    setMeterType("HOUR_METER");
-    setMachineDraft({});
-  }
-
-  function handleMachineModalChange(open: boolean) {
-    setIsMachineModalOpen(open);
-  }
-
-  async function createMachine(
-    previousState: MachineActionState,
-    formData: FormData,
-  ) {
-    const nextState = await action(previousState, formData);
-    if (nextState.ok) {
-      resetMachineForm();
-      setIsMachineModalOpen(false);
-      if (nextState.message) toast.success(nextState.message);
-    }
-    return nextState;
-  }
-
-  const [state, formAction, isPending] = useActionState(
-    createMachine,
-    initialState,
-  );
-
   return (
     <div className="space-y-4">
       <section className="grid gap-3 md:grid-cols-3" aria-label="Resumo">
-        <Summary label="Máquinas nesta página" value={String(rows.length)} />
+        <Summary label="Modelos nesta página" value={String(rows.length)} />
         <Summary
-          label="Disponíveis"
-          value={String(
-            rows.filter((row) => row.availability.state === "available").length,
-          )}
+          label="Unidades cadastradas"
+          value={String(rows.reduce((total, row) => total + row.unitCount, 0))}
         />
         <Summary
-          label="Com leitura confirmada"
-          value={String(rows.filter((row) => row.latestMeterReading).length)}
+          label="Modelos com operador"
+          value={String(rows.filter((row) => row.requiresOperator).length)}
         />
       </section>
 
@@ -193,196 +102,7 @@ export function MachinesPageView({
               </Button>
             </form>
 
-            <OperationsModal
-              icon={Truck}
-              open={isMachineModalOpen}
-              onOpenChange={handleMachineModalChange}
-              size="lg"
-              title="Cadastrar máquina"
-              description="Registre a identificação, as características e a leitura que acompanhará a máquina durante toda a operação."
-              footer={
-                <>
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => {
-                      resetMachineForm();
-                      setIsMachineModalOpen(false);
-                    }}
-                  >
-                    Cancelar
-                  </Button>
-                  <SubmitButton
-                    formId="machine-create-form"
-                    pending={isPending}
-                  />
-                </>
-              }
-              trigger={
-                <Button>
-                  <Plus className="size-4" />
-                  Nova máquina
-                </Button>
-              }
-            >
-              <form
-                ref={formRef}
-                id="machine-create-form"
-                action={formAction}
-                className="grid gap-4"
-                onChange={(event) => {
-                  const target = event.target;
-                  if (
-                    target instanceof HTMLInputElement ||
-                    target instanceof HTMLSelectElement
-                  ) {
-                    setMachineDraft((draft) => ({
-                      ...draft,
-                      [target.name]: target.value,
-                    }));
-                  }
-                }}
-              >
-                <FormSection
-                  title="Identificação"
-                  description="Informe a placa, o patrimônio ou ambos. Pelo menos um identificador é obrigatório."
-                >
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <Field
-                      defaultValue={machineDraft.name}
-                      label="Nome"
-                      name="name"
-                      required
-                    />
-                    <Field
-                      defaultValue={machineDraft.plate}
-                      label="Placa"
-                      name="plate"
-                    />
-                    <Field
-                      defaultValue={machineDraft.companyTag}
-                      label="Patrimônio"
-                      name="companyTag"
-                    />
-                  </div>
-                </FormSection>
-
-                <FormSection title="Características">
-                  <div className="grid gap-3 md:grid-cols-2">
-                    <label className="grid gap-1.5 text-sm font-semibold">
-                      <span>Tipo</span>
-                      <select
-                        name="type"
-                        required
-                        defaultValue={machineDraft.type ?? "YELLOW_LINE"}
-                        className="min-h-11 rounded-md border border-input bg-background px-3 text-sm font-semibold"
-                      >
-                        <option value="YELLOW_LINE">Linha amarela</option>
-                        <option value="WHITE_LINE">Linha branca</option>
-                      </select>
-                    </label>
-                    <Field
-                      defaultValue={machineDraft.manufacturer}
-                      label="Fabricante"
-                      name="manufacturer"
-                      required
-                    />
-                    <Field
-                      defaultValue={machineDraft.model}
-                      label="Modelo"
-                      name="model"
-                      required
-                    />
-                    <Field
-                      defaultValue={machineDraft.description}
-                      label="Descrição"
-                      name="description"
-                    />
-                  </div>
-                </FormSection>
-
-                {(machineDraft.type ?? "YELLOW_LINE") === "WHITE_LINE" && (
-                  <FormSection
-                    title="Capacidade de carga"
-                    description="Campos opcionais. O volume será usado como capacidade padrão nos lançamentos de produção."
-                  >
-                    <div className="grid gap-3 md:grid-cols-2">
-                      <Field
-                        defaultValue={machineDraft.loadVolumeM3}
-                        label="Volume de carga (m³)"
-                        name="loadVolumeM3"
-                        inputMode="decimal"
-                        placeholder="Ex.: 12,500"
-                      />
-                      <Field
-                        defaultValue={machineDraft.maxSupportedWeightT}
-                        label="Peso máximo suportado (t)"
-                        name="maxSupportedWeightT"
-                        inputMode="decimal"
-                        placeholder="Ex.: 20,000"
-                      />
-                    </div>
-                  </FormSection>
-                )}
-
-                <FormSection
-                  title="Medição inicial"
-                  description="Escolha a unidade que será usada nas leituras futuras. Essa escolha não poderá ser alterada depois do cadastro."
-                >
-                  <div
-                    className="grid gap-2 sm:grid-cols-2"
-                    role="group"
-                    aria-label="Tipo de leitura"
-                  >
-                    {(["HOUR_METER", "ODOMETER"] as const).map((option) => (
-                      <Button
-                        key={option}
-                        type="button"
-                        variant={meterType === option ? "default" : "outline"}
-                        aria-pressed={meterType === option}
-                        className="min-h-11 justify-start font-bold"
-                        onClick={() => setMeterType(option)}
-                      >
-                        {meterTypeLabel(option)} ({meterUnit(option)})
-                      </Button>
-                    ))}
-                  </div>
-                  <input type="hidden" name="meterType" value={meterType} />
-                  <label className="grid gap-1.5 text-sm font-semibold">
-                    <span>Leitura inicial ({meterUnit(meterType)})</span>
-                    <Input
-                      name="initialMeterReading"
-                      required
-                      defaultValue={machineDraft.initialMeterReading}
-                      inputMode="decimal"
-                      placeholder="0,00"
-                      aria-describedby="meter-reading-help"
-                      className="h-11"
-                    />
-                  </label>
-                  <p
-                    id="meter-reading-help"
-                    className="text-sm text-muted-foreground"
-                  >
-                    Use um valor igual ou maior que zero. Aceita vírgula ou
-                    ponto decimal.
-                  </p>
-                </FormSection>
-
-                {!state.ok && state.message && (
-                  <FormErrorDeclaration
-                    title="Não foi possível cadastrar a máquina."
-                    description="O servidor recusou o envio. Revise o formulário antes de tentar novamente."
-                    issues={[
-                      {
-                        location: "API",
-                        message: state.message,
-                      },
-                    ]}
-                  />
-                )}
-              </form>
-            </OperationsModal>
+            <MachineModelCreationWizard action={action} jobRoles={jobRoles} />
           </div>
         </div>
 
@@ -390,13 +110,12 @@ export function MachinesPageView({
           <table className="w-full min-w-[980px] text-left text-sm">
             <thead>
               <tr className="border-b border-border">
-                <TableHead icon={Truck} label="Máquina" />
-                <TableHead icon={Tag} label="Identificadores" />
+                <TableHead icon={Truck} label="Modelo" />
+                <TableHead icon={Tag} label="Unidades" />
                 <TableHead label="Tipo" />
                 <TableHead label="Fabricante / modelo" />
                 <TableHead label="Capacidade de carga" />
-                <TableHead icon={Gauge} label="Leitura atual" />
-                <TableHead label="Disponibilidade" />
+                <TableHead icon={Gauge} label="Operador" />
                 <th className="px-4 py-3 text-right text-xs font-bold text-muted-foreground">
                   Detalhe
                 </th>
@@ -408,17 +127,20 @@ export function MachinesPageView({
                   <tr key={row.id} className="border-b border-border">
                     <td className="px-4 py-3 font-bold">
                       <span className="block max-w-[24ch] truncate">
-                        {row.name}
+                        {row.manufacturer} / {row.model}
                       </span>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {identifierLabel(row)}
+                      {row.unitCount}{" "}
+                      {row.unitCount === 1 ? "unidade" : "unidades"}
                     </td>
                     <td className="px-4 py-3 font-semibold">
                       {typeLabel(row.type)}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {row.manufacturer} / {row.model}
+                      {row.requiresOperator
+                        ? `Exige ${row.requiredJobRole?.name ?? "operador"}`
+                        : "Não exige operador"}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {row.type === "WHITE_LINE" ? (
@@ -439,41 +161,36 @@ export function MachinesPageView({
                       )}
                     </td>
                     <td className="px-4 py-3 font-semibold">
-                      {row.latestMeterReading
+                      {row.units[0]?.latestMeterReading
                         ? formatMeterReading(
-                            row.latestMeterReading.value,
+                            row.units[0].latestMeterReading.value,
                             row.meterType,
                           )
                         : "Sem leitura"}
                     </td>
-                    <td className="px-4 py-3 font-semibold">
-                      {row.availability.state === "available"
-                        ? "Disponível"
-                        : "Indisponível"}
-                    </td>
                     <td className="px-4 py-3 text-right">
                       <Link
-                        href={`/home/maquinas/${row.id}`}
+                        href={`/home/maquinas/modelos/${row.id}`}
                         className={buttonVariants({
                           size: "sm",
                           variant: "outline",
                         })}
                       >
                         <Eye className="size-4" />
-                        Ver
+                        Ver modelo
                       </Link>
                     </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={8} className="px-4 py-14 text-center">
+                  <td colSpan={7} className="px-4 py-14 text-center">
                     <p className="text-base font-bold">
                       Nenhuma máquina encontrada
                     </p>
                     <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-muted-foreground">
-                      Máquinas cadastradas aparecem aqui com identificadores,
-                      leitura atual e disponibilidade derivada do backend.
+                      Modelos cadastrados aparecem aqui com suas unidades e a
+                      regra de operador.
                     </p>
                   </td>
                 </tr>
@@ -484,7 +201,7 @@ export function MachinesPageView({
 
         <div className="flex flex-col gap-3 bg-secondary/40 px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between">
           <p className="font-semibold text-muted-foreground">
-            {rows.length} máquinas nesta página
+            {rows.length} modelos nesta página
             {hasFilters ? " · filtros ativos" : ""}
           </p>
           {pageInfo.nextCursor ? (
@@ -506,14 +223,7 @@ export function MachinesPageView({
   );
 }
 
-function identifierLabel(row: MachineListItem) {
-  const plate = row.identifiers.plate?.value;
-  const tag = row.identifiers.companyTag?.value;
-  if (plate && tag) return `${plate} · ${tag}`;
-  return plate ?? tag ?? "Sem identificador";
-}
-
-function typeLabel(type: MachineListItem["type"]) {
+function typeLabel(type: MachineModelListItem["type"]) {
   return type === "YELLOW_LINE" ? "Linha amarela" : "Linha branca";
 }
 

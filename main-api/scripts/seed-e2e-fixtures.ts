@@ -295,9 +295,13 @@ async function seedProductionWizardFixture(
       },
     ],
   });
+  const excavatorModel = await prisma.machineModel.create({
+    data: { corporationId, companyId, type: "YELLOW_LINE", manufacturer: "Synthetic", model: "EX-200", meterType: "HOUR_METER", requiresOperator: false },
+  });
   const excavator = await prisma.machine.create({
     data: {
       corporationId,
+      machineModelId: excavatorModel.id,
       name: "Escavadeira E2E",
       type: "YELLOW_LINE",
       manufacturer: "Synthetic",
@@ -305,9 +309,13 @@ async function seedProductionWizardFixture(
       meterType: "HOUR_METER",
     },
   });
+  const truckModel = await prisma.machineModel.create({
+    data: { corporationId, companyId, type: "WHITE_LINE", manufacturer: "Synthetic", model: "TR-10", meterType: "ODOMETER", loadVolumeM3: "10.000", requiresOperator: false },
+  });
   const truck = await prisma.machine.create({
     data: {
       corporationId,
+      machineModelId: truckModel.id,
       name: "Caminhão E2E",
       type: "WHITE_LINE",
       manufacturer: "Synthetic",

@@ -108,6 +108,11 @@ export function MachineDetailPage({
           <Info label="Descrição">
             {machine.description ?? "Sem descrição"}
           </Info>
+          <Info label="Operador">
+            {machine.machineModel.requiresOperator
+              ? `Exige ${machine.machineModel.requiredJobRole?.name ?? "operador"}`
+              : "Não exige operador"}
+          </Info>
         </div>
 
         {machine.type === "WHITE_LINE" && (

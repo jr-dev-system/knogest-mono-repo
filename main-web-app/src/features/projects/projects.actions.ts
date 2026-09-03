@@ -294,7 +294,7 @@ const projectReadinessActionSchema = z
                 operatorEmploymentId: z.string().uuid(),
               }),
             )
-            .min(1)
+            .min(0)
             .max(2),
         }),
       )

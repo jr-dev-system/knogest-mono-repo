@@ -474,6 +474,25 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
     const readingId = fixtureId(
       Number(`${fixture.prefix === "TN" ? 14 : 24}${index + 1}03`),
     );
+    await prisma.machineModel.upsert({
+      where: { id: machine.id },
+      update: {
+        manufacturer: machine.manufacturer,
+        model: machine.model,
+        type: "YELLOW_LINE",
+        meterType: "HOUR_METER",
+      },
+      create: {
+        id: machine.id,
+        corporationId: PILOT_CORPORATION_ID,
+        companyId: fixture.id,
+        manufacturer: machine.manufacturer,
+        model: machine.model,
+        type: "YELLOW_LINE",
+        meterType: "HOUR_METER",
+        requiresOperator: false,
+      },
+    });
     await prisma.machine.upsert({
       where: { id: machine.id },
       update: {
@@ -483,6 +502,7 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
         manufacturer: machine.manufacturer,
         model: machine.model,
         meterType: "HOUR_METER",
+        machineModelId: machine.id,
         isActive: true,
       },
       create: {
@@ -494,6 +514,7 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
         manufacturer: machine.manufacturer,
         model: machine.model,
         meterType: "HOUR_METER",
+        machineModelId: machine.id,
         isActive: true,
       },
     });

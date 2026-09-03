@@ -263,13 +263,13 @@ const machineAllocationSchema = z.object({
   machineId: z.string().uuid(),
   startMeterReadingId: z.string().uuid(),
   operatorAssignments: z
-    .array(
+          .array(
       z.object({
         shift: z.enum(["day", "night"]),
         operatorEmploymentId: z.string().uuid(),
       }),
     )
-    .min(1)
+          .min(0)
     .max(2),
 });
 

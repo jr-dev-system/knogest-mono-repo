@@ -2,9 +2,10 @@
 
 import { revalidatePath } from "next/cache";
 
-import { postApiV1Machines } from "@/generated/clients/postApiV1Machines";
+import { postApiV1MachineModels } from "@/generated/clients/postApiV1MachineModels";
+import { postApiV1MachineModelsMachinemodelidUnits } from "@/generated/clients/postApiV1MachineModelsMachinemodelidUnits";
 import { patchApiV1MachinesMachineidLoadSpecification } from "@/generated/clients/patchApiV1MachinesMachineidLoadSpecification";
-import type { PostApiV1MachinesMutationRequest } from "@/generated/models/PostApiV1Machines";
+import type { PostApiV1MachineModelsMutationRequest } from "@/generated/models/PostApiV1MachineModels";
 import { ApiClientError } from "@/lib/api/server-client";
 import type { MachineActionState } from "./machines-action-state";
 
@@ -28,13 +29,15 @@ function nullableDecimalPayloadValue(formData: FormData, key: string) {
   return value.length > 0 ? value : null;
 }
 
-function payload(formData: FormData): PostApiV1MachinesMutationRequest {
+function payload(formData: FormData): PostApiV1MachineModelsMutationRequest {
   const type = optionalString(formData, "type");
   const isWhiteLine = type === "WHITE_LINE";
+  const names = formData.getAll("unitName");
+  const plates = formData.getAll("unitPlate");
+  const companyTags = formData.getAll("unitCompanyTag");
+  const readings = formData.getAll("unitInitialMeterReading");
   return {
-    companyTag: optionalPayloadString(formData, "companyTag"),
     description: optionalPayloadString(formData, "description"),
-    initialMeterReading: decimalPayloadValue(formData, "initialMeterReading"),
     meterType:
       optionalString(formData, "meterType") === "ODOMETER"
         ? "ODOMETER"
@@ -50,10 +53,29 @@ function payload(formData: FormData): PostApiV1MachinesMutationRequest {
           ".",
         )
       : undefined,
-    name: optionalString(formData, "name"),
-    plate: optionalPayloadString(formData, "plate"),
     type: type === "WHITE_LINE" ? "WHITE_LINE" : "YELLOW_LINE",
+    requiresOperator: optionalString(formData, "requiresOperator") === "true",
+    requiredJobRoleId:
+      optionalString(formData, "requiresOperator") === "true"
+        ? optionalPayloadString(formData, "requiredJobRoleId")
+        : null,
+    units: names.map((name, index) => ({
+      name: String(name).trim(),
+      plate:
+        typeof plates[index] === "string" && plates[index].trim()
+          ? plates[index].trim()
+          : undefined,
+      companyTag:
+        typeof companyTags[index] === "string" && companyTags[index].trim()
+          ? companyTags[index].trim()
+          : undefined,
+      initialMeterReading: decimalPayloadValueFromValue(readings[index]),
+    })),
   };
+}
+
+function decimalPayloadValueFromValue(value: FormDataEntryValue | undefined) {
+  return typeof value === "string" ? value.trim().replace(",", ".") : "";
 }
 
 function failureMessage(error: unknown) {
@@ -72,7 +94,7 @@ function failureMessage(error: unknown) {
     }
     return error.message;
   }
-  return "Não foi possível cadastrar a máquina agora.";
+  return "Não foi possível cadastrar o modelo agora.";
 }
 
 export async function updateMachineLoadSpecificationAction(
@@ -99,14 +121,43 @@ export async function updateMachineLoadSpecificationAction(
   }
 }
 
-export async function createMachineAction(
+export async function createMachineModelAction(
   _state: MachineActionState,
   formData: FormData,
 ): Promise<MachineActionState> {
   try {
-    await postApiV1Machines({ data: payload(formData) });
+    await postApiV1MachineModels({ data: payload(formData) });
     revalidatePath("/home/maquinas");
-    return { ok: true, message: "Máquina cadastrada." };
+    return { ok: true, message: "Modelo e unidades cadastrados." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function addMachineModelUnitsAction(
+  machineModelId: string,
+  _state: MachineActionState,
+  formData: FormData,
+): Promise<MachineActionState> {
+  const names = formData.getAll("unitName");
+  const plates = formData.getAll("unitPlate");
+  const companyTags = formData.getAll("unitCompanyTag");
+  const readings = formData.getAll("unitInitialMeterReading");
+  try {
+    await postApiV1MachineModelsMachinemodelidUnits({
+      machineModelId,
+      data: {
+        units: names.map((name, index) => ({
+          name: String(name).trim(),
+          plate: typeof plates[index] === "string" && plates[index].trim() ? plates[index].trim() : undefined,
+          companyTag: typeof companyTags[index] === "string" && companyTags[index].trim() ? companyTags[index].trim() : undefined,
+          initialMeterReading: decimalPayloadValueFromValue(readings[index]),
+        })),
+      },
+    });
+    revalidatePath(`/home/maquinas/modelos/${machineModelId}`);
+    revalidatePath("/home/maquinas");
+    return { ok: true, message: "Unidades adicionadas." };
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }

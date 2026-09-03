@@ -281,17 +281,13 @@ const projectCommandOpenApiSchema = {
         type: "object",
         additionalProperties: false,
         required: ["machineId", "startMeterReadingId"],
-        anyOf: [
-          { required: ["operatorEmploymentId"] },
-          { required: ["operatorAssignments"] },
-        ],
         properties: {
           machineId: uuid,
           startMeterReadingId: uuid,
           operatorEmploymentId: uuid,
           operatorAssignments: {
             type: "array",
-            minItems: 1,
+            minItems: 0,
             maxItems: 2,
             items: {
               type: "object",

@@ -273,16 +273,12 @@ const projectMachineAllocationSchema = z
     operatorEmploymentId: uuid.optional(),
     operatorAssignments: z
       .array(machineOperatorAssignmentSchema)
-      .min(1)
       .max(2)
       .optional(),
   })
   .strict()
   .superRefine((allocation, context) => {
-    if (
-      Boolean(allocation.operatorEmploymentId) ===
-      Boolean(allocation.operatorAssignments)
-    )
+    if (allocation.operatorEmploymentId && allocation.operatorAssignments)
       context.addIssue({
         code: "custom",
         path: ["operatorAssignments"],
@@ -302,12 +298,12 @@ const projectMachineAllocationSchema = z
     startMeterReadingId: allocation.startMeterReadingId,
     operatorEmploymentId:
       allocation.operatorEmploymentId ??
-      allocation.operatorAssignments![0].operatorEmploymentId,
+      allocation.operatorAssignments?.[0]?.operatorEmploymentId ??
+      null,
     operatorAssignments: allocation.operatorAssignments ?? [
-      {
-        shift: "day" as const,
-        operatorEmploymentId: allocation.operatorEmploymentId!,
-      },
+      ...(allocation.operatorEmploymentId
+        ? [{ shift: "day" as const, operatorEmploymentId: allocation.operatorEmploymentId }]
+        : []),
     ],
   }));
 

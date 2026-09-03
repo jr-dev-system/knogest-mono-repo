@@ -26,9 +26,11 @@ Este documento é a fonte canônica dos turnos fixos da equipe de uma obra.
 
 ## Recursos operacionais
 
-- Uma máquina pode ter um operador diferente em cada turno. O operador precisa
-  pertencer à equipe do mesmo turno e não pode operar outra máquina
-  simultaneamente na obra.
+- Uma máquina cujo modelo exige operador pode ter um operador diferente em cada
+  turno. O operador precisa pertencer à equipe do mesmo turno, ter a função
+  configurada no modelo (exceto a função legada **Qualquer um**) e não pode
+  operar outra máquina simultaneamente na obra. Máquinas que não exigem
+  operador não possuem designação de operador.
 - A mesma máquina física pode ser destinada a frentes diferentes em turnos
   diferentes. A identidade da mobilização operacional é `máquina + turno`.
 - Ao mudar o turno de um trabalhador, suas vinculações atuais como operador e
@@ -54,8 +56,8 @@ mudanças posteriores de turno.
 
 - Alocações de equipe incluem `shift: day | night`.
 - Jornadas e intervalos incluem `shift`; jornadas incluem `endDayOffset`.
-- Máquinas usam `operatorAssignments[]`, com `shift` e
-  `operatorEmploymentId`.
+- Máquinas que exigem operador usam `operatorAssignments[]`, com `shift` e
+  `operatorEmploymentId`; máquinas sem requisito enviam a lista vazia.
 - Mobilização de frente usa `machineAssignments[]`, com `machineId` e `shift`.
 - `PUT /projects/:projectId/mobilization/employees` pode reconciliar equipe,
   jornada e intervalos juntos.

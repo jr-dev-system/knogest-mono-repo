@@ -175,9 +175,22 @@ describe("project daily reports", () => {
       "00000000-0000-4000-8000-000000002901",
       projectCommand,
     );
+    const machineModel = await app.prisma.machineModel.create({
+      data: {
+        corporationId: pilot.corporation.id,
+        companyId,
+        type: "WHITE_LINE",
+        manufacturer: "Hyundai",
+        model: "R220",
+        meterType: "HOUR_METER",
+        loadVolumeM3: "10.000",
+        requiresOperator: false,
+      },
+    });
     const machine = await app.prisma.machine.create({
       data: {
         corporationId: pilot.corporation.id,
+        machineModelId: machineModel.id,
         name: "EH-01 Hyundai",
         type: "WHITE_LINE",
         loadVolumeM3: "10.000",
@@ -655,9 +668,13 @@ describe("project daily reports", () => {
         createdByUserId: session.userId,
       },
     });
+    const yellowMachineModel = await app.prisma.machineModel.create({
+      data: { corporationId: project.corporationId, companyId: project.companyId, type: "YELLOW_LINE", manufacturer: "Teste", model: "YL-01", meterType: "HOUR_METER", requiresOperator: false },
+    });
     const yellowMachine = await app.prisma.machine.create({
       data: {
         corporationId: project.corporationId,
+        machineModelId: yellowMachineModel.id,
         name: "Máquina amarela inelegível",
         type: "YELLOW_LINE",
         manufacturer: "Teste",
@@ -665,9 +682,13 @@ describe("project daily reports", () => {
         meterType: "HOUR_METER",
       },
     });
+    const whiteWithoutVolumeModel = await app.prisma.machineModel.create({
+      data: { corporationId: project.corporationId, companyId: project.companyId, type: "WHITE_LINE", manufacturer: "Teste", model: "WL-00", meterType: "HOUR_METER", requiresOperator: false },
+    });
     const whiteWithoutVolume = await app.prisma.machine.create({
       data: {
         corporationId: project.corporationId,
+        machineModelId: whiteWithoutVolumeModel.id,
         name: "Linha branca sem volume",
         type: "WHITE_LINE",
         manufacturer: "Teste",

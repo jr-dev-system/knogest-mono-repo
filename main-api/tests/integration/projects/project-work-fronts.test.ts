@@ -169,9 +169,21 @@ describe("project work-front quantities", () => {
     scope: Awaited<ReturnType<typeof setup>>,
     activateDirectly = true,
   ) {
+    const machineModel = await app.prisma.machineModel.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        type: "YELLOW_LINE",
+        manufacturer: "Teste",
+        model: "EX-01",
+        meterType: "HOUR_METER",
+        requiresOperator: false,
+      },
+    });
     const machine = await app.prisma.machine.create({
       data: {
         corporationId: scope.corporationId,
+        machineModelId: machineModel.id,
         name: "Escavadeira de teste",
         type: "YELLOW_LINE",
         manufacturer: "Teste",

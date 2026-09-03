@@ -20,27 +20,27 @@ async function expectTopCenterToast(
   await expect(toaster).toHaveAttribute("data-x-position", "center");
 }
 
-test("creates, lists, and opens a synthetic Machine detail", async ({
+test("creates a model with a unit and opens its catalog detail", async ({
   page,
 }) => {
   await login(page);
   await page.getByRole("link", { name: "Máquinas", exact: true }).click();
   await page.getByRole("button", { name: "Nova máquina" }).click();
-  await page.getByLabel("Nome").fill("Synthetic E2E Machine");
+  await page.getByLabel("Exige operador?").selectOption("false");
+  await page.getByLabel("Nome da unidade 1").fill("Synthetic E2E Machine");
   await page.locator('select[name="type"]').selectOption("YELLOW_LINE");
   await page.getByLabel("Fabricante").fill("Synthetic");
   await page.getByLabel("Modelo").fill("Loader 200");
   await page.getByLabel("Patrimônio").fill("MCH-E2E-001");
-  await page.getByLabel("Leitura inicial").fill("12.50");
-  await page.getByRole("button", { name: "Cadastrar máquina" }).click();
-  await expectTopCenterToast(page, "Máquina cadastrada.");
-  await expect(page.getByText("Synthetic E2E Machine")).toBeVisible();
-  await expect(page.getByText("MCH-E2E-001")).toBeVisible();
-  await expect(page.getByText("12,50 h")).toBeVisible();
-
-  await page.getByRole("link", { name: "Ver" }).first().click();
-  await expect(page.getByText("Linha amarela")).toBeVisible();
+  await page.getByLabel("Leitura inicial (h)").fill("12.50");
+  await page.getByRole("button", { name: "Cadastrar catálogo" }).click();
+  await expectTopCenterToast(page, "Modelo e unidades cadastrados.");
   await expect(page.getByText("Synthetic / Loader 200")).toBeVisible();
-  await expect(page.getByText("Alocação aberta")).toBeVisible();
-  await expect(page.getByText("Não")).toBeVisible();
+  await expect(page.getByText("1 unidade")).toBeVisible();
+
+  await page.getByRole("link", { name: "Ver modelo" }).first().click();
+  await expect(page.getByText("Modelo de máquina")).toBeVisible();
+  await expect(page.getByText("Synthetic / Loader 200")).toBeVisible();
+  await expect(page.getByText("Synthetic E2E Machine")).toBeVisible();
+  await expect(page.getByText("Não exige operador")).toBeVisible();
 });

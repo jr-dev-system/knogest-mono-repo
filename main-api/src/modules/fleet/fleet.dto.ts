@@ -56,6 +56,87 @@ export const createMachineSchema = z
 
 export type CreateMachineInput = z.infer<typeof createMachineSchema>;
 
+const machineUnitSchema = z
+  .object({
+    name: z.string().trim().min(1).max(160),
+    plate: optionalIdentifier,
+    companyTag: optionalIdentifier,
+    initialMeterReading: decimalStringSchema,
+  })
+  .strict()
+  .refine((value) => Boolean(value.plate || value.companyTag), {
+    message: "At least one identifier is required",
+    path: ["plate"],
+  });
+
+const machineModelFieldsSchema = z
+  .object({
+    description: z
+      .string()
+      .trim()
+      .max(500)
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
+    type: z.enum(["YELLOW_LINE", "WHITE_LINE"]),
+    manufacturer: z.string().trim().min(1).max(120),
+    model: z.string().trim().min(1).max(120),
+    meterType: z.enum(["HOUR_METER", "ODOMETER"]),
+    loadVolumeM3: positiveSpecificationDecimalSchema.optional(),
+    maxSupportedWeightT: positiveSpecificationDecimalSchema.optional(),
+    requiresOperator: z.boolean(),
+    requiredJobRoleId: z.string().uuid().nullable().optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    if (value.type !== "WHITE_LINE" && (value.loadVolumeM3 || value.maxSupportedWeightT))
+      context.addIssue({
+        code: "custom",
+        path: ["loadVolumeM3"],
+        message: "Load specification is available only for white-line machines",
+      });
+    if (value.requiresOperator && !value.requiredJobRoleId)
+      context.addIssue({
+        code: "custom",
+        path: ["requiredJobRoleId"],
+        message: "An operator job role is required",
+      });
+    if (!value.requiresOperator && value.requiredJobRoleId)
+      context.addIssue({
+        code: "custom",
+        path: ["requiredJobRoleId"],
+        message: "A machine model without operator requirement cannot define a job role",
+      });
+  });
+
+export const createMachineModelSchema = machineModelFieldsSchema.extend({
+  units: z.array(machineUnitSchema).min(1).max(100),
+});
+export type CreateMachineModelInput = z.infer<typeof createMachineModelSchema>;
+
+export const addMachineModelUnitsSchema = z
+  .object({ units: z.array(machineUnitSchema).min(1).max(100) })
+  .strict();
+export type AddMachineModelUnitsInput = z.infer<typeof addMachineModelUnitsSchema>;
+
+export const updateMachineModelSchema = machineModelFieldsSchema;
+export type UpdateMachineModelInput = z.infer<typeof updateMachineModelSchema>;
+
+export const machineModelParamsSchema = z
+  .object({ machineModelId: z.string().uuid() })
+  .strict();
+
+export const listMachineModelsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    cursor: z.string().trim().min(1).max(2048).optional(),
+    search: optionalSearch,
+    type: z.enum(["YELLOW_LINE", "WHITE_LINE"]).optional(),
+    sortBy: z.enum(["model", "createdAt"]).default("createdAt"),
+    sortDirection: z.enum(["asc", "desc"]).default("desc"),
+  })
+  .strict();
+export type ListMachineModelsQuery = z.infer<typeof listMachineModelsQuerySchema>;
+
 export const updateMachineLoadSpecificationSchema = z
   .object({
     loadVolumeM3: positiveSpecificationDecimalSchema.nullable(),

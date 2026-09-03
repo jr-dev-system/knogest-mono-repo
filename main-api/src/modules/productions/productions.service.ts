@@ -166,10 +166,12 @@ export class ProductionsService {
                       null,
                     identifier:
                       assignment.machine.identifiers[0]?.value ?? null,
-                    operator: {
-                      id: assignment.operator.id,
-                      name: assignment.operator.person.displayName,
-                    },
+                    operator: assignment.operator
+                      ? {
+                          id: assignment.operator.id,
+                          name: assignment.operator.person.displayName,
+                        }
+                      : null,
                   },
                 ]
               : [],
@@ -195,10 +197,12 @@ export class ProductionsService {
                     capacityUnitCode: specification.capacityUnitCode,
                     maxSupportedWeightT:
                       specification.maxSupportedWeightT?.toFixed(3) ?? null,
-                    driver: {
-                      id: assignment.operator.id,
-                      name: assignment.operator.person.displayName,
-                    },
+                    driver: assignment.operator
+                      ? {
+                          id: assignment.operator.id,
+                          name: assignment.operator.person.displayName,
+                        }
+                      : null,
                   },
                 ]
               : [];
@@ -1071,7 +1075,7 @@ export class ProductionsService {
         meterTypeSnapshot: assignment.machine.meterType,
         role: roleToDb[entry.role],
         operatorEmploymentId: entry.operatorEmploymentId,
-        operatorNameSnapshot: entry.operatorEmploymentId
+        operatorNameSnapshot: entry.operatorEmploymentId && assignment.operator
           ? assignment.operator.person.displayName
           : null,
         initialMeterValue: entry.initialMeterValue
@@ -1385,7 +1389,7 @@ export class ProductionsService {
               return {
                 machineId: truck.machineId,
                 driverEmploymentId: truck.driverEmploymentId,
-                driverNameSnapshot: truck.driverEmploymentId
+                driverNameSnapshot: truck.driverEmploymentId && assignment.operator
                   ? assignment.operator.person.displayName
                   : null,
                 machineNameSnapshot: assignment.machine.name,

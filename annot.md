@@ -69,3 +69,4 @@ Equipamentos da Obra.
   - Diesel (por máquina/Geral)
 
 rotina de ajuste histórico fica para outra
+-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=-=--

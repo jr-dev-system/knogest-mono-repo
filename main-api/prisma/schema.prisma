@@ -320,6 +320,7 @@ model Corporation {
   persons                        Person[]
   employments                    Employment[]
   jobRoles                       JobRole[]
+  machineModels                  MachineModel[]
   machines                       Machine[]
   machineOwnershipPeriods        MachineOwnershipPeriod[]
   machineIdentifiers             MachineIdentifier[]
@@ -357,6 +358,7 @@ model Company {
   fuelSuppliers                  FuelSupplier[]
   employments                    Employment[]
   jobRoles                       JobRole[]
+  machineModels                  MachineModel[]
   machineOwnershipPeriods        MachineOwnershipPeriod[]
   machineIdentifiers             MachineIdentifier[]
   machineMeterReadings           MachineMeterReading[]
@@ -706,10 +708,37 @@ model JobRole {
   corporation       Corporation               @relation(fields: [corporationId], references: [id], onDelete: Restrict)
   company           Company                   @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
   employmentPeriods EmploymentJobRolePeriod[]
+  requiredMachineModels MachineModel[] @relation("MachineModelRequiredJobRole")
 
   @@unique([corporationId, companyId, normalizedName])
   @@index([corporationId, companyId, isActive, name, id])
   @@map("job_roles")
+}
+
+model MachineModel {
+  id                  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId       String            @map("corporation_id") @db.Uuid
+  companyId           String            @map("company_id") @db.Uuid
+  description         String?           @db.VarChar(500)
+  type                MachineType
+  manufacturer        String            @db.VarChar(120)
+  model               String            @db.VarChar(120)
+  meterType           MachineMeterType  @map("meter_type")
+  loadVolumeM3        Decimal?          @map("load_volume_m3") @db.Decimal(10, 3)
+  maxSupportedWeightT Decimal?          @map("max_supported_weight_t") @db.Decimal(10, 3)
+  requiresOperator    Boolean           @default(true) @map("requires_operator")
+  requiredJobRoleId   String?           @map("required_job_role_id") @db.Uuid
+  isActive            Boolean           @default(true) @map("is_active")
+  createdAt           DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation         Corporation       @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company             Company           @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  requiredJobRole     JobRole?          @relation("MachineModelRequiredJobRole", fields: [requiredJobRoleId], references: [id], onDelete: Restrict)
+  machines            Machine[]
+
+  @@index([corporationId, companyId, manufacturer, model, id])
+  @@index([corporationId, companyId, requiredJobRoleId])
+  @@map("machine_models")
 }
 
 model EmploymentJobRolePeriod {
@@ -757,6 +786,7 @@ model EmploymentPeriod {
 model Machine {
   id                     String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   corporationId          String                              @map("corporation_id") @db.Uuid
+  machineModelId         String                              @map("machine_model_id") @db.Uuid
   name                   String                              @db.VarChar(160)
   description            String?                             @db.VarChar(500)
   type                   MachineType
@@ -769,6 +799,7 @@ model Machine {
   createdAt              DateTime                            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime                            @updatedAt @map("updated_at") @db.Timestamptz(3)
   corporation            Corporation                         @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  machineModel           MachineModel                        @relation(fields: [machineModelId], references: [id], onDelete: Restrict)
   ownershipPeriods       MachineOwnershipPeriod[]
   identifiers            MachineIdentifier[]
   meterReadings          MachineMeterReading[]
@@ -777,6 +808,7 @@ model Machine {
   transportSpecification MachineTransportSpecification?
 
   @@unique([corporationId, id])
+  @@index([machineModelId])
   @@index([corporationId, createdAt, id])
   @@index([corporationId, name, id])
   @@map("machines")
@@ -1071,7 +1103,7 @@ model ProjectMachineAllocation {
   projectId            String                          @map("project_id") @db.Uuid
   machineId            String                          @map("machine_id") @db.Uuid
   startMeterReadingId  String                          @map("start_meter_reading_id") @db.Uuid
-  operatorEmploymentId String                          @map("operator_employment_id") @db.Uuid
+  operatorEmploymentId String?                         @map("operator_employment_id") @db.Uuid
   effectiveFrom        DateTime                        @map("effective_from") @db.Timestamptz(3)
   effectiveTo          DateTime?                       @map("effective_to") @db.Timestamptz(3)
   createdByUserId      String?                         @map("created_by_user_id") @db.Uuid
@@ -1079,7 +1111,7 @@ model ProjectMachineAllocation {
   endedReason          String?                         @map("ended_reason") @db.VarChar(500)
   createdBy            User?                           @relation("ProjectMachineAllocationCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict, map: "pma_created_by_user_fkey")
   endedBy              User?                           @relation("ProjectMachineAllocationEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pma_ended_by_user_fkey")
-  operator             Employment                      @relation(fields: [corporationId, companyId, operatorEmploymentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "project_machine_allocations_operator_employment_fkey")
+  operator             Employment?                     @relation(fields: [corporationId, companyId, operatorEmploymentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "project_machine_allocations_operator_employment_fkey")
   shiftAssignments     ProjectMachineShiftAssignment[]
 
   @@index([corporationId, companyId, projectId])
@@ -1095,7 +1127,7 @@ model ProjectMachineShiftAssignment {
   projectMachineAllocationId String                   @map("project_machine_allocation_id") @db.Uuid
   machineId                  String                   @map("machine_id") @db.Uuid
   shift                      ProjectDailyReportShift
-  operatorEmploymentId       String                   @map("operator_employment_id") @db.Uuid
+  operatorEmploymentId       String?                  @map("operator_employment_id") @db.Uuid
   effectiveFrom              DateTime                 @map("effective_from") @db.Timestamptz(3)
   effectiveTo                DateTime?                @map("effective_to") @db.Timestamptz(3)
   createdByUserId            String?                  @map("created_by_user_id") @db.Uuid
@@ -1274,7 +1306,7 @@ model ProjectWorkFrontMachineAssignment {
   workFrontId          String                  @map("work_front_id") @db.Uuid
   machineId            String                  @map("machine_id") @db.Uuid
   shift                ProjectDailyReportShift @default(DAY)
-  operatorEmploymentId String                  @map("operator_employment_id") @db.Uuid
+  operatorEmploymentId String?                 @map("operator_employment_id") @db.Uuid
   effectiveFrom        DateTime                @map("effective_from") @db.Timestamptz(3)
   effectiveTo          DateTime?               @map("effective_to") @db.Timestamptz(3)
   createdByUserId      String                  @map("created_by_user_id") @db.Uuid
@@ -1283,7 +1315,7 @@ model ProjectWorkFrontMachineAssignment {
   project              Project                 @relation(fields: [corporationId, companyId, projectId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pwfma_project_fkey")
   workFront            ProjectWorkFront        @relation(fields: [corporationId, companyId, projectId, workFrontId], references: [corporationId, companyId, projectId, id], onDelete: Restrict, map: "pwfma_front_fkey")
   machine              Machine                 @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_machine_fkey")
-  operator             Employment              @relation("WorkFrontMachineAssignmentOperator", fields: [corporationId, companyId, operatorEmploymentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pwfma_operator_fkey")
+  operator             Employment?             @relation("WorkFrontMachineAssignmentOperator", fields: [corporationId, companyId, operatorEmploymentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pwfma_operator_fkey")
   createdBy            User                    @relation("WorkFrontMachineAssignmentCreatedBy", fields: [corporationId, createdByUserId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_created_by_user_fkey")
   endedBy              User?                   @relation("WorkFrontMachineAssignmentEndedBy", fields: [corporationId, endedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pwfma_ended_by_user_fkey")
 

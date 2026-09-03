@@ -12,6 +12,11 @@ import {
   appendMachineMeterReadingSchema,
   correctMachineMeterReadingSchema,
   createMachineSchema,
+  createMachineModelSchema,
+  addMachineModelUnitsSchema,
+  listMachineModelsQuerySchema,
+  machineModelParamsSchema,
+  updateMachineModelSchema,
   listMachinesQuerySchema,
   machineParamsSchema,
   machineReadingParamsSchema,
@@ -59,6 +64,7 @@ const machineSchema = {
     "meterType",
     "loadVolumeM3",
     "maxSupportedWeightT",
+    "machineModel",
     "identifiers",
     "latestMeterReading",
     "availability",
@@ -75,6 +81,25 @@ const machineSchema = {
     meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
     loadVolumeM3: { type: "string", nullable: true },
     maxSupportedWeightT: { type: "string", nullable: true },
+    machineModel: {
+      type: "object",
+      required: ["id", "requiresOperator", "requiredJobRole"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        requiresOperator: { type: "boolean" },
+        requiredJobRole: {
+          type: "object",
+          nullable: true,
+          required: ["id", "name"],
+          properties: {
+            id: { type: "string", format: "uuid" },
+            name: { type: "string" },
+          },
+          additionalProperties: false,
+        },
+      },
+      additionalProperties: false,
+    },
     identifiers: {
       type: "object",
       required: ["plate", "companyTag"],
@@ -112,6 +137,129 @@ const machineSchema = {
     updatedAt: { type: "string", format: "date-time" },
   },
   additionalProperties: false,
+} as const;
+
+const machineModelSchema = {
+  type: "object",
+  required: [
+    "id", "description", "type", "manufacturer", "model", "meterType",
+    "loadVolumeM3", "maxSupportedWeightT", "requiresOperator", "requiredJobRole",
+    "unitCount", "units", "createdAt", "updatedAt",
+  ],
+  properties: {
+    id: { type: "string", format: "uuid" },
+    description: { type: "string", nullable: true },
+    type: { type: "string", enum: ["YELLOW_LINE", "WHITE_LINE"] },
+    manufacturer: { type: "string" },
+    model: { type: "string" },
+    meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
+    loadVolumeM3: { type: "string", nullable: true },
+    maxSupportedWeightT: { type: "string", nullable: true },
+    requiresOperator: { type: "boolean" },
+    requiredJobRole: {
+      type: "object", nullable: true, required: ["id", "name"],
+      properties: { id: { type: "string", format: "uuid" }, name: { type: "string" } },
+      additionalProperties: false,
+    },
+    unitCount: { type: "integer", minimum: 0 },
+    units: { type: "array", items: machineSchema },
+    createdAt: { type: "string", format: "date-time" },
+    updatedAt: { type: "string", format: "date-time" },
+  },
+  additionalProperties: false,
+} as const;
+
+const machineUnitBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["name", "initialMeterReading"],
+  anyOf: [{ required: ["plate"] }, { required: ["companyTag"] }],
+  properties: {
+    name: { type: "string", minLength: 1, maxLength: 160 },
+    plate: { type: "string", maxLength: 80, pattern: identifierOpenApiPattern },
+    companyTag: { type: "string", maxLength: 80, pattern: identifierOpenApiPattern },
+    initialMeterReading: { type: "string", pattern: decimalStringOpenApiPattern },
+  },
+} as const;
+
+const createMachineModelBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "manufacturer", "model", "meterType", "requiresOperator", "units"],
+  properties: {
+    description: { type: "string", maxLength: 500 },
+    type: { type: "string", enum: ["YELLOW_LINE", "WHITE_LINE"] },
+    manufacturer: { type: "string", minLength: 1, maxLength: 120 },
+    model: { type: "string", minLength: 1, maxLength: 120 },
+    meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
+    loadVolumeM3: { type: "string", pattern: positiveSpecificationDecimalOpenApiPattern },
+    maxSupportedWeightT: { type: "string", pattern: positiveSpecificationDecimalOpenApiPattern },
+    requiresOperator: { type: "boolean" },
+    requiredJobRoleId: { type: "string", format: "uuid", nullable: true },
+    units: { type: "array", minItems: 1, maxItems: 100, items: machineUnitBodySchema },
+  },
+} as const;
+
+const updateMachineModelBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["type", "manufacturer", "model", "meterType", "requiresOperator"],
+  properties: {
+    description: { type: "string", maxLength: 500 },
+    type: { type: "string", enum: ["YELLOW_LINE", "WHITE_LINE"] },
+    manufacturer: { type: "string", minLength: 1, maxLength: 120 },
+    model: { type: "string", minLength: 1, maxLength: 120 },
+    meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
+    loadVolumeM3: { type: "string", pattern: positiveSpecificationDecimalOpenApiPattern },
+    maxSupportedWeightT: { type: "string", pattern: positiveSpecificationDecimalOpenApiPattern },
+    requiresOperator: { type: "boolean" },
+    requiredJobRoleId: { type: "string", format: "uuid", nullable: true },
+  },
+} as const;
+
+const addMachineModelUnitsBodySchema = {
+  type: "object", additionalProperties: false, required: ["units"],
+  properties: { units: { type: "array", minItems: 1, maxItems: 100, items: machineUnitBodySchema } },
+} as const;
+
+const machineModelParamsOpenApiSchema = {
+  type: "object", additionalProperties: false, required: ["machineModelId"],
+  properties: { machineModelId: { type: "string", format: "uuid" } },
+} as const;
+
+const listMachineModelsOpenApiQuerySchema = {
+  type: "object", additionalProperties: false,
+  properties: {
+    limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+    cursor: { type: "string", minLength: 1, maxLength: 2048 },
+    search: { type: "string", maxLength: 120 },
+    type: { type: "string", enum: ["YELLOW_LINE", "WHITE_LINE"] },
+    sortBy: { type: "string", enum: ["model", "createdAt"], default: "createdAt" },
+    sortDirection: { type: "string", enum: ["asc", "desc"], default: "desc" },
+  },
+} as const;
+
+const machineModelDetailResponseSchema = {
+  type: "object", required: ["success", "message", "data"],
+  properties: { success: { type: "boolean", const: true }, message: { type: "string" }, data: machineModelSchema },
+} as const;
+
+const machineModelListResponseSchema = {
+  type: "object", required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true }, message: { type: "string" },
+    data: {
+      type: "object", required: ["data", "pageInfo"],
+      properties: {
+        data: { type: "array", items: machineModelSchema },
+        pageInfo: {
+          type: "object", required: ["hasNextPage", "nextCursor"],
+          properties: { hasNextPage: { type: "boolean" }, nextCursor: { type: "string", nullable: true } },
+          additionalProperties: false,
+        },
+      }, additionalProperties: false,
+    },
+  },
 } as const;
 
 const machineDetailSchema = {
@@ -299,6 +447,93 @@ function scopeFromRequest(request: {
 
 export const v1FleetController = async (app: FastifyInstance) => {
   const fleetService = new FleetService(app.handlerContext);
+
+  app.post(
+    "/machine-models",
+    {
+      preHandler: [app.requireCompanyScope, validateBody(createMachineModelSchema)],
+      schema: {
+        tags: ["Fleet"], summary: "Create a Machine Model and its physical units",
+        security: [{ bearerAuth: [] }], body: createMachineModelBodySchema,
+        response: { 201: machineModelDetailResponseSchema, 400: errorSchema, 401: errorSchema, 403: errorSchema, 409: errorSchema, 422: errorSchema },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await fleetService.createModel(scopeFromRequest(request), request.body as z.infer<typeof createMachineModelSchema>),
+        statusCode: 201,
+      }),
+  );
+
+  app.patch(
+    "/machine-models/:machineModelId",
+    {
+      preHandler: [app.requireCompanyScope, validateParams(machineModelParamsSchema), validateBody(updateMachineModelSchema)],
+      schema: {
+        tags: ["Fleet"], summary: "Update a Machine Model",
+        security: [{ bearerAuth: [] }], params: machineModelParamsOpenApiSchema, body: updateMachineModelBodySchema,
+        response: { 200: machineModelDetailResponseSchema, 400: errorSchema, 401: errorSchema, 403: errorSchema, 404: errorSchema, 409: errorSchema, 422: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { machineModelId } = request.params as z.infer<typeof machineModelParamsSchema>;
+      return jsonResponse.success({ reply, data: await fleetService.updateModel(scopeFromRequest(request), machineModelId, request.body as z.infer<typeof updateMachineModelSchema>) });
+    },
+  );
+
+  app.get(
+    "/machine-models",
+    {
+      preHandler: [app.requireCompanyScope, validateQuery(listMachineModelsQuerySchema)],
+      schema: {
+        tags: ["Fleet"], summary: "List Machine Models in the selected Company",
+        security: [{ bearerAuth: [] }], querystring: listMachineModelsOpenApiQuerySchema,
+        response: { 200: machineModelListResponseSchema, 400: errorSchema, 401: errorSchema, 403: errorSchema },
+      },
+    },
+    async (request, reply) =>
+      jsonResponse.success({
+        reply,
+        data: await fleetService.listModels(scopeFromRequest(request), request.query as z.infer<typeof listMachineModelsQuerySchema>),
+      }),
+  );
+
+  app.get(
+    "/machine-models/:machineModelId",
+    {
+      preHandler: [app.requireCompanyScope, validateParams(machineModelParamsSchema)],
+      schema: {
+        tags: ["Fleet"], summary: "Get a Machine Model with its units",
+        security: [{ bearerAuth: [] }], params: machineModelParamsOpenApiSchema,
+        response: { 200: machineModelDetailResponseSchema, 400: errorSchema, 401: errorSchema, 403: errorSchema, 404: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { machineModelId } = request.params as z.infer<typeof machineModelParamsSchema>;
+      return jsonResponse.success({ reply, data: await fleetService.modelDetail(scopeFromRequest(request), machineModelId) });
+    },
+  );
+
+  app.post(
+    "/machine-models/:machineModelId/units",
+    {
+      preHandler: [app.requireCompanyScope, validateParams(machineModelParamsSchema), validateBody(addMachineModelUnitsSchema)],
+      schema: {
+        tags: ["Fleet"], summary: "Add physical units to a Machine Model",
+        security: [{ bearerAuth: [] }], params: machineModelParamsOpenApiSchema, body: addMachineModelUnitsBodySchema,
+        response: { 201: machineModelDetailResponseSchema, 400: errorSchema, 401: errorSchema, 403: errorSchema, 404: errorSchema, 409: errorSchema },
+      },
+    },
+    async (request, reply) => {
+      const { machineModelId } = request.params as z.infer<typeof machineModelParamsSchema>;
+      return jsonResponse.success({
+        reply,
+        data: await fleetService.addModelUnits(scopeFromRequest(request), machineModelId, request.body as z.infer<typeof addMachineModelUnitsSchema>),
+        statusCode: 201,
+      });
+    },
+  );
 
   app.post(
     "/machines",

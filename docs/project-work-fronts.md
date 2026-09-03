@@ -64,11 +64,11 @@ A mobilização ocorre em duas camadas:
 
 Pessoas e máquinas só podem estar em uma frente por vez dentro da obra. Um recurso ocupado aparece indisponível e deve ser liberado da frente atual antes de outra destinação; não existe transferência automática.
 
-Toda máquina mobilizada possui um operador por turno. Ao selecionar o par
-`máquina + turno` para uma frente, o operador daquele turno é incluído
-automaticamente e conta como equipe. A mesma máquina pode estar em frentes
-diferentes em turnos diferentes. Se a pessoa também tiver sido selecionada
-diretamente, o histórico registra as duas origens sem duplicá-la na frente.
+Máquinas cujo modelo exige operador possuem um operador por turno. Ao selecionar
+o par `máquina + turno` para uma frente, esse operador é incluído
+automaticamente e conta como equipe. Máquinas sem requisito entram na frente
+sem operador e não bloqueiam a mobilização por falta de funcionário. A mesma
+máquina pode estar em frentes diferentes em turnos diferentes.
 
 O modal de mobilização da frente separa **Funcionários** e **Máquinas** em tabs.
 Cada tab consulta até 15 recursos por página e preserva as seleções ao trocar
@@ -76,7 +76,7 @@ de página, busca ou tipo de recurso. Funcionários podem ser buscados por nome 
 função; máquinas por nome, fabricante, modelo, placa ou patrimônio. A busca é
 aplicada após 300 ms sem digitação.
 
-Operadores atuais das máquinas da obra não aparecem como seleção direta na tab
+Operadores atuais das máquinas que exigem operador não aparecem como seleção direta na tab
 Funcionários. Na tab Máquinas, cada linha representa `máquina + turno` e mostra
 operador e eventual frente ocupante. Recursos de outra frente continuam
 visíveis, porém desabilitados, e precisam ser liberados antes de uma nova

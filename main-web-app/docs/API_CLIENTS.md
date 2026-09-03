@@ -100,7 +100,12 @@ edição de serviços de uma frente ativa chama
 de metadados da frente. A interface consome `produced`, `minimumQuantity` e
 `maximumQuantity` do snapshot, sem recalcular a regra de domínio.
 
-O cadastro de máquina envia `loadVolumeM3` e `maxSupportedWeightT` somente para
+O cadastro de máquinas usa `POST /machine-models`: o modelo recebe os campos
+comuns, `requiresOperator`, `requiredJobRoleId` condicional e `units[]` com os
+identificadores e leituras iniciais. A inclusão posterior usa
+`POST /machine-models/:machineModelId/units`. Ações Server-only carregam as
+funções ativas para o select e nunca aceitam função quando o modelo não exige
+operador. `loadVolumeM3` e `maxSupportedWeightT` são enviados somente para
 `WHITE_LINE`. A API mantém esses campos compatíveis sincronizados com
 `MachineTransportSpecification`, que define capacidade nominal/efetiva,
 unidade e peso máximo para a seleção de caminhões. A edição usa

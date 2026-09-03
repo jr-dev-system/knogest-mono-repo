@@ -37,6 +37,17 @@ função, duplicidades mostram que o nome já existe na empresa; falhas inespera
 mantêm o nome digitado e exibem o código de atendimento (`requestId`) quando a
 API o devolve.
 
+## Máquinas
+
+O cadastro de modelo de máquina usa o assistente padrão em três etapas:
+**Modelo e operador**, **Unidades físicas** e **Revisão**. A primeira etapa
+valida as características compartilhadas, o medidor e a regra `Exige
+operador?`; ao selecionar “Não”, a função é limpa e não é enviada. A segunda
+mantém uma ou mais unidades no mesmo rascunho e exige nome, leitura inicial e
+ao menos placa ou patrimônio para cada uma. A revisão resume o modelo e todas
+as unidades, com ações **Editar** que retornam à etapa correta sem descartar
+os dados. Somente a ação final explícita cadastra o catálogo.
+
 ## Máscaras
 
 - Máscaras vivem em `src/lib/brazilian-input-mask.ts`.

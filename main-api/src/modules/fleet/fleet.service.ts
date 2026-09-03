@@ -8,6 +8,9 @@ import type {
   AppendMachineMeterReadingInput,
   CorrectMachineMeterReadingInput,
   CreateMachineInput,
+  CreateMachineModelInput,
+  AddMachineModelUnitsInput,
+  ListMachineModelsQuery,
   AllocateMachineInput,
   ListMachinesQuery,
   UpdateMachineLoadSpecificationInput,
@@ -16,6 +19,12 @@ import {
   appendMachineMeterReadingHandler,
   correctMachineMeterReadingHandler,
   createMachineHandler,
+  createMachineModelHandler,
+  addMachineModelUnitsHandler,
+  findMachineModelDetailHandler,
+  findActiveJobRoleHandler,
+  listMachineModelsHandler,
+  updateMachineModelHandler,
   findMachineDetailHandler,
   findAllocatedMachineIdsHandler,
   allocateMachineHandler,
@@ -137,6 +146,11 @@ function toMachineDto(
     meterType: record.meterType,
     loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
     maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
+    machineModel: {
+      id: record.machineModel.id,
+      requiresOperator: record.machineModel.requiresOperator,
+      requiredJobRole: record.machineModel.requiredJobRole,
+    },
     identifiers: {
       plate: plate
         ? { value: plate.value, normalizedValue: plate.normalizedValue }
@@ -150,6 +164,27 @@ function toMachineDto(
     },
     latestMeterReading: latestReading(record),
     availability: availabilityDto(record, allocatedMachineIds.has(record.id)),
+    createdAt: record.createdAt.toISOString(),
+    updatedAt: record.updatedAt.toISOString(),
+  };
+}
+
+function toMachineModelDto(
+  record: Awaited<ReturnType<typeof findMachineModelDetailHandler>>,
+) {
+  return {
+    id: record.id,
+    description: record.description,
+    type: record.type,
+    manufacturer: record.manufacturer,
+    model: record.model,
+    meterType: record.meterType,
+    loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
+    maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
+    requiresOperator: record.requiresOperator,
+    requiredJobRole: record.requiredJobRole,
+    unitCount: record.machines.length,
+    units: record.machines.map((machine) => toMachineDto(machine)),
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
@@ -200,6 +235,25 @@ function identifiersFromInput(input: CreateMachineInput) {
   return identifiers;
 }
 
+function identifiersFromUnit(input: {
+  plate?: string;
+  companyTag?: string;
+}) {
+  return identifiersFromInput({
+    plate: input.plate,
+    companyTag: input.companyTag,
+    name: "unit",
+    type: "YELLOW_LINE",
+    manufacturer: "unit",
+    model: "unit",
+    meterType: "HOUR_METER",
+    description: undefined,
+    loadVolumeM3: undefined,
+    maxSupportedWeightT: undefined,
+    initialMeterReading: "0",
+  });
+}
+
 export class FleetService {
   constructor(
     private readonly context: HandlerContext,
@@ -232,6 +286,140 @@ export class FleetService {
       });
       return toMachineDetailDto(record);
     });
+  }
+
+  private async validateRequiredJobRole(
+    scope: AuthenticatedCompanyScope,
+    input: { requiresOperator: boolean; requiredJobRoleId?: string | null },
+  ) {
+    if (!input.requiresOperator) return null;
+    const role = await findActiveJobRoleHandler(this.context, {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      jobRoleId: input.requiredJobRoleId!,
+    });
+    if (!role)
+      throw new AppError({
+        code: "MACHINE_MODEL_JOB_ROLE_INVALID",
+        message: "Machine model operator job role is not available in this Company",
+        statusCode: 422,
+      });
+    return role.id;
+  }
+
+  async createModel(
+    scope: AuthenticatedCompanyScope,
+    input: CreateMachineModelInput,
+  ) {
+    const requiredJobRoleId = await this.validateRequiredJobRole(scope, input);
+    return this.context.transaction(async (transactionContext) => {
+      const record = await createMachineModelHandler(transactionContext, {
+        ...scope,
+        ...input,
+        requiredJobRoleId,
+        loadVolumeM3: input.loadVolumeM3
+          ? normalizeSpecificationDecimal(input.loadVolumeM3)
+          : undefined,
+        maxSupportedWeightT: input.maxSupportedWeightT
+          ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
+          : undefined,
+        units: input.units.map((unit) => ({
+          name: unit.name,
+          identifiers: identifiersFromUnit(unit),
+          initialMeterReading: normalizeDecimal(unit.initialMeterReading),
+        })),
+      });
+      return toMachineModelDto(record);
+    });
+  }
+
+  async listModels(
+    scope: AuthenticatedCompanyScope,
+    query: ListMachineModelsQuery,
+  ) {
+    const normalizedQuery = {
+      search: query.search?.toLocaleLowerCase("pt-BR") ?? null,
+      type: query.type ?? null,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+    };
+    const boundary = parseBoundCursor({
+      cursor: query.cursor,
+      query: normalizedQuery,
+      resource: "machine-models",
+      scope: scopeForCursor(scope),
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+    });
+    const records = await listMachineModelsHandler(this.context, {
+      ...scope,
+      ...query,
+      boundary,
+    });
+    const page = buildCursorPage({
+      items: records,
+      limit: query.limit,
+      query: normalizedQuery,
+      resource: "machine-models",
+      scope: scopeForCursor(scope),
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+      getLast: (item) => ({
+        id: item.id,
+        value: query.sortBy === "createdAt" ? item.createdAt.toISOString() : item.model,
+      }),
+    });
+    return { data: page.data.map((record) => toMachineModelDto(record)), pageInfo: page.pageInfo };
+  }
+
+  async modelDetail(scope: AuthenticatedCompanyScope, machineModelId: string) {
+    return toMachineModelDto(
+      await findMachineModelDetailHandler(this.context, { ...scope, machineModelId }),
+    );
+  }
+
+  async addModelUnits(
+    scope: AuthenticatedCompanyScope,
+    machineModelId: string,
+    input: AddMachineModelUnitsInput,
+  ) {
+    return this.context.transaction(async (transactionContext) =>
+      toMachineModelDto(
+        await addMachineModelUnitsHandler(transactionContext, {
+          ...scope,
+          machineModelId,
+          units: input.units.map((unit) => ({
+            name: unit.name,
+            identifiers: identifiersFromUnit(unit),
+            initialMeterReading: normalizeDecimal(unit.initialMeterReading),
+          })),
+        }),
+      ),
+    );
+  }
+
+  async updateModel(
+    scope: AuthenticatedCompanyScope,
+    machineModelId: string,
+    input: import("./fleet.dto").UpdateMachineModelInput,
+  ) {
+    const requiredJobRoleId = await this.validateRequiredJobRole(scope, input);
+    return this.context.transaction(async (transactionContext) =>
+      toMachineModelDto(
+        await updateMachineModelHandler(transactionContext, {
+          ...scope,
+          ...input,
+          machineModelId,
+          requiredJobRoleId,
+          loadVolumeM3: input.loadVolumeM3
+            ? normalizeSpecificationDecimal(input.loadVolumeM3)
+            : undefined,
+          maxSupportedWeightT: input.maxSupportedWeightT
+            ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
+            : undefined,
+        }),
+      ),
+    );
   }
 
   async list(scope: AuthenticatedCompanyScope, query: ListMachinesQuery) {

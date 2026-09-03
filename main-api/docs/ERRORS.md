@@ -100,6 +100,8 @@ categorias seguras.
   ao menos um lançamento vinculado, ainda que seja rascunho zerado;
 - `MACHINE_LOAD_SPEC_NOT_APPLICABLE`: volume de carga ou peso máximo enviado
   para máquina que não pertence à linha branca.
+- `MACHINE_MODEL_JOB_ROLE_INVALID`: a função de operador do modelo não está
+  ativa ou não pertence à empresa selecionada.
 
 Os três casos usam `422`. Limites quantitativos podem aparecer em `blockers`,
 sem expor payload, SQL ou detalhes de persistência.
