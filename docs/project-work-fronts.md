@@ -103,7 +103,7 @@ destinação.
 
 Os requisitos de equipe e máquinas bloqueiam apenas o **início** da frente. Depois de ativa, a frente pode ter sua mobilização alterada ou ficar temporariamente sem recursos sem ser encerrada automaticamente.
 
-Alterar o pool da obra também é permitido durante a execução, desde que não remova uma pessoa, máquina ou operador ainda destinado a uma frente. Mobilizações e desmobilizações encerram o período anterior e criam histórico auditável; registros históricos não são sobrescritos nem apagados.
+Alterar o pool da obra também é permitido durante a execução, desde que não remova uma pessoa, máquina ou operador ainda destinado a uma frente. A função confirmada de quem já integra o pool fica congelada quando a obra é iniciada; a mudança futura será tratada pela rotina de reclassificação, não pela mobilização. Mobilizações e desmobilizações encerram o período anterior e criam histórico auditável; registros históricos não são sobrescritos nem apagados.
 
 ## Estados
 

@@ -1294,6 +1294,7 @@ async function replaceEmployeeAllocations(
   allocations: ReadinessEmployeeAllocation[],
   now: Date,
   reason = "Atualização da mobilização da obra",
+  projectStatus: "PLANNED" | "ACTIVE" = "PLANNED",
 ) {
   const employmentIds = allocations.map((item) => item.employmentId);
   const activeSchedule = await tx.prisma.projectScheduleRevision.findFirst({
@@ -1415,12 +1416,39 @@ async function replaceEmployeeAllocations(
   const currentAllocations = await tx.prisma.projectEmployeeAllocation.findMany(
     {
       where: { ...scopeWhere, effectiveTo: null },
-      select: { employmentId: true, shift: true },
+      select: {
+        employmentId: true,
+        shift: true,
+        confirmedJobRoleId: true,
+        employmentJobRolePeriodId: true,
+        jobRole: true,
+      },
     },
   );
   const desiredByEmployment = new Map(
     allocations.map((allocation) => [allocation.employmentId, allocation]),
   );
+  if (projectStatus === "ACTIVE") {
+    const reclassifiedAllocation = currentAllocations.find((current) => {
+      const desired = desiredByEmployment.get(current.employmentId);
+      if (!desired) return false;
+      if (current.confirmedJobRoleId)
+        return desired.confirmedJobRoleId !== current.confirmedJobRoleId;
+      return (
+        desired.confirmedJobRoleId !== undefined ||
+        desired.confirmedJobRoleName !== current.jobRole
+      );
+    });
+    if (reclassifiedAllocation)
+      throw conflict([
+        resource(
+          "employee",
+          reclassifiedAllocation.employmentId,
+          "employees",
+          "reclassification-required",
+        ),
+      ]);
+  }
   const removedEmploymentIds = currentAllocations
     .map((allocation) => allocation.employmentId)
     .filter((employmentId) => !desiredEmploymentIds.has(employmentId));
@@ -3810,6 +3838,7 @@ export class ProjectsHandler {
         command.allocations,
         new Date(),
         command.reason ?? "Atualização da equipe mobilizada na obra",
+        project.status === "ACTIVE" ? "ACTIVE" : "PLANNED",
       );
       if (
         scheduleEnablesNight === false &&
@@ -4916,7 +4945,13 @@ export class ProjectsHandler {
       select: { id: true },
     });
     if (!project) projectNotFound();
-    const cursorQuery = { shift: query.shift };
+    const normalizedSearch = query.search?.trim() || undefined;
+    const selectedJobRole = query.jobRole?.trim() || undefined;
+    const cursorQuery = {
+      shift: query.shift,
+      search: normalizedSearch,
+      jobRole: selectedJobRole,
+    };
     const cursorScope = {
       corporationId: scope.corporationId,
       companyId: scope.companyId,
@@ -4931,14 +4966,24 @@ export class ProjectsHandler {
       sortBy: "name",
       sortDirection: "asc",
     });
-    const allocations =
-      await this.context.prisma.projectEmployeeAllocation.findMany({
+    const [allocations, jobRoleRows] = await Promise.all([
+      this.context.prisma.projectEmployeeAllocation.findMany({
+        where: {
+          ...projectScopeWhere(scope, projectId),
+          effectiveTo: null,
+          shift: dbShift(query.shift),
+          ...(selectedJobRole ? { jobRole: selectedJobRole } : {}),
+        },
+      }),
+      this.context.prisma.projectEmployeeAllocation.findMany({
         where: {
           ...projectScopeWhere(scope, projectId),
           effectiveTo: null,
           shift: dbShift(query.shift),
         },
-      });
+        select: { jobRole: true },
+      }),
+    ]);
     const employments = allocations.length
       ? await this.context.prisma.employment.findMany({
           where: {
@@ -4952,6 +4997,9 @@ export class ProjectsHandler {
     const nameByEmployment = new Map(
       employments.map((item) => [item.id, item.person.displayName]),
     );
+    const normalizedSearchForComparison = normalizedSearch?.toLocaleLowerCase(
+      "pt-BR",
+    );
     const ordered = allocations
       .map((allocation) => ({
         allocation,
@@ -4961,6 +5009,16 @@ export class ProjectsHandler {
         (left, right) =>
           left.name.localeCompare(right.name, "pt-BR") ||
           left.allocation.id.localeCompare(right.allocation.id),
+      )
+      .filter(
+        (item) =>
+          !normalizedSearchForComparison ||
+          item.name
+            .toLocaleLowerCase("pt-BR")
+            .includes(normalizedSearchForComparison) ||
+          item.allocation.jobRole
+            .toLocaleLowerCase("pt-BR")
+            .includes(normalizedSearchForComparison),
       )
       .filter(
         (item) =>
@@ -4991,6 +5049,9 @@ export class ProjectsHandler {
         compensationMode: allocation.compensationMode,
         overtimeRate: allocation.overtimeRate.toFixed(2),
       })),
+      jobRoles: [...new Set(jobRoleRows.map((item) => item.jobRole))].sort(
+        (left, right) => left.localeCompare(right, "pt-BR"),
+      ),
       pageInfo: page.pageInfo,
     };
   }

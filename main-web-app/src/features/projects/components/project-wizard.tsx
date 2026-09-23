@@ -24,6 +24,16 @@ import { Button } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   canonicalDecimalToBrazilian,
   decimalInputToCanonical,
   formatBrazilianDecimalInput,
@@ -66,6 +76,10 @@ type MachineOption = Option & {
   acceptsAnyJobRole: boolean;
 };
 
+export type EmployeeMobilizationHandle = {
+  confirmDraft: () => void;
+};
+
 function machineReadingDetail(option: MachineOption) {
   return option.detail
     ? formatMeterReading(option.detail, option.meterType)
@@ -87,7 +101,6 @@ export type ProjectWizardOptions = {
 const controlClass =
   "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
 const fieldGridClass = "grid gap-3 md:grid-cols-2";
-const temporaryJobRolePrefix = "__project_job_role__:";
 const projectFieldLabels: Partial<Record<Path<ProjectCommand>, string>> = {
   name: "Nome da obra",
   contractNumber: "Número do contrato",
@@ -864,29 +877,43 @@ export function Schedule({
   );
 }
 
-export function EmployeeMobilization({
-  bare = false,
-  fixedShift,
-  form,
-  initialEmploymentId,
-  onDraftStateChange,
-  options,
-  sessionKey,
-  showConfirmedCount = true,
-  title = "Mobilização inicial da equipe",
-  description = "Opcional. Configure e confirme as condições de cada funcionário antes de mobilizá-lo.",
-}: {
-  bare?: boolean;
-  fixedShift?: "day" | "night";
-  form: UseFormReturn<ProjectCommand>;
-  initialEmploymentId?: string;
-  onDraftStateChange?: (hasDraft: boolean) => void;
-  options: ProjectWizardOptions;
-  sessionKey: string;
-  showConfirmedCount?: boolean;
-  title?: string | null;
-  description?: string | null;
-}) {
+export const EmployeeMobilization = React.forwardRef<
+  EmployeeMobilizationHandle,
+  {
+    bare?: boolean;
+    fixedShift?: "day" | "night";
+    form: UseFormReturn<ProjectCommand>;
+    hideDraftActions?: boolean;
+    initialEmploymentId?: string;
+    allowProjectRoleChange?: boolean;
+    onDraftConfirmed?: () => void;
+    onDraftStateChange?: (hasDraft: boolean) => void;
+    options: ProjectWizardOptions;
+    saveDisabled?: boolean;
+    sessionKey: string;
+    showConfirmedCount?: boolean;
+    title?: string | null;
+    description?: string | null;
+  }
+>(function EmployeeMobilization(
+  {
+    bare = false,
+    fixedShift,
+    form,
+    hideDraftActions = false,
+    initialEmploymentId,
+    allowProjectRoleChange = true,
+    onDraftConfirmed,
+    onDraftStateChange,
+    options,
+    saveDisabled = false,
+    sessionKey,
+    showConfirmedCount = true,
+    title = "Mobilização inicial da equipe",
+    description = "Opcional. Configure e confirme as condições de cada funcionário antes de mobilizá-lo.",
+  },
+  ref,
+) {
   const allocations = form.watch("initialEmployeeAllocations");
   const visibleAllocations = fixedShift
     ? allocations.filter((allocation) => allocation.shift === fixedShift)
@@ -906,8 +933,10 @@ export function EmployeeMobilization({
     overtimeIsManual: boolean;
   } | null>(null);
   const [jobRoles, setJobRoles] = React.useState(options.jobRoles);
-  const [newJobRoleName, setNewJobRoleName] = React.useState("");
-  const [isAddingJobRole, setIsAddingJobRole] = React.useState(false);
+  const [roleChangeConfirmationOpen, setRoleChangeConfirmationOpen] =
+    React.useState(false);
+  const [isProjectRoleChangeUnlocked, setIsProjectRoleChangeUnlocked] =
+    React.useState(false);
   const [jobRoleMessage, setJobRoleMessage] = React.useState("");
   const openedInitialEmploymentId = React.useRef<string | null>(null);
 
@@ -916,8 +945,8 @@ export function EmployeeMobilization({
     setActiveEmploymentId(null);
     setDraft(null);
     setJobRoles(options.jobRoles);
-    setNewJobRoleName("");
-    setIsAddingJobRole(false);
+    setRoleChangeConfirmationOpen(false);
+    setIsProjectRoleChangeUnlocked(false);
     setJobRoleMessage("");
     openedInitialEmploymentId.current = null;
     onDraftStateChange?.(false);
@@ -931,7 +960,6 @@ export function EmployeeMobilization({
       style: "currency",
       currency: "BRL",
     }).format(Number(decimalInputToCanonical(amount) || 0));
-  const toHours = (value: string) => Number(value.replace(",", "."));
   const calculateHourlyRate = (
     compensationValue: string,
     compensationMode: ProjectCommand["initialEmployeeAllocations"][number]["compensationMode"],
@@ -978,8 +1006,8 @@ export function EmployeeMobilization({
     const compensationValue = allocation?.compensationValue ?? "0.00";
     const monthlyHours = String(allocation?.monthlyWorkloadHours ?? 220);
     setActiveEmploymentId(option.id);
-    setNewJobRoleName("");
-    setIsAddingJobRole(false);
+    setRoleChangeConfirmationOpen(false);
+    setIsProjectRoleChangeUnlocked(false);
     setJobRoleMessage("");
     const temporaryRoleId = allocation?.confirmedJobRoleName
       ? jobRoles.find((role) => role.label === allocation.confirmedJobRoleName)
@@ -1008,6 +1036,7 @@ export function EmployeeMobilization({
     });
     onDraftStateChange?.(true);
   };
+  /* eslint-disable react-hooks/set-state-in-effect -- Opens the single requested member once per editor session. */
   React.useEffect(() => {
     if (
       !initialEmploymentId ||
@@ -1021,17 +1050,18 @@ export function EmployeeMobilization({
     openedInitialEmploymentId.current = initialEmploymentId;
     beginEditing(option);
   }, [beginEditing, initialEmploymentId, options.employees]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const cancelEditing = () => {
     setActiveEmploymentId(null);
     setDraft(null);
-    setNewJobRoleName("");
-    setIsAddingJobRole(false);
+    setRoleChangeConfirmationOpen(false);
+    setIsProjectRoleChangeUnlocked(false);
     setJobRoleMessage("");
     onDraftStateChange?.(false);
   };
-  const confirmDraft = () => {
+  const confirmDraft = React.useCallback(() => {
     if (!draft) return;
-    const hours = toHours(draft.monthlyHours);
+    const hours = Number(draft.monthlyHours.replace(",", "."));
     const role = jobRoles.find((item) => item.id === draft.confirmedJobRoleId);
     if (!role) {
       setJobRoleMessage("Selecione o cargo que será aplicado nesta obra.");
@@ -1046,23 +1076,12 @@ export function EmployeeMobilization({
     const option = options.employees.find(
       (item) => item.id === draft.employmentId,
     );
-    const isTemporaryRole =
-      role.temporary || role.id.startsWith(temporaryJobRolePrefix);
     const allocation = {
       employmentId: draft.employmentId,
       shift: draft.shift,
-      ...(isTemporaryRole
-        ? {
-            confirmedJobRoleName: role.label,
-            confirmedJobRolePeriodId: null,
-          }
-        : {
-            confirmedJobRoleId: role.id,
-            confirmedJobRolePeriodId:
-              option?.jobRoleId === role.id
-                ? (option.jobRolePeriodId ?? null)
-                : null,
-          }),
+      confirmedJobRoleId: role.id,
+      confirmedJobRolePeriodId:
+        option?.jobRoleId === role.id ? (option.jobRolePeriodId ?? null) : null,
       monthlyWorkloadHours: hours,
       compensationMode: draft.compensationMode,
       compensationValue: decimalInputToCanonical(draft.compensationValue),
@@ -1077,41 +1096,25 @@ export function EmployeeMobilization({
         : [...allocations, allocation],
       { shouldDirty: true, shouldValidate: true },
     );
-    cancelEditing();
-  };
-  const createTemporaryJobRole = () => {
-    const name = newJobRoleName.trim().normalize("NFC");
-    if (!name) {
-      setJobRoleMessage("Informe o nome da função.");
-      return;
+    if (!onDraftConfirmed) {
+      setActiveEmploymentId(null);
+      setDraft(null);
+      setRoleChangeConfirmationOpen(false);
+      setIsProjectRoleChangeUnlocked(false);
+      setJobRoleMessage("");
+      onDraftStateChange?.(false);
     }
-    if (name.length > 120) {
-      setJobRoleMessage("Use no máximo 120 caracteres para a função.");
-      return;
-    }
-    const existing = jobRoles.find(
-      (role) =>
-        role.label.localeCompare(name, "pt-BR", { sensitivity: "base" }) === 0,
-    );
-    const role =
-      existing ??
-      ({
-        id: `${temporaryJobRolePrefix}${crypto.randomUUID()}`,
-        label: name,
-        temporary: true,
-      } satisfies Option);
-    if (!existing)
-      setJobRoles((current) =>
-        [...current, role].sort((a, b) =>
-          a.label.localeCompare(b.label, "pt-BR"),
-        ),
-      );
-    updateDraft({ confirmedJobRoleId: role.id });
-    setNewJobRoleName("");
-    setIsAddingJobRole(false);
-    setJobRoleMessage("");
-  };
-
+    onDraftConfirmed?.();
+  }, [
+    allocations,
+    draft,
+    form,
+    jobRoles,
+    onDraftConfirmed,
+    onDraftStateChange,
+    options.employees,
+  ]);
+  React.useImperativeHandle(ref, () => ({ confirmDraft }), [confirmDraft]);
   const activeOption = activeEmploymentId
     ? options.employees.find((option) => option.id === activeEmploymentId)
     : undefined;
@@ -1166,93 +1169,87 @@ export function EmployeeMobilization({
                 temporário.
               </span>
             </label>
-            <div className="grid gap-1.5 text-sm font-semibold md:col-span-2">
-              {isAddingJobRole ? (
-                <label
-                  className="grid gap-1.5"
-                  htmlFor="project-temporary-job-role"
+            <div className="grid gap-4 md:col-span-2 md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
+              <div className="grid gap-1.5 text-sm font-semibold">
+                <span>Classificação na empresa</span>
+                <p className="min-h-11 break-words rounded-md border border-input bg-muted/40 px-3 py-2 font-medium text-foreground">
+                  {activeOption.detail || "Não informada"}
+                </p>
+                <span className="text-xs font-medium text-muted-foreground">
+                  A classificação é mantida no cadastro do funcionário, fora
+                  desta obra.
+                </span>
+              </div>
+              {allowProjectRoleChange && !isProjectRoleChangeUnlocked && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="min-h-11 md:mb-6"
+                  onClick={() => setRoleChangeConfirmationOpen(true)}
                 >
-                  <span>
-                    Aplicado somente nesta obra. O vínculo oficial do
-                    funcionário não será alterado.
-                  </span>
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto_auto] sm:items-center">
-                    <Input
-                      id="project-temporary-job-role"
-                      className="h-11"
-                      value={newJobRoleName}
-                      maxLength={120}
-                      placeholder="Ex.: Encarregado de campo"
-                      onChange={(event) =>
-                        setNewJobRoleName(event.target.value)
-                      }
-                    />
-                    <Button
-                      type="button"
-                      className="min-h-11"
-                      disabled={!newJobRoleName.trim()}
-                      onClick={createTemporaryJobRole}
-                    >
-                      <Check className="size-4" />
-                      Salvar
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="min-h-11"
-                      onClick={() => {
-                        setNewJobRoleName("");
-                        setIsAddingJobRole(false);
-                        setJobRoleMessage("");
-                      }}
-                    >
-                      <X className="size-4" />
-                      Cancelar
-                    </Button>
-                  </div>
-                </label>
-              ) : (
-                <label className="grid gap-1.5" htmlFor="project-job-role">
-                  <span>Cargo na obra</span>
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center">
-                    <select
-                      id="project-job-role"
-                      className={controlClass}
-                      value={draft.confirmedJobRoleId}
-                      onChange={(event) =>
-                        updateDraft({ confirmedJobRoleId: event.target.value })
-                      }
-                    >
-                      <option value="">Selecione o cargo</option>
-                      {jobRoles.map((role) => (
-                        <option key={role.id} value={role.id}>
-                          {role.label}
-                        </option>
-                      ))}
-                    </select>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="min-h-11"
-                      onClick={() => {
-                        setIsAddingJobRole(true);
-                        setNewJobRoleName("");
-                        setJobRoleMessage("");
-                      }}
-                    >
-                      <Plus className="size-4" />
-                      Criar nova função
-                    </Button>
-                  </div>
-                </label>
+                  <Pencil className="size-4" />
+                  Alterar função
+                </Button>
               )}
             </div>
-            <div className="grid content-end gap-1.5 text-sm font-semibold md:col-span-2">
-              <span>Função confirmada</span>
-              <p className="min-h-11 rounded-md border border-input bg-background px-3 py-2 font-medium text-foreground">
-                {selectedRole?.label || "Selecione o cargo acima"}
-                {selectedRole?.temporary ? " — somente nesta obra" : ""}
-              </p>
+            <div className="grid gap-1.5 text-sm font-semibold md:col-span-2">
+              <label htmlFor="project-job-role">
+                Função aplicada nesta obra
+              </label>
+              {isProjectRoleChangeUnlocked ? (
+                <>
+                  <select
+                    id="project-job-role"
+                    className={controlClass}
+                    value={draft.confirmedJobRoleId}
+                    onChange={(event) =>
+                      updateDraft({ confirmedJobRoleId: event.target.value })
+                    }
+                  >
+                    <option value="">Selecione a função</option>
+                    {jobRoles.map((role) => (
+                      <option key={role.id} value={role.id}>
+                        {role.label}
+                      </option>
+                    ))}
+                  </select>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="justify-self-start"
+                    onClick={() => {
+                      if (!activeOption.jobRoleId) {
+                        setJobRoleMessage(
+                          "A classificação da empresa não está disponível para restauração.",
+                        );
+                        return;
+                      }
+                      updateDraft({
+                        confirmedJobRoleId: activeOption.jobRoleId,
+                      });
+                      setIsProjectRoleChangeUnlocked(false);
+                      setJobRoleMessage("");
+                    }}
+                  >
+                    Restaurar classificação da empresa
+                  </Button>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    Esta exceção vale somente para esta obra e não altera a
+                    classificação da empresa.
+                  </span>
+                </>
+              ) : (
+                <>
+                  <p className="min-h-11 break-words rounded-md border border-input bg-background px-3 py-2 font-medium text-foreground">
+                    {selectedRole?.label || "Classificação pendente"}
+                  </p>
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {allowProjectRoleChange
+                      ? "Confirme a função herdada ou use Alterar função para registrar uma exceção nesta obra."
+                      : "A obra já foi iniciada. A reclassificação ficará disponível em uma rotina futura."}
+                  </span>
+                </>
+              )}
             </div>
             <div className="grid gap-1.5 text-sm font-semibold">
               <label htmlFor="project-monthly-workload">Carga mensal</label>
@@ -1386,16 +1383,65 @@ export function EmployeeMobilization({
               {jobRoleMessage}
             </p>
           )}
-          <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
-            <Button type="button" variant="outline" onClick={cancelEditing}>
-              <X className="size-4" />
-              Cancelar
-            </Button>
-            <Button type="button" onClick={confirmDraft}>
-              <Check className="size-4" />
-              Confirmar funcionário
-            </Button>
-          </div>
+          <AlertDialog
+            open={roleChangeConfirmationOpen}
+            onOpenChange={setRoleChangeConfirmationOpen}
+          >
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>
+                  Alterar a função nesta obra?
+                </AlertDialogTitle>
+                <AlertDialogDescription>
+                  Esta é uma exceção operacional. Confirme somente se a função
+                  aplicada a {activeOption.label} nesta obra precisar ser
+                  diferente da classificação na empresa.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <div className="grid gap-2 rounded-md bg-muted/60 p-3 text-sm leading-5 text-muted-foreground">
+                <p>• A alteração vale apenas para esta obra.</p>
+                <p>
+                  • O cadastro e a classificação do funcionário na empresa não
+                  serão modificados.
+                </p>
+                <p>
+                  • A função escolhida pode afetar a elegibilidade para operar
+                  máquinas nesta obra.
+                </p>
+                <p>
+                  • Depois do início da obra, esta edição ficará bloqueada; a
+                  reclassificação terá uma rotina própria.
+                </p>
+              </div>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Manter função herdada</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => {
+                    setIsProjectRoleChangeUnlocked(true);
+                    setRoleChangeConfirmationOpen(false);
+                  }}
+                >
+                  Sim, alterar função
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+          {!hideDraftActions && (
+            <div className="flex flex-wrap justify-end gap-2 border-t border-border pt-4">
+              <Button type="button" variant="outline" onClick={cancelEditing}>
+                <X className="size-4" />
+                Cancelar
+              </Button>
+              <Button
+                type="button"
+                disabled={saveDisabled}
+                onClick={confirmDraft}
+              >
+                <Check className="size-4" />
+                Confirmar funcionário
+              </Button>
+            </div>
+          )}
         </div>
       ) : (
         <div className="grid gap-3 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150 motion-safe:ease-out">
@@ -1503,7 +1549,7 @@ export function EmployeeMobilization({
       )}
     </FormSection>
   );
-}
+});
 
 export function calculateSuggestedHourlyRate({
   compensationValue,

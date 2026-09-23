@@ -732,11 +732,15 @@ export async function getProjectTeamCandidatesAction({
 
 export async function getProjectTeamMembersAction({
   cursor,
+  jobRole,
   projectId,
+  search,
   shift,
 }: {
   cursor?: string | null;
+  jobRole?: string;
   projectId: string;
+  search?: string;
   shift: "day" | "night";
 }): Promise<ProjectTeamMembersPage> {
   const id = z.string().uuid().parse(projectId);
@@ -746,6 +750,8 @@ export async function getProjectTeamMembersAction({
       shift,
       limit: 15,
       cursor: cursor || undefined,
+      search: search?.trim() || undefined,
+      jobRole: jobRole?.trim() || undefined,
     },
   });
   return response.data;

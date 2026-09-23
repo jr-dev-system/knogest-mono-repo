@@ -29,6 +29,7 @@ import {
   ProjectWizardIdentity,
   ProjectWizardReview,
   ProjectWizardSubmissionNotice,
+  type EmployeeMobilizationHandle,
   type ProjectWizardOptions,
 } from "./project-wizard";
 import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
@@ -282,6 +283,35 @@ function EmployeeHarness() {
         Nova sessão
       </button>
       <output>{JSON.stringify(employeeAllocations)}</output>
+    </>
+  );
+}
+
+function EmployeeModalHarness({ onSave }: { onSave: () => void }) {
+  const form = useForm<ProjectCommand>({
+    defaultValues: structuredClone(emptyProjectCommand),
+  });
+  const editorRef = React.useRef<EmployeeMobilizationHandle>(null);
+
+  return (
+    <>
+      <EmployeeMobilization
+        ref={editorRef}
+        bare
+        fixedShift="day"
+        form={form}
+        hideDraftActions
+        initialEmploymentId="employee-1"
+        onDraftConfirmed={onSave}
+        options={options}
+        sessionKey="employee-modal"
+        showConfirmedCount={false}
+        title={null}
+        description={null}
+      />
+      <button type="button" onClick={() => editorRef.current?.confirmDraft()}>
+        Salvar funcionário
+      </button>
     </>
   );
 }
@@ -647,33 +677,95 @@ describe("Project wizard polish", () => {
     ).toBeNull();
   });
 
-  it("keeps project-only job roles temporary inside the current wizard session", async () => {
+  it("inherits the company classification and requires an explicit confirmation before an exception", async () => {
     const user = userEvent.setup();
     render(<EmployeeHarness />);
 
     await user.click(screen.getByLabelText(/Ana Silva/));
-    expect(screen.queryByLabelText("Nova função")).toBeNull();
-    await user.click(screen.getByRole("button", { name: "Criar nova função" }));
-    await user.type(
-      screen.getByLabelText(/Aplicado somente nesta obra/),
-      "Apontador",
+    expect(screen.getAllByText("Engenheira").length).toBeGreaterThan(0);
+    expect(
+      screen.queryByRole("combobox", { name: "Função aplicada nesta obra" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Criar nova função" }),
+    ).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Alterar função" }));
+    expect(
+      await screen.findByRole("heading", {
+        name: "Alterar a função nesta obra?",
+      }),
+    ).toBeTruthy();
+    expect(
+      screen.getByText(
+        /cadastro e a classificação do funcionário na empresa não serão modificados/u,
+      ),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Sim, alterar função" }),
     );
-    await user.click(screen.getByRole("button", { name: "Salvar" }));
 
-    expect(screen.getByText(/Apontador — somente nesta obra/)).toBeTruthy();
+    expect(
+      screen.getByRole("combobox", { name: "Função aplicada nesta obra" }),
+    ).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", {
+        name: "Restaurar classificação da empresa",
+      }),
+    );
+    expect(
+      screen.queryByRole("combobox", { name: "Função aplicada nesta obra" }),
+    ).toBeNull();
+    expect(screen.getByRole("button", { name: "Alterar função" })).toBeTruthy();
     await user.click(
       screen.getByRole("button", { name: "Confirmar funcionário" }),
     );
     expect(screen.getByRole("status").textContent).toContain(
-      '"confirmedJobRoleName":"Apontador"',
+      '"confirmedJobRoleId":"job-role-1"',
+    );
+  });
+
+  it("shows the inherited project role as locked after the project starts", async () => {
+    function LockedRoleHarness() {
+      const lockedForm = useForm<ProjectCommand>({
+        defaultValues: structuredClone(emptyProjectCommand),
+      });
+      return (
+        <EmployeeMobilization
+          allowProjectRoleChange={false}
+          form={lockedForm}
+          initialEmploymentId="employee-1"
+          options={options}
+          sessionKey="locked-role"
+        />
+      );
+    }
+    render(<LockedRoleHarness />);
+
+    await screen.findByLabelText("Carga mensal");
+    expect(screen.queryByRole("button", { name: "Alterar função" })).toBeNull();
+    expect(
+      screen.getByText(
+        "A obra já foi iniciada. A reclassificação ficará disponível em uma rotina futura.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("lets the modal footer save the employee without duplicate form actions", async () => {
+    const onSave = vi.fn();
+    const user = userEvent.setup();
+    render(<EmployeeModalHarness onSave={onSave} />);
+
+    await screen.findByLabelText("Carga mensal");
+    expect(
+      screen.queryByRole("button", { name: "Confirmar funcionário" }),
+    ).toBeNull();
+    expect(screen.queryByRole("button", { name: "Cancelar" })).toBeNull();
+
+    await user.click(
+      screen.getByRole("button", { name: "Salvar funcionário" }),
     );
 
-    await user.click(screen.getByLabelText(/Bruno Lima/));
-    expect(screen.getByRole("option", { name: "Apontador" })).toBeTruthy();
-    await user.click(screen.getByRole("button", { name: "Cancelar" }));
-
-    await user.click(screen.getByRole("button", { name: "Nova sessão" }));
-    await user.click(screen.getByLabelText(/Ana Silva/));
-    expect(screen.queryByRole("option", { name: "Apontador" })).toBeNull();
+    expect(onSave).toHaveBeenCalledOnce();
+    expect(screen.getByLabelText("Carga mensal")).toBeTruthy();
   });
 });

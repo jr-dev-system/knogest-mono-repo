@@ -29,7 +29,6 @@ import {
   Truck,
   UsersRound,
   WalletCards,
-  X,
 } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
@@ -101,6 +100,7 @@ import {
   EmployeeMobilization,
   MachineMobilization,
   Schedule,
+  type EmployeeMobilizationHandle,
   type ProjectWizardOptions,
 } from "./project-wizard";
 import {
@@ -2225,6 +2225,8 @@ export function ProjectDetail({
   );
   const [editingTeamMember, setEditingTeamMember] =
     React.useState<ProjectTeamMember | null>(null);
+  const teamMemberEditorRef =
+    React.useRef<EmployeeMobilizationHandle>(null);
   const [removingTeamMember, setRemovingTeamMember] =
     React.useState<ProjectTeamMember | null>(null);
   const [teamReloadKey, setTeamReloadKey] = React.useState(0);
@@ -2300,6 +2302,7 @@ export function ProjectDetail({
     [debouncedTeamSearch, project.id, teamShift],
   );
 
+  /* eslint-disable react-hooks/set-state-in-effect -- Loading candidates synchronizes the modal's paged server state. */
   React.useEffect(() => {
     if (openModal === "team" && teamModalMode === "add")
       loadTeamCandidatePage();
@@ -4882,11 +4885,16 @@ export function ProjectDetail({
             <Button
               type="button"
               variant="outline"
+              disabled={isPending}
               onClick={closeTeamOrMachineModal}
             >
               Cancelar
             </Button>
-            <Button type="button" disabled={isPending} onClick={saveTeam}>
+            <Button
+              type="button"
+              disabled={isPending}
+              onClick={() => teamMemberEditorRef.current?.confirmDraft()}
+            >
               <Check className="size-4" />
               Salvar funcionário
             </Button>
@@ -4895,11 +4903,15 @@ export function ProjectDetail({
       >
         {editingTeamMember && (
           <EmployeeMobilization
+            allowProjectRoleChange={project.status === "planned"}
             bare
             fixedShift={editingTeamMember.shift}
             form={readinessForm}
+            hideDraftActions
             initialEmploymentId={editingTeamMember.employmentId}
+            onDraftConfirmed={saveTeam}
             options={teamMemberOptions}
+            ref={teamMemberEditorRef}
             sessionKey={`${project.id}-${editingTeamMember.id}-employee`}
             showConfirmedCount={false}
             title={null}
@@ -5934,6 +5946,7 @@ export function ProjectDetail({
                 </div>
               ) : (
                 <EmployeeMobilization
+                  allowProjectRoleChange={project.status === "planned"}
                   bare
                   fixedShift={teamShift}
                   form={readinessForm}

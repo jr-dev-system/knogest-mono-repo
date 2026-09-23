@@ -10,9 +10,9 @@ import {
 import Link from "next/link";
 import {
   Building2,
+  Check,
   ChevronDown,
   Fuel,
-  Gauge,
   LayoutDashboard,
   Map,
   PanelLeftClose,
@@ -141,11 +141,9 @@ export function AppShell({
 }) {
   const meta = areaMeta[currentArea];
   const isProjectNavigation = navigationMode === "project";
-  const [mainNavigationExpanded, setMainNavigationExpanded] = useState(
-    !isProjectNavigation,
-  );
-  const mainSidebarExpanded =
-    !isProjectNavigation || mainNavigationExpanded;
+  const [mainNavigationExpanded, setMainNavigationExpanded] =
+    useState(!isProjectNavigation);
+  const mainSidebarExpanded = !isProjectNavigation || mainNavigationExpanded;
 
   return (
     <AppShellNavigationContext.Provider
@@ -161,7 +159,9 @@ export function AppShell({
           <div
             className={cn(
               "flex items-center",
-              mainSidebarExpanded ? "justify-between gap-2 px-2" : "justify-center",
+              mainSidebarExpanded
+                ? "justify-between gap-2 px-2"
+                : "justify-center",
             )}
           >
             <Link
@@ -308,7 +308,7 @@ export function AppShell({
                   companies={companies}
                   selectedCompany={selectedCompany}
                   compact
-                  className="w-[min(16rem,48vw)]"
+                  className="w-[min(18rem,calc(100vw-6.5rem))] sm:w-72"
                 />
                 <SignOutButton />
               </div>
@@ -367,62 +367,74 @@ function CompanySelector({
   return (
     <details ref={detailsRef} className={cn("group relative", className)}>
       <summary
+        aria-label={`Empresa atual: ${selectedCompany.name}. Trocar empresa`}
+        title="Trocar empresa"
         className={cn(
-          "flex cursor-pointer list-none items-center justify-between gap-3 rounded-lg border border-sidebar-border bg-card text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
-          compact ? "px-3 py-2" : "px-3 py-3",
+          "flex min-h-11 cursor-pointer list-none items-center gap-2.5 rounded-md border border-input bg-background px-2.5 text-left text-foreground transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+          !compact && "px-3",
         )}
       >
-        <span className="min-w-0">
-          <span className="block text-xs font-medium text-muted-foreground">
-            Seletor de empresas
-          </span>
-          <span className="mt-1 block truncate text-sm font-semibold">
-            {selectedCompany.name}
-          </span>
-          {!compact && (
-            <span className="mt-1 block truncate text-xs text-muted-foreground">
-              Workspace ativo da sessão
-            </span>
-          )}
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-secondary text-primary">
+          <Building2 aria-hidden="true" className="size-4" />
         </span>
-        <ChevronDown className="size-4 shrink-0 text-muted-foreground transition-transform group-open:rotate-180" />
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold">
+          {selectedCompany.name}
+        </span>
+        <ChevronDown
+          aria-hidden="true"
+          className="size-4 shrink-0 text-muted-foreground transition-transform duration-150 group-open:rotate-180 motion-reduce:transition-none"
+          strokeWidth={2.5}
+        />
       </summary>
 
-      <div className="absolute left-0 right-0 z-30 mt-2 rounded-lg border border-border bg-popover p-1 text-popover-foreground ring-1 ring-foreground/10">
-        {companies.map((company) => (
-          <form key={company.name} action={selectCompanyAction}>
-            <input type="hidden" name="companyId" value={company.id} />
-            <button
-              type="submit"
-              onClick={() => detailsRef.current?.removeAttribute("open")}
-              className={cn(
-                "flex w-full items-start gap-3 rounded-md px-3 py-2.5 text-left transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
-                company.id === selectedCompany.id && "bg-accent",
-              )}
-            >
-              <span
-                className={cn(
-                  "mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-md border",
-                  company.id === selectedCompany.id
-                    ? "border-primary/30 bg-primary text-primary-foreground"
-                    : "border-border bg-background text-muted-foreground",
-                )}
-              >
-                <Building2 className="size-4" />
-              </span>
-              <span className="min-w-0">
-                <span className="block truncate text-sm font-bold">
-                  {company.name}
-                </span>
-                <span className="mt-1 block truncate text-xs text-muted-foreground">
-                  {company.id === selectedCompany.id
-                    ? "Workspace atual"
-                    : "Trocar para esta empresa"}
-                </span>
-              </span>
-            </button>
-          </form>
-        ))}
+      <div className="absolute right-0 z-30 mt-2 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-lg border border-border bg-popover py-1 text-popover-foreground shadow-md">
+        <p className="px-3 py-2 text-xs font-semibold text-muted-foreground">
+          Trocar empresa
+        </p>
+        <div className="max-h-[min(20rem,calc(100vh-6rem))] overflow-y-auto px-1">
+          {companies.map((company) => {
+            const isSelected = company.id === selectedCompany.id;
+
+            return (
+              <form key={company.id} action={selectCompanyAction}>
+                <input type="hidden" name="companyId" value={company.id} />
+                <button
+                  type="submit"
+                  aria-current={isSelected ? "true" : undefined}
+                  onClick={() => detailsRef.current?.removeAttribute("open")}
+                  className={cn(
+                    "flex min-h-11 w-full items-center gap-2.5 rounded-md px-2.5 text-left text-sm font-medium transition-colors hover:bg-accent focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                    isSelected &&
+                      "bg-accent font-semibold text-accent-foreground",
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "flex size-7 shrink-0 items-center justify-center rounded-md",
+                      isSelected
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-secondary text-muted-foreground",
+                    )}
+                  >
+                    {isSelected ? (
+                      <Check
+                        aria-hidden="true"
+                        className="size-4"
+                        strokeWidth={2.5}
+                      />
+                    ) : (
+                      <Building2 aria-hidden="true" className="size-4" />
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate">
+                    {company.name}
+                  </span>
+                  {isSelected && <span className="sr-only">Empresa atual</span>}
+                </button>
+              </form>
+            );
+          })}
+        </div>
       </div>
     </details>
   );

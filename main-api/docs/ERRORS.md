@@ -103,6 +103,11 @@ categorias seguras.
   que a função confirmada na alocação da obra não atende à função exigida pelo
   modelo; o cliente deve orientar a atualização da equipe, sem inferir função
   pelo nome exibido.
+- Em obra ativa, `PROJECT_RESOURCE_CONFLICT` com o recurso seguro
+  `reason: "reclassification-required"` informa que uma função confirmada já
+  não pode ser alterada pela mobilização. A troca exige a futura rotina de
+  reclassificação; carga, remuneração, turno e composição da equipe continuam
+  sujeitos às regras próprias de mobilização.
 - `PROJECT_QUANTITY_BASELINE_BELOW_ALLOCATED`,
   `WORK_FRONT_QUANTITY_EXCEEDS_BALANCE`,
   `WORK_FRONT_QUANTITY_BELOW_PRODUCED`, `WORK_FRONT_SERVICE_HAS_PRODUCTION`,
@@ -118,6 +123,13 @@ categorias seguras.
 Quantitative limits may appear in safe `blockers` or resource data, but errors
 must not expose request payloads, SQL, Prisma metadata, credentials, or
 personal-data ciphertext.
+
+## Filtros da equipe da obra
+
+`GET /projects/:projectId/team-members` valida `shift`, `search`, `jobRole` e
+`cursor` como query estrita. Valores inválidos ou cursores emitidos para outra
+busca, cargo ou turno retornam `400 VALIDATION_ERROR` no envelope canônico; não
+há novos códigos de erro públicos para a filtragem.
 
 ## Funções da empresa
 

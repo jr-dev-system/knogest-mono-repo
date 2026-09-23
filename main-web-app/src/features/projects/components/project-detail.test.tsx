@@ -1540,6 +1540,7 @@ describe("Project active work-front mobilization", () => {
               },
             ]
           : [],
+      jobRoles: shift === "day" ? [employee.jobRole] : [],
       pageInfo: { hasNextPage: false, nextCursor: null },
     }));
     const user = userEvent.setup();
@@ -1587,6 +1588,7 @@ describe("Project active work-front mobilization", () => {
           overtimeRate: "30.00",
         },
       ],
+      jobRoles: [employee.jobRole],
       pageInfo: { hasNextPage: false, nextCursor: null },
     });
     const user = userEvent.setup();
@@ -1602,6 +1604,23 @@ describe("Project active work-front mobilization", () => {
       name: `Editar ${employee.name}`,
     });
     expect(within(modal).getByLabelText("Carga mensal")).toBeTruthy();
+    expect(
+      within(modal).getByRole("button", { name: "Salvar funcionário" }),
+    ).toBeTruthy();
+    expect(
+      within(modal).queryByRole("button", { name: "Confirmar funcionário" }),
+    ).toBeNull();
+    expect(
+      within(modal).queryByRole("button", { name: "Alterar função" }),
+    ).toBeNull();
+    expect(
+      within(modal).getByText(
+        "A obra já foi iniciada. A reclassificação ficará disponível em uma rotina futura.",
+      ),
+    ).toBeTruthy();
+    expect(
+      within(modal).getAllByRole("button", { name: "Cancelar" }),
+    ).toHaveLength(1);
   });
 
   it("opens a focused mobilization modal from the active shift", async () => {

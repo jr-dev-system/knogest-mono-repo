@@ -94,10 +94,20 @@ modal separado, já preso ao turno visível, e consulta `GET
 sua paginação quando turno ou busca mudar e nunca reutiliza cursores entre
 esses filtros. Cada modal salva somente o turno selecionado em `PUT
 /projects/:projectId/mobilization/employees/:shift`.
+Na obra planejada, o editor parte da classificação ativa no cadastro da empresa;
+uma troca da função aplicada à obra requer confirmação explícita e só permite
+selecionar funções existentes. A exceção não altera o vínculo corporativo. Em
+obra ativa, a interface não oferece essa troca e a API rejeita uma alteração de
+função já confirmada com `409 PROJECT_RESOURCE_CONFLICT`, identificando o
+recurso seguro com `reason: "reclassification-required"`; a futura rotina de
+reclassificação será a única via para isso.
 A visualização da aba Equipe consulta
-`GET /projects/:projectId/team-members?shift=&cursor=&limit=15` por uma Server
-Action. Cada turno mantém suas páginas já carregadas e seu índice atual; trocar
-entre Diurno e Noturno não reinicia a navegação do outro turno.
+`GET /projects/:projectId/team-members?shift=&search=&jobRole=&cursor=&limit=15`
+por uma Server Action. A busca textual é debounced em 300 ms e encontra nome ou
+cargo; o filtro exato de cargo é aplicado imediatamente. A resposta devolve os
+cargos disponíveis no turno atual. Alterar turno, busca, cargo ou a mobilização
+invalida as páginas e cursores anteriores; respostas de consultas antigas não
+substituem o resultado mais recente.
 As opções de mobilização da obra retornadas por
 `GET /projects/:projectId/readiness-options` incluem, para cada máquina,
 fabricante, modelo, `meterType` e regra de operador. O modal identifica a

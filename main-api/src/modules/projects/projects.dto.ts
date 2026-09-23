@@ -698,6 +698,8 @@ export const projectTeamMembersQuerySchema = z
       .max(2048)
       .regex(/^[A-Za-z0-9_-]+$/u)
       .optional(),
+    search: z.string().trim().max(120).optional(),
+    jobRole: z.string().trim().max(120).optional(),
   })
   .strict();
 

@@ -16656,6 +16656,18 @@
             "required": false
           },
           {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "jobRole",
+            "required": false
+          },
+          {
             "schema": { "type": "string", "format": "uuid" },
             "in": "path",
             "name": "projectId",
@@ -16677,7 +16689,7 @@
                     "data": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": ["data", "pageInfo"],
+                      "required": ["data", "jobRoles", "pageInfo"],
                       "properties": {
                         "data": {
                           "type": "array",
@@ -16720,6 +16732,10 @@
                               "overtimeRate": { "type": "string" }
                             }
                           }
+                        },
+                        "jobRoles": {
+                          "type": "array",
+                          "items": { "type": "string" }
                         },
                         "pageInfo": {
                           "type": "object",

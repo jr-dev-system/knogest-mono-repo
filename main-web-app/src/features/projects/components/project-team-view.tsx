@@ -6,15 +6,20 @@ import {
   Loader2,
   Pencil,
   Plus,
+  Search,
   Trash2,
   UsersRound,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
+import { FieldHelpPopover } from "@/components/ui/field-help-popover";
+import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
 import {
   OperationTabPanel,
   OperationTabs,
 } from "@/components/ui/operation-tabs";
+import { useDebouncer } from "@/hooks/useDebouncer";
 import { getProjectTeamMembersAction } from "../projects.actions";
 import type {
   CompensationMode,
@@ -33,6 +38,11 @@ const compensationLabels: Record<CompensationMode, string> = {
 };
 
 const emptyPages = (): Record<Shift, ProjectTeamMembersPage[]> => ({
+  day: [],
+  night: [],
+});
+
+const emptyJobRoles = (): Record<Shift, string[]> => ({
   day: [],
   night: [],
 });
@@ -78,58 +88,79 @@ export function ProjectTeamView({
     day: null,
     night: null,
   });
-  const hasObservedReloadKey = React.useRef(false);
-
-  React.useEffect(() => {
-    if (!hasObservedReloadKey.current) {
-      hasObservedReloadKey.current = true;
-      return;
-    }
-    setPages(emptyPages());
-    setPageIndexes({ day: 0, night: 0 });
-    setErrors({ day: null, night: null });
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- A successful mutation invalidates the cursor cache for both shifts.
-  }, [reloadKey]);
+  const [search, setSearch] = React.useState("");
+  const debouncedSearch = useDebouncer(search, 300);
+  const [jobRole, setJobRole] = React.useState("");
+  const [jobRolesByShift, setJobRolesByShift] =
+    React.useState<Record<Shift, string[]>>(emptyJobRoles);
+  const requestId = React.useRef(0);
 
   const loadPage = React.useCallback(
-    async (shift: Shift, cursor?: string | null) => {
-      setLoadingShift(shift);
-      setErrors((current) => ({ ...current, [shift]: null }));
+    async (cursor?: string | null, append = false) => {
+      const currentRequestId = requestId.current + 1;
+      requestId.current = currentRequestId;
+      setLoadingShift(activeShift);
+      setErrors((current) => ({ ...current, [activeShift]: null }));
       try {
-        return await getProjectTeamMembersAction({ projectId, shift, cursor });
-      } catch {
-        setErrors((current) => ({
+        const page = await getProjectTeamMembersAction({
+          projectId,
+          shift: activeShift,
+          cursor,
+          ...(debouncedSearch.trim() ? { search: debouncedSearch.trim() } : {}),
+          ...(jobRole ? { jobRole } : {}),
+        });
+        if (requestId.current !== currentRequestId) return false;
+        setPages((current) => ({
           ...current,
-          [shift]: "Não foi possível carregar este turno.",
+          [activeShift]: append ? [...current[activeShift], page] : [page],
         }));
-        return null;
+        setJobRolesByShift((current) => ({
+          ...current,
+          [activeShift]: page.jobRoles ?? [],
+        }));
+        return true;
+      } catch {
+        if (requestId.current === currentRequestId)
+          setErrors((current) => ({
+            ...current,
+            [activeShift]: "Não foi possível carregar este turno.",
+          }));
+        return false;
       } finally {
-        setLoadingShift((current) => (current === shift ? null : current));
+        if (requestId.current === currentRequestId)
+          setLoadingShift((current) =>
+            current === activeShift ? null : current,
+          );
       }
     },
-    [projectId],
+    [activeShift, debouncedSearch, jobRole, projectId],
   );
 
   React.useEffect(() => {
-    if (pages[activeShift].length) return;
     let active = true;
-    // A mudança de turno é o gatilho externo que carrega a página inicial.
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    void loadPage(activeShift).then((page) => {
-      if (!active || !page) return;
-      setPages((current) => ({ ...current, [activeShift]: [page] }));
+    requestId.current += 1;
+    void Promise.resolve().then(() => {
+      if (!active) return;
+      setPageIndexes((current) => ({ ...current, [activeShift]: 0 }));
+      void loadPage();
     });
     return () => {
       active = false;
     };
-  }, [activeShift, loadPage, pages]);
+  }, [activeShift, loadPage, reloadKey]);
 
   const pageIndex = pageIndexes[activeShift];
   const page = pages[activeShift][pageIndex];
   const isLoading = loadingShift === activeShift;
+  const hasFilters = Boolean(search.trim() || jobRole);
+  const isWaitingForSearch = search.trim() !== debouncedSearch.trim();
+  const isSearchUpdating =
+    Boolean(search.trim()) && (isWaitingForSearch || isLoading);
+  const jobRoles = jobRolesByShift[activeShift];
 
   const selectShift = (shift: Shift) => {
     setActiveShift(shift);
+    setJobRole("");
     onActiveShiftChange?.(shift);
   };
 
@@ -143,12 +174,8 @@ export function ProjectTeamView({
       return;
     }
     if (!page?.pageInfo.nextCursor) return;
-    const next = await loadPage(activeShift, page.pageInfo.nextCursor);
-    if (!next) return;
-    setPages((current) => ({
-      ...current,
-      [activeShift]: [...current[activeShift], next],
-    }));
+    const loaded = await loadPage(page.pageInfo.nextCursor, true);
+    if (!loaded) return;
     setPageIndexes((current) => ({
       ...current,
       [activeShift]: pageIndex + 1,
@@ -191,6 +218,64 @@ export function ProjectTeamView({
         )}
       </div>
 
+      <section
+        aria-label="Filtros da equipe"
+        className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:p-4"
+      >
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem]">
+          <label className="grid gap-1.5 text-sm font-semibold">
+            <span>Buscar por nome ou cargo</span>
+            <span className="relative">
+              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
+                className="h-11 bg-background pl-9 pr-9"
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Nome ou cargo"
+              />
+              <Loader2
+                aria-hidden="true"
+                className={cn(
+                  "pointer-events-none absolute right-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground transition-opacity duration-150 motion-reduce:transition-none",
+                  isSearchUpdating ? "animate-spin opacity-100" : "opacity-0",
+                )}
+              />
+              <span className="sr-only" aria-live="polite">
+                {isSearchUpdating ? "Atualizando resultados" : ""}
+              </span>
+            </span>
+          </label>
+          <div className="grid gap-1.5 text-sm font-semibold">
+            <div className="flex items-center gap-1.5">
+              <label htmlFor="project-team-job-role">Cargo</label>
+              <FieldHelpPopover
+                compact
+                title="Cargos disponíveis"
+                description="A lista mostra apenas cargos que possuem funcionários no turno selecionado desta obra."
+              />
+            </div>
+            <select
+              id="project-team-job-role"
+              className="min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-xs outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50"
+              value={jobRole}
+              onChange={(event) => setJobRole(event.target.value)}
+              disabled={!jobRoles.length && isLoading}
+            >
+              <option value="">Todos os cargos</option>
+              {jobRoles.map((role) => (
+                <option key={role} value={role}>
+                  {role}
+                </option>
+              ))}
+            </select>
+          </div>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground">
+          A busca encontra nomes e cargos. O resultado é atualizado quando você
+          para de digitar.
+        </p>
+      </section>
+
       {(["day", "night"] as const).map((shift) => (
         <OperationTabPanel
           key={shift}
@@ -200,12 +285,29 @@ export function ProjectTeamView({
           className="min-h-40"
         >
           {isLoading && !page ? (
-            <div
-              role="status"
-              className="flex min-h-40 items-center justify-center gap-2 rounded-lg border border-dashed text-sm font-semibold text-muted-foreground"
-            >
-              <Loader2 className="size-4 animate-spin" />
-              Carregando equipe…
+            <div role="status" className="grid gap-3" aria-live="polite">
+              <div className="flex items-center gap-2 text-sm font-semibold text-muted-foreground">
+                <Loader2 className="size-4 animate-spin" />
+                {hasFilters ? "Atualizando resultados…" : "Carregando equipe…"}
+              </div>
+              <div className="grid gap-2" aria-hidden="true">
+                {[0, 1, 2].map((item) => (
+                  <div
+                    key={item}
+                    className="grid min-h-28 animate-pulse gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-[minmax(11rem,1fr)_auto_auto] sm:items-center"
+                  >
+                    <div className="grid gap-2">
+                      <span className="h-5 w-44 rounded bg-muted" />
+                      <span className="h-4 w-28 rounded bg-muted" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-4">
+                      <span className="h-9 w-16 rounded bg-muted" />
+                      <span className="h-9 w-16 rounded bg-muted" />
+                      <span className="h-9 w-16 rounded bg-muted" />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           ) : errors[shift] && !page ? (
             <div className="grid min-h-40 place-items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-5 text-center">
@@ -217,14 +319,7 @@ export function ProjectTeamView({
                 type="button"
                 variant="outline"
                 onClick={() => {
-                  void loadPage(shift).then((loaded) => {
-                    if (loaded) {
-                      setPages((current) => ({
-                        ...current,
-                        [shift]: [loaded],
-                      }));
-                    }
-                  });
+                  void loadPage();
                 }}
               >
                 Tentar novamente
@@ -336,10 +431,29 @@ export function ProjectTeamView({
             <div className="grid min-h-40 place-items-center rounded-lg border border-dashed border-border bg-muted/30 p-5 text-center">
               <div>
                 <UsersRound className="mx-auto mb-2 size-6 text-muted-foreground" />
-                <p className="font-bold">Nenhum funcionário neste turno</p>
-                <p className="mt-1 text-sm text-muted-foreground">
-                  Use “Editar turno” para montar esta equipe.
+                <p className="font-bold">
+                  {hasFilters
+                    ? "Nenhum funcionário encontrado"
+                    : "Nenhum funcionário neste turno"}
                 </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {hasFilters
+                    ? "Ajuste a busca ou o cargo selecionado para ver outros funcionários."
+                    : "Use “Editar turno” para montar esta equipe."}
+                </p>
+                {hasFilters ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-4"
+                    onClick={() => {
+                      setSearch("");
+                      setJobRole("");
+                    }}
+                  >
+                    Limpar filtros
+                  </Button>
+                ) : null}
               </div>
             </div>
           )}

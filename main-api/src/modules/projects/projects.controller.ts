@@ -942,7 +942,7 @@ const projectTeamCandidatesPageSchema = {
 const projectTeamMembersPageSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["data", "pageInfo"],
+  required: ["data", "jobRoles", "pageInfo"],
   properties: {
     data: {
       type: "array",
@@ -976,6 +976,10 @@ const projectTeamMembersPageSchema = {
           overtimeRate: { type: "string" },
         },
       },
+    },
+    jobRoles: {
+      type: "array",
+      items: { type: "string" },
     },
     pageInfo: {
       type: "object",
@@ -1208,7 +1212,13 @@ export async function v1ProjectsController(app: FastifyInstance) {
 
   app.get<{
     Params: { projectId: string };
-    Querystring: { shift?: string; limit?: number; cursor?: string };
+    Querystring: {
+      shift?: string;
+      limit?: number;
+      cursor?: string;
+      search?: string;
+      jobRole?: string;
+    };
   }>(
     "/projects/:projectId/team-members",
     {
@@ -1230,6 +1240,8 @@ export async function v1ProjectsController(app: FastifyInstance) {
             shift: { enum: ["day", "night"] },
             limit: { type: "integer", minimum: 1, maximum: 15, default: 15 },
             cursor: { type: "string", maxLength: 2048 },
+            search: { type: "string", maxLength: 120 },
+            jobRole: { type: "string", maxLength: 120 },
           },
         },
         response: {

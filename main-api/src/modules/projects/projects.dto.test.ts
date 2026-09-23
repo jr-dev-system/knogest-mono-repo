@@ -77,13 +77,27 @@ describe("Projects DTO", () => {
     ).toThrow();
   });
 
-  it("limits the operational team listing to 15 members per cursor page", () => {
-    expect(projectTeamMembersQuerySchema.parse({ shift: "night" })).toEqual({
+  it("normalizes filters and limits the operational team listing to 15 members per cursor page", () => {
+    expect(
+      projectTeamMembersQuerySchema.parse({
+        shift: "night",
+        search: "  ana  ",
+        jobRole: "  Operador  ",
+      }),
+    ).toEqual({
       shift: "night",
       limit: 15,
+      search: "ana",
+      jobRole: "Operador",
     });
     expect(() =>
       projectTeamMembersQuerySchema.parse({ shift: "day", limit: 16 }),
+    ).toThrow();
+    expect(() =>
+      projectTeamMembersQuerySchema.parse({
+        shift: "day",
+        search: "a".repeat(121),
+      }),
     ).toThrow();
   });
 

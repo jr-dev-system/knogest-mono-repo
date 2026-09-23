@@ -5,7 +5,10 @@ import { OrganizationService } from "../../../src/modules/organization/organizat
 import type { ProjectCommand } from "../../../src/modules/projects/projects.dto";
 import { ProjectsService } from "../../../src/modules/projects/projects.service";
 import { resetIntegrationData } from "../reset-integration-data";
-import { encodeCursor } from "../../../src/lib/utils/cursor-pagination";
+import {
+  encodeCursor,
+  hashCanonicalValue,
+} from "../../../src/lib/utils/cursor-pagination";
 
 import type { FastifyInstance } from "fastify";
 
@@ -663,6 +666,57 @@ describe("project work-front quantities", () => {
     expect(compatible.statusCode, compatible.body).toBe(200);
   });
 
+  it("keeps an employee's project role fixed after the project starts", async () => {
+    const scope = await setup();
+    const alternateRole = await app.prisma.jobRole.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        name: "Supervisor de operação",
+        normalizedName: "supervisor de operação",
+      },
+    });
+    const allocation = {
+      employmentId: scope.employmentId,
+      shift: "day",
+      confirmedJobRoleId: scope.jobRoleId,
+      monthlyWorkloadHours: 220,
+      compensationMode: "monthly",
+      compensationValue: "5000.00",
+      overtimeRate: "30.00",
+    };
+    const beforeStart = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees`,
+      headers: { authorization: scope.authorization },
+      payload: { allocations: [allocation] },
+    });
+    expect(beforeStart.statusCode, beforeStart.body).toBe(200);
+
+    await app.prisma.project.update({
+      where: { id: scope.projectId },
+      data: { status: "ACTIVE" },
+    });
+    const reclassification = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [{ ...allocation, confirmedJobRoleId: alternateRole.id }],
+      },
+    });
+
+    expect(reclassification.statusCode, reclassification.body).toBe(409);
+    expect(reclassification.json()).toMatchObject({
+      code: "PROJECT_RESOURCE_CONFLICT",
+      details: {
+        resources: [
+          expect.objectContaining({ reason: "reclassification-required" }),
+        ],
+      },
+    });
+  });
+
   function createFront(
     authorization: string,
     projectId: string,
@@ -724,6 +778,14 @@ describe("project work-front quantities", () => {
 
   it("paginates team candidates by role and saves only the selected shift", async () => {
     const scope = await setup();
+    const supervisorRole = await app.prisma.jobRole.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        name: "Supervisor",
+        normalizedName: "supervisor",
+      },
+    });
     const secondEmployee = await app.inject({
       method: "POST",
       url: "/api/v1/employees",
@@ -792,7 +854,7 @@ describe("project work-front quantities", () => {
           {
             employmentId: secondEmploymentId,
             shift: "night",
-            confirmedJobRoleId: scope.jobRoleId,
+            confirmedJobRoleId: supervisorRole.id,
             monthlyWorkloadHours: 180,
             compensationMode: "monthly",
             compensationValue: "4500.00",
@@ -837,6 +899,53 @@ describe("project work-front quantities", () => {
         monthlyWorkloadHours: 220,
       }),
     ]);
+    expect(dayMembers.json().data.jobRoles).toEqual(["Engenheiro"]);
+
+    const nameSearch = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/team-members?shift=day&search=respons%C3%A1vel`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(nameSearch.statusCode, nameSearch.body).toBe(200);
+    expect(nameSearch.json().data.data).toEqual([
+      expect.objectContaining({ name: "Responsável técnico" }),
+    ]);
+
+    const roleSearch = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/team-members?shift=day&search=engenheiro&jobRole=Engenheiro`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(roleSearch.statusCode, roleSearch.body).toBe(200);
+    expect(roleSearch.json().data.data).toEqual([
+      expect.objectContaining({ jobRole: "Engenheiro" }),
+    ]);
+
+    const cursorForRoleSearch = encodeCursor({
+      v: 1,
+      resource: "project-team-members",
+      scopeHash: hashCanonicalValue({
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        projectId: scope.projectId,
+        shift: "day",
+      }),
+      queryHash: hashCanonicalValue({
+        shift: "day",
+        search: "engenheiro",
+        jobRole: "Engenheiro",
+      }),
+      sortBy: "name",
+      sortDirection: "asc",
+      last: { value: "Responsável técnico", id: scope.employmentId },
+    });
+    const changedFilterCursor = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/team-members?shift=day&search=respons%C3%A1vel&jobRole=Engenheiro&cursor=${cursorForRoleSearch}`,
+      headers: { authorization: scope.authorization },
+    });
+    expect(changedFilterCursor.statusCode, changedFilterCursor.body).toBe(400);
+
     const nightMembers = await app.inject({
       method: "GET",
       url: `/api/v1/projects/${scope.projectId}/team-members?shift=night&limit=15`,
@@ -846,9 +955,11 @@ describe("project work-front quantities", () => {
     expect(nightMembers.json().data.data[0]).toMatchObject({
       employmentId: secondEmploymentId,
       name: "Operador noturno",
+      jobRole: "Supervisor",
       monthlyWorkloadHours: 180,
       overtimeRate: "25.00",
     });
+    expect(nightMembers.json().data.jobRoles).toEqual(["Supervisor"]);
   });
 
   it("excludes the edited front from its own allocated balance", async () => {

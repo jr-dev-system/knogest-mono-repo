@@ -14,8 +14,14 @@ Este documento é a fonte canônica dos turnos fixos da equipe de uma obra.
 - Cada trabalhador mobilizado pertence a exatamente um turno. A mudança de
   turno é imediata, permanente e auditada; não existe remanejamento temporário
   ou agendado entre turnos.
-- A função temporária aplicada somente à obra continua existindo e não deve ser
-  confundida com remanejamento temporário de turno.
+- A função da obra começa pela classificação ativa do vínculo do funcionário na
+  empresa. Durante o planejamento, o usuário apenas a confirma ou, por uma
+  exceção explícita, escolhe outra função já cadastrada na empresa. A exceção
+  nunca altera o cadastro corporativo do funcionário e não permite criar nova
+  função dentro da obra.
+- Depois que a obra fica ativa, a função confirmada de cada integrante fica
+  preservada. Alterações de turno, carga e remuneração continuam seguindo suas
+  regras, mas uma troca de função exige a futura rotina de reclassificação.
 - Cada alocação registra `monthlyWorkloadHours`. A interface oferece 220 h e
   180 h como atalhos e aceita um inteiro personalizado entre 1 h e 744 h; novas
   alocações e registros migrados usam 220 h quando não houver outra definição.
@@ -67,10 +73,13 @@ mudanças posteriores de turno.
 - `GET /projects/:projectId/team-candidates?shift=&search=&cursor=&limit=15`
   busca nome ou função e pagina 15 funcionários por vez. O cursor é vinculado
   a tenant, obra, turno e busca; qualquer mudança de filtro invalida o cursor.
-- `GET /projects/:projectId/team-members?shift=&cursor=&limit=15` lista a equipe
-  operacional do turno em páginas de até 15 pessoas. Cada linha apresenta nome,
-  função, carga mensal, modalidade e valor da hora extra. O cursor é vinculado
-  a tenant, empresa, obra e turno.
+- `GET /projects/:projectId/team-members?shift=&search=&jobRole=&cursor=&limit=15`
+  lista a equipe operacional do turno em páginas de até 15 pessoas. `search`
+  encontra nome ou cargo; `jobRole` restringe ao cargo exato. A resposta inclui
+  os cargos distintos com funcionários ativos no turno para preencher o filtro.
+  Cada linha apresenta nome, função, carga mensal, modalidade e valor da hora
+  extra. O cursor é vinculado a tenant, empresa, obra, turno e filtros; qualquer
+  mudança de busca ou cargo exige reiniciar a paginação.
 - A aba Equipe mantém históricos de paginação independentes para Diurno e
   Noturno. Ao lado de `Editar turno`, o turno visível oferece `Adicionar
 funcionários`. Cada ação abre um modal já limitado àquele turno — sem um
@@ -82,5 +91,15 @@ funcionários`. Cada ação abre um modal já limitado àquele turno — sem um
 - A seção da obra e, na aba Equipe, o turno visível são mantidos na URL por
   `section` e `teamShift`. Recarregar a página restaura esse contexto, sem
   retornar automaticamente à visão geral ou ao turno diurno.
+- A aba Equipe aplica a busca por nome ou cargo com atraso de 300 ms. O seletor
+  de cargo é imediato e mostra somente cargos presentes no turno visível; os
+  contadores de Diurno e Noturno continuam representando o total não filtrado.
 - A carga mensal caracteriza o contrato da pessoa e nunca determina quantas
   horas ela trabalhou em um dia específico.
+- O editor de funcionário mostra a classificação da empresa como referência.
+  A troca de função na obra começa no botão **Alterar função**, abre uma
+  confirmação que explica o escopo da exceção e só então libera funções já
+  existentes. Enquanto a edição não for salva, **Restaurar classificação da
+  empresa** desfaz a exceção e volta à função herdada. Em obra ativa, o controle não é apresentado e a API também
+  rejeita a tentativa com `PROJECT_RESOURCE_CONFLICT` e o recurso seguro
+  `reason: "reclassification-required"`.

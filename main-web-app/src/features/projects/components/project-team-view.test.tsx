@@ -5,6 +5,8 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import type { ProjectTeamMembersPage } from "../projects.types";
+
 const getProjectTeamMembersAction = vi.hoisted(() => vi.fn());
 
 vi.mock("../projects.actions", () => ({ getProjectTeamMembersAction }));
@@ -28,7 +30,7 @@ const member = (id: string, name: string, shift: "day" | "night") => ({
 });
 
 describe("ProjectTeamView", () => {
-  it("keeps independent cursor pages for each shift", async () => {
+  it("restarts cursor pages when changing shifts", async () => {
     getProjectTeamMembersAction.mockImplementation(
       async ({
         cursor,
@@ -91,9 +93,9 @@ describe("ProjectTeamView", () => {
     expect(await screen.findByText("Bia")).toBeTruthy();
 
     await user.click(screen.getByRole("tab", { name: "Diurno (16)" }));
-    expect(screen.getByText("Caio")).toBeTruthy();
-    expect(getProjectTeamMembersAction).toHaveBeenCalledTimes(3);
-    expect(screen.getByText("Página 2 · até 15 funcionários")).toBeTruthy();
+    expect(await screen.findByText("Ana")).toBeTruthy();
+    expect(getProjectTeamMembersAction).toHaveBeenCalledTimes(4);
+    expect(screen.getByText("Página 1 · até 15 funcionários")).toBeTruthy();
   });
 
   it("shows an empty state and edits only the active shift", async () => {
@@ -164,5 +166,158 @@ describe("ProjectTeamView", () => {
     });
     await user.click(screen.getByRole("tab", { name: "Diurno (0)" }));
     expect(onActiveShiftChange).toHaveBeenCalledWith("day");
+  });
+
+  it("debounces search, combines it with the selected role, and explains role availability", async () => {
+    getProjectTeamMembersAction.mockImplementation(
+      async ({
+        jobRole,
+        search,
+        shift,
+      }: {
+        jobRole?: string;
+        search?: string;
+        shift: "day" | "night";
+      }) => {
+        const jobRoles =
+          shift === "day" ? ["Operador", "Supervisor"] : ["Encarregada"];
+        const matches =
+          shift === "day" &&
+          jobRole !== "Operador" &&
+          search !== "sem resultado";
+        return {
+          data: matches
+            ? [
+                {
+                  ...member(
+                    "00000000-0000-4000-8000-000000000004",
+                    "Ana",
+                    "day",
+                  ),
+                  jobRole: "Supervisor",
+                },
+              ]
+            : [],
+          jobRoles,
+          pageInfo: { hasNextPage: false, nextCursor: null },
+        };
+      },
+    );
+    const user = userEvent.setup();
+
+    render(
+      <ProjectTeamView
+        projectId="00000000-0000-4000-8000-000000000901"
+        counts={{ day: 1, night: 0 }}
+        canEdit={false}
+        onAddShift={vi.fn()}
+        onEditMember={vi.fn()}
+        onEditShift={vi.fn()}
+        onRemoveMember={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Ana")).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Ajuda sobre Cargos disponíveis" }),
+    );
+    expect(
+      await screen.findByText(
+        "A lista mostra apenas cargos que possuem funcionários no turno selecionado desta obra.",
+      ),
+    ).toBeTruthy();
+
+    await user.selectOptions(screen.getByLabelText("Cargo"), "Supervisor");
+    await waitFor(() =>
+      expect(getProjectTeamMembersAction).toHaveBeenLastCalledWith({
+        projectId: "00000000-0000-4000-8000-000000000901",
+        shift: "day",
+        cursor: undefined,
+        jobRole: "Supervisor",
+      }),
+    );
+
+    await user.type(
+      screen.getByRole("textbox", { name: "Buscar por nome ou cargo" }),
+      "sem resultado",
+    );
+    await waitFor(() =>
+      expect(getProjectTeamMembersAction).toHaveBeenLastCalledWith({
+        projectId: "00000000-0000-4000-8000-000000000901",
+        shift: "day",
+        cursor: undefined,
+        jobRole: "Supervisor",
+        search: "sem resultado",
+      }),
+    );
+    expect(
+      await screen.findByText("Nenhum funcionário encontrado"),
+    ).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Limpar filtros" }));
+    await waitFor(() =>
+      expect(getProjectTeamMembersAction).toHaveBeenLastCalledWith({
+        projectId: "00000000-0000-4000-8000-000000000901",
+        shift: "day",
+        cursor: undefined,
+      }),
+    );
+    expect(await screen.findByText("Ana")).toBeTruthy();
+  });
+
+  it("keeps the current results visible while a text search refreshes", async () => {
+    let resolveSearch: ((page: ProjectTeamMembersPage) => void) | undefined;
+    getProjectTeamMembersAction.mockImplementation(
+      ({ search }: { search?: string }) => {
+        if (search === "Bruno") {
+          return new Promise<ProjectTeamMembersPage>((resolve) => {
+            resolveSearch = resolve;
+          });
+        }
+
+        return Promise.resolve({
+          data: [member("00000000-0000-4000-8000-000000000001", "Ana", "day")],
+          pageInfo: { hasNextPage: false, nextCursor: null },
+        });
+      },
+    );
+    const user = userEvent.setup();
+
+    render(
+      <ProjectTeamView
+        projectId="00000000-0000-4000-8000-000000000901"
+        counts={{ day: 1, night: 0 }}
+        canEdit={false}
+        onAddShift={vi.fn()}
+        onEditMember={vi.fn()}
+        onEditShift={vi.fn()}
+        onRemoveMember={vi.fn()}
+      />,
+    );
+
+    expect(await screen.findByText("Ana")).toBeTruthy();
+    await user.type(
+      screen.getByRole("textbox", { name: "Buscar por nome ou cargo" }),
+      "Bruno",
+    );
+    await waitFor(() =>
+      expect(getProjectTeamMembersAction).toHaveBeenLastCalledWith({
+        projectId: "00000000-0000-4000-8000-000000000901",
+        shift: "day",
+        cursor: undefined,
+        search: "Bruno",
+      }),
+    );
+
+    expect(screen.getByText("Ana")).toBeTruthy();
+    expect(screen.queryByText("Carregando equipe…")).toBeNull();
+
+    resolveSearch?.({
+      data: [member("00000000-0000-4000-8000-000000000002", "Bruno", "day")],
+      jobRoles: [],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    });
+
+    expect(await screen.findByText("Bruno")).toBeTruthy();
+    expect(screen.queryByText("Ana")).toBeNull();
   });
 });
