@@ -1,91 +1,99 @@
-# Fastify TypeScript Backend
+# KnoGest API
 
-Template backend com Fastify, TypeScript, Prisma, PostgreSQL, JWT, Zod, Swagger e testes com Vitest.
+Fastify 5 API for KnoGest, written in TypeScript with Prisma, PostgreSQL, Zod,
+JWT, Swagger, and Vitest. It is the authoritative runtime for identity,
+persisted sessions, Corporation/Company scope, authorization, and domain
+consistency.
 
-Antes de criar modulos ou alterar fluxo de dados, leia:
+Start with [the project documentation index](../docs/index.md). Before changing
+code, read `AGENTS.md` and the documents in `docs/` that apply to the module.
 
-- `AGENTS.md`
-- `docs/ARCHITECTURE.md`
-- `docs/MODULE_PATTERN.md`
-- `docs/VALIDATION.md`
-- `docs/TENANCY.md`
-- `docs/PAGINATION.md`
-- `docs/ERRORS.md`
+## Prerequisites
 
-## Setup
+- Node `22.22.3`
+- pnpm `10.33.0`
+- Docker and Docker Compose for local PostgreSQL
+
+## Local setup
 
 ```bash
 pnpm install
 cp .env.example .env
-docker-compose -f docker-compose.dev.yml up -d
+docker compose -f docker-compose.dev.yml up -d postgres
 pnpm db:generate
 pnpm db:migrate
 pnpm db:seed
 pnpm dev
 ```
 
-O CLI `create-glapp-node-back` ja cria um `.env` local com `DATABASE_URL`, `JWT_SECRET_KEY`, `PORT`, `HOST` e `NODE_ENV`.
+The development fixture uses `piloto.localhost`. Open the dashboard at
+`http://piloto.localhost:3000` so host-based Corporation resolution agrees
+with the seeded domain.
 
-## Scripts
+The local seed is development-only. Its administrator credentials are
+documented in the fixture source and must never be copied into deployment
+configuration or production examples.
 
-```bash
-pnpm dev          # inicia o servidor em watch mode
-pnpm build        # compila src/ para dist/
-pnpm start        # executa dist/server.js
-pnpm typecheck    # valida TypeScript sem emitir arquivos
-pnpm lint         # roda ESLint e check de arquitetura
-pnpm test         # roda testes Vitest
-pnpm format       # formata com Prettier
-pnpm db:generate  # gera Prisma Client
-pnpm db:migrate   # cria/aplica migrations em desenvolvimento
-pnpm db:deploy    # aplica migrations em producao
-pnpm db:seed      # popula dados locais do Épico 1 fora de produção
-```
+## API contract
 
-Usuário local criado pelo seed de desenvolvimento:
+Swagger UI is available at `/docs`. The committed
+[`artifacts/openapi.json`](./artifacts/openapi.json) is the canonical public
+contract: it defines every path, request, response, authentication requirement,
+and error shape. Do not maintain a parallel exhaustive route list in this file.
 
-- host: `piloto.localhost`
-- email: `master@piloto.localhost`
-- password: `1234`
+The API is grouped into Auth, Commercial, Fleet, Workforce, Projects, Project
+daily reports, Project productions, and Earthwork catalogs. Dashboard clients
+are generated from the OpenAPI artifact in `../main-web-app/src/generated`.
 
-Use apenas em desenvolvimento.
-
-## Rotas
-
-- `POST /api/v1/auth/login`
-- `POST /api/v1/auth/refresh`
-- `POST /api/v1/auth/logout`
-- `GET /api/v1/auth/session`
-- `GET /api/v1/auth/companies`
-- `PUT /api/v1/auth/session/company`
-- Swagger UI: `/docs`
-
-## Arquitetura
-
-O fluxo padrao e:
+## Architecture
 
 ```text
 controller -> validation -> service -> handler -> Prisma -> response
 ```
 
-Somente handlers acessam banco de dados. Controllers registram rotas e respostas HTTP. Services contem regra de negocio e chamam handlers. DTOs contem schemas Zod e tipos inferidos.
+Controllers own Fastify routes and OpenAPI schemas; services hold domain rules;
+handlers own persistence and trusted scope filters. See
+[`docs/ARCHITECTURE.md`](./docs/ARCHITECTURE.md) and
+[`docs/TENANCY.md`](./docs/TENANCY.md) for the full boundary rules.
 
-# Knogest API
+## Common commands
+
+```bash
+pnpm dev             # watch-mode API
+pnpm build           # compile src/ to dist/
+pnpm start           # run the compiled API
+pnpm typecheck       # TypeScript validation
+pnpm lint            # ESLint and architecture checks
+pnpm format:check    # Prettier validation
+pnpm test            # unit tests
+pnpm test:integration
+pnpm check:openapi   # verify artifact matches Fastify schemas
+pnpm generate:openapi
+pnpm check:personal-data-gate
+```
+
+For a public route change, update the route schema and relevant API/domain
+documentation, run `pnpm generate:openapi`, then validate the dashboard in
+`../main-web-app` with `pnpm validate:api` and `pnpm check:api`.
 
 ## Isolated integration database
 
-Integration tests never use `prisma db push`. Start the PostgreSQL 16 test service and run the suite; the command terminates active test connections, drops and recreates only a database whose name ends in `_test`, then applies the committed migrations with `prisma migrate deploy`.
+Integration tests use only a PostgreSQL database whose name ends in `_test`.
+The test command terminates active test connections, recreates that isolated
+database, and applies committed migrations with `prisma migrate deploy`; it
+does not run `prisma db push`.
 
 ```bash
 docker compose -f docker-compose.dev.yml up -d --wait postgres_test
 pnpm test:integration
 ```
 
-Override `TEST_DATABASE_URL` when a different isolated PostgreSQL 16 instance is required.
+Set `TEST_DATABASE_URL` only when another isolated PostgreSQL 16 instance is
+required.
 
-## Administrative provisioning
+## Administrative CLI
 
-Passwords are accepted only through stdin so they do not enter shell history or process arguments.
+Administrative passwords are accepted through stdin, not shell arguments.
 
 ```bash
 printf '%s\n' "$ADMIN_PASSWORD" | pnpm admin -- provision \
@@ -96,41 +104,8 @@ printf '%s\n' "$ADMIN_PASSWORD" | pnpm admin -- provision \
   --password-stdin
 
 pnpm admin -- company:add --corporation-id <uuid> --name "Company Two"
-```
-
-## Epic 1 local fixture
-
-`pnpm db:seed` and `pnpm db:fixtures` both prepare a deterministic local
-environment for the browser-authentication epic when `NODE_ENV` is not
-`production`:
-
-- active Corporation domain: `piloto.localhost`
-- Master Administrator email: `master@piloto.localhost`
-- local password: `1234`
-- three active Companies for selection: two with operational fixtures and
-  **Empresa Vazia** without employees, clients, suppliers, machines, projects
-  or catalog bootstrap data
-- one inactive Company for rejection checks
-- sibling Corporation with the same email for scoped reset/isolation checks
-
-Open the dashboard at `http://piloto.localhost:3000` so host-based Corporation
-resolution matches the seeded domain.
-
-## Administrative password reset
-
-Use the Auth application service through the administrative CLI; do not edit
-database rows directly. The replacement password is read through a hidden TTY
-prompt by default, or through protected stdin for automation.
-
-```bash
 pnpm admin -- password:reset --corporation <uuid> --user <uuid>
-
-printf '%s\n' "$REPLACEMENT_PASSWORD" | pnpm admin -- password:reset \
-  --corporation <uuid> \
-  --email master@example.com \
-  --password-stdin
 ```
 
-The command emits only safe identifiers, reset timestamp, and revoked Session
-count. Plaintext passwords, hashes, tokens, cookies, CPF/CNPJ values, and full
-input streams must not be logged or committed in examples.
+The CLI reports only safe identifiers and timestamps. Never log or commit
+passwords, hashes, tokens, cookies, CPF/CNPJ values, or complete input streams.

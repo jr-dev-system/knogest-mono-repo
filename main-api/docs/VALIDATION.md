@@ -1,66 +1,46 @@
 # Validation
 
-Validacao de entrada usa Zod.
+Zod validates public request format; services enforce domain rules and handlers
+enforce persistence constraints. Route OpenAPI schemas must describe the same
+accepted input and response behavior.
 
-## Onde colocar
+## Placement
 
-- Formato de `body`, `params` e `query`: DTO.
-- Aplicacao da validacao: controller, com `validateBody`, `validateParams` ou `validateQuery`.
-- Regra de negocio: service.
-- Constraint de banco: Prisma schema e handlers.
+- **DTO:** strict schemas and inferred types for body, params, and query.
+- **Controller:** `validateBody`, `validateParams`, or `validateQuery` where
+  the route uses standard parsing; controlled command parsing uses `safeParse`
+  and the same response envelope.
+- **Service:** business rules and state transitions.
+- **Handler and Prisma schema:** scoped persistence, constraints, and
+  transactional invariants.
 
-## Body
+Normalize input in the DTO where possible: trim textual identifiers, constrain
+decimal formats, coerce bounded numeric query fields, and reject unknown keys
+with strict object schemas.
 
-```ts
-export const createUserBodySchema = z.object({
-  username: z.string().min(1),
-  password: z.string().min(8),
-});
+## Canonical validation error
 
-export type CreateUserBody = z.infer<typeof createUserBodySchema>;
-```
-
-No controller:
-
-```ts
-preHandler: [validateBody(createUserBodySchema)];
-```
-
-## Params e query
-
-Use `validateParams` para identificadores de rota e `validateQuery` para filtros, paginacao e ordenacao.
-
-All potentially unbounded lists must follow the query and response contract in `PAGINATION.md`. Pagination query schemas must validate at least:
-
-```ts
-const paginationQuerySchema = z
-  .object({
-    limit: z.coerce.number().int().min(1).max(100).default(25),
-    cursor: z
-      .string()
-      .min(1)
-      .max(2048)
-      .regex(/^[A-Za-z0-9_-]+$/)
-      .optional(),
-    search: z.string().trim().min(1).max(120).optional(),
-    sortBy: z.enum(["createdAt", "name"]).default("createdAt"),
-    sortDirection: z.enum(["asc", "desc"]).default("desc"),
-  })
-  .strict();
-```
-
-Replace the example `sortBy` values with the module's explicit allowlist. Unknown query keys must be rejected, not silently stripped. Syntax validation in the DTO does not replace strict decoded cursor validation in the shared pagination helper.
-
-A cursor is valid only for the same resource, authenticated scope, path parameters, search, filters, and ordering that created it. Query validation errors must use `jsonResponse.error` so they match the error envelope below.
-
-## Erros
-
-Entrada invalida deve retornar `400` com:
+Invalid body, params, and query input return HTTP `400` through
+`jsonResponse.error`:
 
 ```json
 {
   "success": false,
+  "code": "VALIDATION_ERROR",
   "message": "Validation error",
-  "data": {}
+  "details": {
+    "fieldName": ["reason"]
+  },
+  "requestId": "00000000-0000-4000-8000-000000000000"
 }
 ```
+
+Controllers may use a more specific safe message for a command, but the error
+code, `details`, and `requestId` envelope remain stable. Never expose raw Zod,
+Prisma, SQL, credential, token, cookie, or ciphertext details.
+
+## Pagination input
+
+Potentially unbounded lists follow `PAGINATION.md`. Their DTOs strictly allow
+only documented filters, `limit`, `cursor`, and supported ordering values;
+handlers independently validate decoded cursor scope and query binding.

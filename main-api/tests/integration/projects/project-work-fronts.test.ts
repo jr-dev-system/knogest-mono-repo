@@ -11,6 +11,7 @@ import type { FastifyInstance } from "fastify";
 
 describe("project work-front quantities", () => {
   const syntheticEmployeeCpfFixture = "111.444.777-35";
+  const syntheticSecondaryEmployeeCpfFixture = "390.533.447-05";
   const syntheticClientCnpjFixture = "12.345.678/0001-95";
   const syntheticFuelSupplierCpfFixture = "529.982.247-25";
   let app: FastifyInstance;
@@ -177,7 +178,8 @@ describe("project work-front quantities", () => {
         manufacturer: "Teste",
         model: "EX-01",
         meterType: "HOUR_METER",
-        requiresOperator: false,
+        requiresOperator: true,
+        requiredJobRoleId: scope.jobRoleId,
       },
     });
     const machine = await app.prisma.machine.create({
@@ -269,6 +271,397 @@ describe("project work-front quantities", () => {
       });
     return { machineId: machine.id };
   }
+
+  it("exposes machine identity and the operator requirement in readiness options", async () => {
+    const scope = await setup();
+    const machineModel = await app.prisma.machineModel.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        type: "YELLOW_LINE",
+        manufacturer: "Caterpillar",
+        model: "320 GC",
+        meterType: "HOUR_METER",
+        requiresOperator: true,
+        requiredJobRoleId: scope.jobRoleId,
+      },
+    });
+    const machine = await app.prisma.machine.create({
+      data: {
+        corporationId: scope.corporationId,
+        machineModelId: machineModel.id,
+        name: "Escavadeira 01",
+        type: "YELLOW_LINE",
+        manufacturer: "Caterpillar",
+        model: "320 GC",
+        meterType: "HOUR_METER",
+      },
+    });
+    await app.prisma.machineOwnershipPeriod.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: machine.id,
+      },
+    });
+    await app.prisma.machineMeterReading.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: machine.id,
+        readingSequence: 1,
+        value: "100.00",
+        purpose: "INITIAL",
+        actorUserId: scope.userId,
+      },
+    });
+
+    const response = await app.inject({
+      method: "GET",
+      url: `/api/v1/projects/${scope.projectId}/readiness-options`,
+      headers: { authorization: scope.authorization },
+    });
+
+    expect(response.statusCode, response.body).toBe(200);
+    expect(response.json().data.machines).toEqual([
+      expect.objectContaining({
+        id: machine.id,
+        label: "Escavadeira 01",
+        manufacturer: "Caterpillar",
+        model: "320 GC",
+        meterType: "HOUR_METER",
+        requiresOperator: true,
+        requiredJobRoleId: scope.jobRoleId,
+        requiredJobRoleName: "Engenheiro",
+        acceptsAnyJobRole: false,
+      }),
+    ]);
+  });
+
+  it("enforces the configured operator role by ID and accepts the legacy unrestricted role", async () => {
+    const scope = await setup();
+    const otherRole = await app.prisma.jobRole.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        name: "Operador",
+        normalizedName: "operador",
+      },
+    });
+    const employeeResponse = await app.inject({
+      method: "POST",
+      url: "/api/v1/employees",
+      headers: { authorization: scope.authorization },
+      payload: {
+        document: syntheticSecondaryEmployeeCpfFixture,
+        fullName: "Operador incompatível",
+        companyRegistrationNumber: "OP-001",
+        admissionDate: "2026-07-01",
+        jobRoleId: otherRole.id,
+      },
+    });
+    expect(employeeResponse.statusCode, employeeResponse.body).toBe(201);
+    const otherEmploymentId = employeeResponse.json().data.id as string;
+    const employees = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            employmentId: scope.employmentId,
+            confirmedJobRoleId: scope.jobRoleId,
+            monthlyWorkloadHours: 220,
+            compensationMode: "monthly",
+            compensationValue: "5000.00",
+            overtimeRate: "30.00",
+          },
+          {
+            employmentId: otherEmploymentId,
+            confirmedJobRoleId: otherRole.id,
+            monthlyWorkloadHours: 220,
+            compensationMode: "monthly",
+            compensationValue: "3000.00",
+            overtimeRate: "20.00",
+          },
+        ],
+      },
+    });
+    expect(employees.statusCode, employees.body).toBe(200);
+    expect(employees.json().data.employeeAllocations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          employment: expect.objectContaining({ id: scope.employmentId }),
+          confirmedJobRoleId: scope.jobRoleId,
+          confirmedJobRolePeriodId: expect.any(String),
+        }),
+        expect.objectContaining({
+          employment: expect.objectContaining({ id: otherEmploymentId }),
+          confirmedJobRoleId: otherRole.id,
+          confirmedJobRolePeriodId: expect.any(String),
+        }),
+      ]),
+    );
+
+    const requiredModel = await app.prisma.machineModel.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        type: "YELLOW_LINE",
+        manufacturer: "Volvo",
+        model: "EC210",
+        meterType: "HOUR_METER",
+        requiresOperator: true,
+        requiredJobRoleId: scope.jobRoleId,
+      },
+    });
+    const requiredMachine = await app.prisma.machine.create({
+      data: {
+        corporationId: scope.corporationId,
+        machineModelId: requiredModel.id,
+        name: "Escavadeira Volvo",
+        type: "YELLOW_LINE",
+        manufacturer: "Volvo",
+        model: "EC210",
+        meterType: "HOUR_METER",
+      },
+    });
+    await app.prisma.machineOwnershipPeriod.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: requiredMachine.id,
+      },
+    });
+    const requiredReading = await app.prisma.machineMeterReading.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: requiredMachine.id,
+        readingSequence: 1,
+        value: "10.00",
+        purpose: "INITIAL",
+        actorUserId: scope.userId,
+      },
+    });
+    const incompatible = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/machines`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            machineId: requiredMachine.id,
+            startMeterReadingId: requiredReading.id,
+            operatorEmploymentId: otherEmploymentId,
+          },
+        ],
+      },
+    });
+    expect(incompatible.statusCode, incompatible.body).toBe(409);
+
+    const anyRole = await app.prisma.jobRole.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        name: "Qualquer um",
+        normalizedName: "qualquer um",
+      },
+    });
+    const unrestrictedModel = await app.prisma.machineModel.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        type: "YELLOW_LINE",
+        manufacturer: "JCB",
+        model: "3CX",
+        meterType: "HOUR_METER",
+        requiresOperator: true,
+        requiredJobRoleId: anyRole.id,
+      },
+    });
+    const unrestrictedMachine = await app.prisma.machine.create({
+      data: {
+        corporationId: scope.corporationId,
+        machineModelId: unrestrictedModel.id,
+        name: "Retroescavadeira JCB",
+        type: "YELLOW_LINE",
+        manufacturer: "JCB",
+        model: "3CX",
+        meterType: "HOUR_METER",
+      },
+    });
+    await app.prisma.machineOwnershipPeriod.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: unrestrictedMachine.id,
+      },
+    });
+    const unrestrictedReading = await app.prisma.machineMeterReading.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: unrestrictedMachine.id,
+        readingSequence: 1,
+        value: "10.00",
+        purpose: "INITIAL",
+        actorUserId: scope.userId,
+      },
+    });
+    const unrestricted = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/machines`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            machineId: unrestrictedMachine.id,
+            startMeterReadingId: unrestrictedReading.id,
+            operatorEmploymentId: otherEmploymentId,
+          },
+        ],
+      },
+    });
+    expect(unrestricted.statusCode, unrestricted.body).toBe(200);
+  });
+
+  it("validates an operator against the role confirmed for the project", async () => {
+    const scope = await setup();
+    const alternateRole = await app.prisma.jobRole.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        name: "Operador alternativo",
+        normalizedName: "operador alternativo",
+      },
+    });
+    const team = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            employmentId: scope.employmentId,
+            confirmedJobRoleId: alternateRole.id,
+            monthlyWorkloadHours: 220,
+            compensationMode: "monthly",
+            compensationValue: "5000.00",
+            overtimeRate: "30.00",
+          },
+        ],
+      },
+    });
+    expect(team.statusCode, team.body).toBe(200);
+    expect(team.json().data.employeeAllocations).toEqual([
+      expect.objectContaining({
+        confirmedJobRoleId: alternateRole.id,
+        confirmedJobRolePeriodId: null,
+      }),
+    ]);
+
+    const model = await app.prisma.machineModel.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        type: "YELLOW_LINE",
+        manufacturer: "Volvo",
+        model: "EC210",
+        meterType: "HOUR_METER",
+        requiresOperator: true,
+        requiredJobRoleId: scope.jobRoleId,
+      },
+    });
+    const machine = await app.prisma.machine.create({
+      data: {
+        corporationId: scope.corporationId,
+        machineModelId: model.id,
+        name: "Escavadeira confirmada",
+        type: "YELLOW_LINE",
+        manufacturer: "Volvo",
+        model: "EC210",
+        meterType: "HOUR_METER",
+      },
+    });
+    await app.prisma.machineOwnershipPeriod.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: machine.id,
+      },
+    });
+    const reading = await app.prisma.machineMeterReading.create({
+      data: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: machine.id,
+        readingSequence: 1,
+        value: "10.00",
+        purpose: "INITIAL",
+        actorUserId: scope.userId,
+      },
+    });
+
+    const incompatible = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/machines`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            machineId: machine.id,
+            startMeterReadingId: reading.id,
+            operatorEmploymentId: scope.employmentId,
+          },
+        ],
+      },
+    });
+    expect(incompatible.statusCode, incompatible.body).toBe(409);
+    expect(incompatible.json().details.resources).toEqual([
+      expect.objectContaining({
+        kind: "employee",
+        id: scope.employmentId,
+        section: "machines",
+        reason: "operator-role-mismatch",
+      }),
+    ]);
+
+    const correctedTeam = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/employees`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            employmentId: scope.employmentId,
+            confirmedJobRoleId: scope.jobRoleId,
+            monthlyWorkloadHours: 220,
+            compensationMode: "monthly",
+            compensationValue: "5000.00",
+            overtimeRate: "30.00",
+          },
+        ],
+      },
+    });
+    expect(correctedTeam.statusCode, correctedTeam.body).toBe(200);
+
+    const compatible = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/mobilization/machines`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        allocations: [
+          {
+            machineId: machine.id,
+            startMeterReadingId: reading.id,
+            operatorEmploymentId: scope.employmentId,
+          },
+        ],
+      },
+    });
+    expect(compatible.statusCode, compatible.body).toBe(200);
+  });
 
   function createFront(
     authorization: string,

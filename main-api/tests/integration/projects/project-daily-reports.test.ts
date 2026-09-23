@@ -184,7 +184,8 @@ describe("project daily reports", () => {
         model: "R220",
         meterType: "HOUR_METER",
         loadVolumeM3: "10.000",
-        requiresOperator: false,
+        requiresOperator: true,
+        requiredJobRoleId: role.id,
       },
     });
     const machine = await app.prisma.machine.create({
@@ -669,7 +670,15 @@ describe("project daily reports", () => {
       },
     });
     const yellowMachineModel = await app.prisma.machineModel.create({
-      data: { corporationId: project.corporationId, companyId: project.companyId, type: "YELLOW_LINE", manufacturer: "Teste", model: "YL-01", meterType: "HOUR_METER", requiresOperator: false },
+      data: {
+        corporationId: project.corporationId,
+        companyId: project.companyId,
+        type: "YELLOW_LINE",
+        manufacturer: "Teste",
+        model: "YL-01",
+        meterType: "HOUR_METER",
+        requiresOperator: false,
+      },
     });
     const yellowMachine = await app.prisma.machine.create({
       data: {
@@ -683,7 +692,15 @@ describe("project daily reports", () => {
       },
     });
     const whiteWithoutVolumeModel = await app.prisma.machineModel.create({
-      data: { corporationId: project.corporationId, companyId: project.companyId, type: "WHITE_LINE", manufacturer: "Teste", model: "WL-00", meterType: "HOUR_METER", requiresOperator: false },
+      data: {
+        corporationId: project.corporationId,
+        companyId: project.companyId,
+        type: "WHITE_LINE",
+        manufacturer: "Teste",
+        model: "WL-00",
+        meterType: "HOUR_METER",
+        requiresOperator: false,
+      },
     });
     const whiteWithoutVolume = await app.prisma.machine.create({
       data: {

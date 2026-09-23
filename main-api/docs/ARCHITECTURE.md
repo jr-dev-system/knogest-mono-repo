@@ -1,57 +1,54 @@
-# Architecture
+# API Architecture
 
-O projeto usa camadas simples e previsiveis:
+KnoGest uses a strict layered flow:
 
 ```text
 controller -> validation -> service -> handler -> Prisma -> response
 ```
 
+`buildApp` owns Fastify setup, OpenAPI, safe error formatting, request IDs,
+rate limits, Prisma, and authentication plugins. Versioned routes are mounted
+under `/api/v1`; route schemas generate the committed OpenAPI artifact.
+
 ## Controller
 
-Responsavel por rotas Fastify, schemas Swagger, preHandlers de validacao, chamada do service e resposta HTTP.
+Controllers register Fastify routes, OpenAPI schemas, request-size and
+rate-limit settings, pre-handlers, and HTTP responses. They may read validated
+request input and `request.authContext`, construct an operation scope, and call
+a service.
 
-Pode:
-
-- importar DTOs, services, validators e helpers de response;
-- ler `request.body`, `request.params`, `request.query` e `request.user`;
-- montar o contexto de operacao para o service.
-
-Nao pode:
-
-- importar Prisma Client, `@db` ou client gerado;
-- chamar `app.prisma`, `prisma.user`, `prisma.$transaction` ou qualquer query;
-- conter regra de negocio complexa.
+Controllers do not access Prisma or contain persistence queries. For format
+validation they use DTO schemas and validation pre-handlers; exceptional command
+parsing must still return the canonical error envelope.
 
 ## Service
 
-Responsavel por regra de negocio e orquestracao de handlers.
-
-Pode:
-
-- receber um `HandlerContext`;
-- chamar handlers;
-- validar regras de negocio que dependem de mais de um dado;
-- decidir qual erro de aplicacao devolver.
-
-Nao pode:
-
-- importar Prisma Client diretamente;
-- chamar `context.prisma.user`, `prisma.user` ou qualquer model;
-- montar resposta HTTP.
+Services coordinate use cases and enforce domain rules that span multiple
+records or operations. They receive a `HandlerContext` and trusted
+Corporation/Company scope, call handlers, and raise normalized `AppError`
+instances. They do not build Fastify responses or query Prisma models directly.
 
 ## Handler
 
-Responsavel por persistencia. Esta e a unica camada de modulo que toca o banco.
+Handlers are the module persistence boundary. They use `HandlerContext.prisma`,
+apply Corporation/Company filters in every tenant-aware query and mutation, and
+translate known persistence failures into safe application errors. Transactional
+handlers use the context transaction helper rather than leaking database work
+to controllers or services.
 
-Pode:
+## DTO and response boundaries
 
-- receber `HandlerContext`;
-- usar `context.prisma`;
-- aplicar `where`, `select`, `include`, `data` e filtros de tenant;
-- converter erros Prisma para `AppError`.
+DTOs contain Zod schemas and inferred input types only. The controller owns the
+HTTP envelope through `jsonResponse`; handlers return data or throw normalized
+errors. Generated OpenAPI schemas must describe the same envelope and route
+behavior as the controller.
 
-## DTO
+## Cross-cutting rules
 
-Responsavel por schemas Zod e tipos inferidos.
-
-Nao coloque regra de negocio ou acesso a banco em DTO.
+- `auth.plugin` validates the JWT against the persisted session and attaches
+  `authContext` to the request.
+- `requireCompanyScope` blocks company-scoped operations without a selected
+  Company before domain code executes.
+- `jsonResponse` is the sole canonical response-envelope formatter.
+- `docs/ERRORS.md`, `docs/TENANCY.md`, `docs/PAGINATION.md`, and the route
+  schema are required reading when their respective concerns change.

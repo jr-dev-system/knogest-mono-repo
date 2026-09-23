@@ -669,6 +669,39 @@ const projectReadinessBlockerSchema = {
   additionalProperties: false,
 } as const;
 
+const projectEmployeeAllocationSnapshotSchema = {
+  type: "object",
+  additionalProperties: true,
+  required: [
+    "id",
+    "employment",
+    "shift",
+    "jobRole",
+    "confirmedJobRoleId",
+    "confirmedJobRolePeriodId",
+    "monthlyWorkloadHours",
+    "compensationMode",
+    "compensationValue",
+    "overtimeRate",
+    "effectiveFrom",
+  ],
+  properties: {
+    id: uuid,
+    employment: { type: "object", nullable: true, additionalProperties: true },
+    shift: { enum: ["day", "night"] },
+    jobRole: { type: "string" },
+    confirmedJobRoleId: { ...uuid, nullable: true },
+    confirmedJobRolePeriodId: { ...uuid, nullable: true },
+    monthlyWorkloadHours: { type: "integer", minimum: 1, maximum: 744 },
+    compensationMode: {
+      enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],
+    },
+    compensationValue: { type: "string" },
+    overtimeRate: { type: "string" },
+    effectiveFrom: { type: "string", format: "date-time" },
+  },
+} as const;
+
 const projectDetailSchema = {
   type: "object",
   additionalProperties: true,
@@ -681,6 +714,7 @@ const projectDetailSchema = {
     "baseline",
     "quantityBaseline",
     "workFronts",
+    "employeeAllocations",
     "readiness",
   ],
   properties: {
@@ -691,6 +725,10 @@ const projectDetailSchema = {
     actualStartedAt: { type: "string", format: "date-time", nullable: true },
     createdAt: { type: "string", format: "date-time" },
     baseline: { type: "object", nullable: true, additionalProperties: true },
+    employeeAllocations: {
+      type: "array",
+      items: projectEmployeeAllocationSnapshotSchema,
+    },
     quantityBaseline: {
       type: "object",
       additionalProperties: false,
@@ -771,6 +809,39 @@ const projectDetailSchema = {
   },
 } as const;
 
+const projectReadinessMachineOptionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "label",
+    "manufacturer",
+    "model",
+    "meterType",
+    "detail",
+    "readingId",
+    "requiresOperator",
+    "requiredJobRoleId",
+    "requiredJobRoleName",
+    "acceptsAnyJobRole",
+    "available",
+  ],
+  properties: {
+    id: uuid,
+    label: { type: "string" },
+    manufacturer: { type: "string" },
+    model: { type: "string" },
+    meterType: { enum: ["HOUR_METER", "ODOMETER"] },
+    detail: { type: "string", nullable: true },
+    readingId: { ...uuid, nullable: true },
+    requiresOperator: { type: "boolean" },
+    requiredJobRoleId: { ...uuid, nullable: true },
+    requiredJobRoleName: { type: "string", nullable: true },
+    acceptsAnyJobRole: { type: "boolean" },
+    available: { type: "boolean" },
+  },
+} as const;
+
 const projectReadinessOptionsSchema = {
   type: "object",
   additionalProperties: false,
@@ -796,7 +867,7 @@ const projectReadinessOptionsSchema = {
     },
     machines: {
       type: "array",
-      items: { type: "object", additionalProperties: true },
+      items: projectReadinessMachineOptionSchema,
     },
     jobRoles: {
       type: "array",

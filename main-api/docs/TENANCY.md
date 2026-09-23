@@ -1,34 +1,45 @@
-# Tenancy
+# Corporation and Company Scope
 
-Este template esta pronto para modulos tenant-aware, mas nao cria um model `Tenant` por padrao.
+KnoGest is multi-tenant through Corporation ownership and Company operational
+scope. It does not use a generic `Tenant` model or accept a free-form tenancy
+identifier from clients.
 
-## Regra principal
+## Trusted context
 
-`tenantId` deve vir do contexto autenticado ou de uma fonte confiavel do servidor. Nunca confie em `tenantId` enviado livremente no body.
+After authentication, `request.authContext` contains trusted identifiers for
+`userId`, `corporationId`, `sessionId`, `role`, and optionally `companyId`.
+The claims are checked against the persisted Session on every authenticated
+request.
 
-## Controller
+`companyId` is absent until the user chooses a workspace. Company-scoped
+routes use `requireCompanyScope`, which returns `403 COMPANY_CONTEXT_REQUIRED`
+before a controller calls its service.
 
-- Extrai contexto autenticado.
-- Nao decide filtros de banco.
-- Passa `tenantId` para o service dentro do contexto da operacao.
+## Layer responsibilities
 
-## Service
+- **Controller:** reads only authenticated context, creates the explicit
+  operation scope, and never derives Corporation or Company from client input.
+- **Service:** passes the trusted scope through domain operations and rejects
+  impossible scope transitions.
+- **Handler:** filters reads, writes, updates, deletes, and relation traversals
+  by the required `corporationId` and, when operational data is involved,
+  `companyId`.
 
-- Recebe `tenantId`.
-- Garante que operacoes tenant-aware tenham tenant definido.
-- Chama handlers com o contexto necessario.
+## Client input
 
-## Handler
+Bodies, query strings, route params, and arbitrary headers must never select a
+Corporation or Company. `x-expected-company-id` is a guarded concurrency check
+for the project command, not a replacement for authenticated scope: it must
+equal the Company persisted in the current Session.
 
-- Aplica `tenantId` em `where`, `create`, `update` e `delete`.
-- Nenhuma query tenant-aware deve rodar sem filtro de tenant.
-- Updates e deletes devem filtrar por `id` e `tenantId`.
+## Exceptions
 
-## Excecoes
+An exception is allowed only when it is explicit in code and documentation:
 
-Excecoes precisam estar explicitas no codigo e na documentacao do modulo:
+- trusted-host Corporation resolution during login;
+- system/reference data explicitly modeled as global;
+- administrative provisioning that receives its Corporation context through a
+  controlled CLI command.
 
-- tabelas globais;
-- login inicial;
-- administracao global;
-- dados publicos realmente compartilhados.
+New exceptions require a test demonstrating that another Corporation or
+Company cannot access or mutate scoped data.

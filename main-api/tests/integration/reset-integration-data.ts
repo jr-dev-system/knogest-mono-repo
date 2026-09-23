@@ -10,6 +10,7 @@ export async function resetIntegrationData(prisma: PrismaClient) {
   await prisma.machineIdentifier.deleteMany();
   await prisma.machineOwnershipPeriod.deleteMany();
   await prisma.machine.deleteMany();
+  await prisma.machineModel.deleteMany();
   await prisma.employmentJobRolePeriod.deleteMany();
   await prisma.$executeRawUnsafe('TRUNCATE TABLE "employment_periods" CASCADE');
   await prisma.employment.deleteMany();

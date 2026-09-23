@@ -16388,6 +16388,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -16419,6 +16420,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -16959,7 +17020,48 @@
                           "type": "array",
                           "items": {
                             "type": "object",
-                            "additionalProperties": true
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "label",
+                              "manufacturer",
+                              "model",
+                              "meterType",
+                              "detail",
+                              "readingId",
+                              "requiresOperator",
+                              "requiredJobRoleId",
+                              "requiredJobRoleName",
+                              "acceptsAnyJobRole",
+                              "available"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "label": { "type": "string" },
+                              "manufacturer": { "type": "string" },
+                              "model": { "type": "string" },
+                              "meterType": {
+                                "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "detail": { "type": "string", "nullable": true },
+                              "readingId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "requiresOperator": { "type": "boolean" },
+                              "requiredJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "requiredJobRoleName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "acceptsAnyJobRole": { "type": "boolean" },
+                              "available": { "type": "boolean" }
+                            }
                           }
                         },
                         "jobRoles": {
@@ -17370,6 +17472,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -17401,6 +17504,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -17683,6 +17846,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -17714,6 +17878,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -18051,6 +18275,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -18082,6 +18307,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -18425,6 +18710,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -18456,6 +18742,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -18767,6 +19113,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -18798,6 +19145,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -19185,6 +19592,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -19216,6 +19624,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -19609,6 +20077,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -19640,6 +20109,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -19963,6 +20492,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -19994,6 +20524,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -20315,6 +20905,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -20346,6 +20937,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -21020,6 +21671,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -21051,6 +21703,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -21352,6 +22064,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -21383,6 +22096,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",
@@ -21678,6 +22451,7 @@
                         "baseline",
                         "quantityBaseline",
                         "workFronts",
+                        "employeeAllocations",
                         "readiness"
                       ],
                       "properties": {
@@ -21709,6 +22483,66 @@
                           "type": "object",
                           "nullable": true,
                           "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
                         },
                         "quantityBaseline": {
                           "type": "object",

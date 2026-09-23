@@ -1454,8 +1454,8 @@ async function replaceEmployeeAllocations(
       ]);
     if (operatedMachine)
       throw conflict([
-          resource(
-            "employee",
+        resource(
+          "employee",
           operatedMachine.operatorEmploymentId!,
           "machines",
           "already-allocated",
@@ -1562,6 +1562,7 @@ async function replaceEmployeeAllocations(
         effectiveFrom: now,
         employmentId: allocation.employmentId,
         shift: dbShift(allocation.shift),
+        confirmedJobRoleId: selectedRole?.id ?? null,
         employmentJobRolePeriodId: referencesEmploymentRole
           ? currentRole?.id
           : null,
@@ -1587,12 +1588,19 @@ async function replaceMachineAllocations(
   const scopeWhere = projectScopeWhere(scope, projectId);
   const teamRows = await tx.prisma.projectEmployeeAllocation.findMany({
     where: { ...scopeWhere, effectiveTo: null },
-    select: { employmentId: true, shift: true, jobRole: true },
+    select: {
+      employmentId: true,
+      shift: true,
+      confirmedJobRoleId: true,
+    },
   });
   const teamByEmployment = new Map(
     teamRows.map((item) => [
       item.employmentId,
-      { shift: shiftDto(item.shift), jobRole: item.jobRole },
+      {
+        shift: shiftDto(item.shift),
+        jobRoleId: item.confirmedJobRoleId,
+      },
     ]),
   );
 
@@ -1612,7 +1620,8 @@ async function replaceMachineAllocations(
         machineModel: {
           select: {
             requiresOperator: true,
-            requiredJobRole: { select: { name: true } },
+            requiredJobRoleId: true,
+            requiredJobRole: { select: { normalizedName: true } },
           },
         },
         meterReadings: {
@@ -1657,13 +1666,29 @@ async function replaceMachineAllocations(
           "latest-reading-changed",
         ),
       ]);
-    if (machine.machineModel.requiresOperator && allocation.operatorAssignments.length === 0)
+    if (
+      machine.machineModel.requiresOperator &&
+      allocation.operatorAssignments.length === 0
+    )
       throw conflict([
-        resource("machine", allocation.machineId, "machines", "operator-required"),
+        resource(
+          "machine",
+          allocation.machineId,
+          "machines",
+          "operator-required",
+        ),
       ]);
-    if (!machine.machineModel.requiresOperator && allocation.operatorAssignments.length > 0)
+    if (
+      !machine.machineModel.requiresOperator &&
+      allocation.operatorAssignments.length > 0
+    )
       throw conflict([
-        resource("machine", allocation.machineId, "machines", "operator-not-allowed"),
+        resource(
+          "machine",
+          allocation.machineId,
+          "machines",
+          "operator-not-allowed",
+        ),
       ]);
     for (const assignment of allocation.operatorAssignments) {
       const teamMember = teamByEmployment.get(assignment.operatorEmploymentId);
@@ -1671,14 +1696,19 @@ async function replaceMachineAllocations(
         throw conflict([
           resource("employee", assignment.operatorEmploymentId, "machines"),
         ]);
-      const requiredRole = machine.machineModel.requiredJobRole?.name;
+      const requiredRole = machine.machineModel.requiredJobRole;
       if (
         requiredRole &&
-        requiredRole !== "Qualquer um" &&
-        teamMember.jobRole !== requiredRole
+        requiredRole.normalizedName !== "qualquer um" &&
+        teamMember.jobRoleId !== machine.machineModel.requiredJobRoleId
       )
         throw conflict([
-          resource("employee", assignment.operatorEmploymentId, "machines", "operator-role-mismatch"),
+          resource(
+            "employee",
+            assignment.operatorEmploymentId,
+            "machines",
+            "operator-role-mismatch",
+          ),
         ]);
     }
   }
@@ -1927,6 +1957,16 @@ async function buildProjectReadinessOptions(
       select: {
         id: true,
         name: true,
+        machineModel: {
+          select: {
+            manufacturer: true,
+            model: true,
+            meterType: true,
+            requiresOperator: true,
+            requiredJobRoleId: true,
+            requiredJobRole: { select: { name: true, normalizedName: true } },
+          },
+        },
         meterReadings: {
           where: { status: "CONFIRMED" },
           orderBy: { readingSequence: "desc" },
@@ -2175,10 +2215,19 @@ async function buildProjectReadinessOptions(
       .map((machine) => ({
         id: machine.id,
         label: machine.name,
+        manufacturer: machine.machineModel.manufacturer,
+        model: machine.machineModel.model,
+        meterType: machine.machineModel.meterType,
         detail: machine.meterReadings[0]
           ? decimalString(machine.meterReadings[0].value, 2)
           : null,
         readingId: machine.meterReadings[0]?.id ?? null,
+        requiresOperator: machine.machineModel.requiresOperator,
+        requiredJobRoleId: machine.machineModel.requiredJobRoleId,
+        requiredJobRoleName: machine.machineModel.requiredJobRole?.name ?? null,
+        acceptsAnyJobRole:
+          machine.machineModel.requiredJobRole?.normalizedName ===
+          "qualquer um",
         available:
           !unavailableMachineIds.has(machine.id) ||
           currentMachineIds.has(machine.id),
@@ -2611,6 +2660,8 @@ async function buildProjectSnapshot(
     employment: employeeDto(allocation.employmentId),
     shift: shiftDto(allocation.shift),
     jobRole: allocation.jobRole,
+    confirmedJobRoleId: allocation.confirmedJobRoleId,
+    confirmedJobRolePeriodId: allocation.employmentJobRolePeriodId,
     monthlyWorkloadHours: allocation.monthlyWorkloadHours,
     compensationMode: allocation.compensationMode,
     compensationValue: decimalString(allocation.compensationValue, 2),
@@ -3207,6 +3258,7 @@ export class ProjectsHandler {
               effectiveFrom: now,
               employmentId: allocation.employmentId,
               shift: dbShift(allocation.shift),
+              confirmedJobRoleId: confirmedRole?.id ?? null,
               employmentJobRolePeriodId: referencesEmploymentRole
                 ? currentRole?.id
                 : null,
@@ -3806,8 +3858,11 @@ export class ProjectsHandler {
         .map((item) => ({
           employmentId: item.employmentId,
           shift: item.shift === "NIGHT" ? ("night" as const) : ("day" as const),
+          confirmedJobRoleId: item.confirmedJobRoleId ?? undefined,
           confirmedJobRolePeriodId: item.employmentJobRolePeriodId,
-          confirmedJobRoleName: item.jobRole,
+          ...(item.confirmedJobRoleId
+            ? {}
+            : { confirmedJobRoleName: item.jobRole }),
           monthlyWorkloadHours: item.monthlyWorkloadHours,
           compensationMode:
             item.compensationMode as ReadinessEmployeeAllocation["compensationMode"],
@@ -3919,53 +3974,58 @@ export class ProjectsHandler {
     return runSerializable(this.context, async (tx) => {
       await lockProjectQuantityAllocation(tx, projectId);
       const scopeWhere = projectScopeWhere(scope, projectId);
-      const [project, front, employeePool, machineAllocationPool, machineRequirements] =
-        await Promise.all([
-          tx.prisma.project.findFirst({
-            where: {
-              id: projectId,
-              corporationId: scope.corporationId,
-              companyId: scope.companyId,
+      const [
+        project,
+        front,
+        employeePool,
+        machineAllocationPool,
+        machineRequirements,
+      ] = await Promise.all([
+        tx.prisma.project.findFirst({
+          where: {
+            id: projectId,
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+          },
+          select: { status: true },
+        }),
+        tx.prisma.projectWorkFront.findFirst({
+          where: { id: frontId, ...scopeWhere },
+          select: { status: true },
+        }),
+        tx.prisma.projectEmployeeAllocation.findMany({
+          where: {
+            ...scopeWhere,
+            employmentId: { in: command.employmentIds },
+            effectiveTo: null,
+          },
+          select: { employmentId: true, shift: true },
+        }),
+        tx.prisma.projectMachineAllocation.findMany({
+          where: {
+            ...scopeWhere,
+            machineId: { in: command.machineIds },
+            effectiveTo: null,
+          },
+          select: {
+            machineId: true,
+            shiftAssignments: {
+              where: { effectiveTo: null },
+              select: { shift: true, operatorEmploymentId: true },
             },
-            select: { status: true },
-          }),
-          tx.prisma.projectWorkFront.findFirst({
-            where: { id: frontId, ...scopeWhere },
-            select: { status: true },
-          }),
-          tx.prisma.projectEmployeeAllocation.findMany({
-            where: {
-              ...scopeWhere,
-              employmentId: { in: command.employmentIds },
-              effectiveTo: null,
-            },
-            select: { employmentId: true, shift: true },
-          }),
-          tx.prisma.projectMachineAllocation.findMany({
-            where: {
-              ...scopeWhere,
-              machineId: { in: command.machineIds },
-              effectiveTo: null,
-            },
-            select: {
-              machineId: true,
-              shiftAssignments: {
-                where: { effectiveTo: null },
-                select: { shift: true, operatorEmploymentId: true },
-              },
-            },
-          }),
-          tx.prisma.machine.findMany({
-            where: {
-              id: { in: command.machineIds },
-              corporationId: scope.corporationId,
-            },
-            select: {
-              id: true,
-              machineModel: { select: { requiresOperator: true } },
-            },
-          }),
-        ]);
+          },
+        }),
+        tx.prisma.machine.findMany({
+          where: {
+            id: { in: command.machineIds },
+            corporationId: scope.corporationId,
+          },
+          select: {
+            id: true,
+            machineModel: { select: { requiresOperator: true } },
+          },
+        }),
+      ]);
       const machineRequirementById = new Map(
         machineRequirements.map((item) => [
           item.id,
@@ -3982,14 +4042,22 @@ export class ProjectsHandler {
           (item) => item.shift === shift,
         );
         if (assignment)
-          return [{
-            machineId: allocation.machineId,
-            shift,
-            operatorEmploymentId: assignment.operatorEmploymentId,
-          }];
+          return [
+            {
+              machineId: allocation.machineId,
+              shift,
+              operatorEmploymentId: assignment.operatorEmploymentId,
+            },
+          ];
         return machineRequirementById.get(allocation.machineId)
           ? []
-          : [{ machineId: allocation.machineId, shift, operatorEmploymentId: null }];
+          : [
+              {
+                machineId: allocation.machineId,
+                shift,
+                operatorEmploymentId: null,
+              },
+            ];
       });
       if (!project || !front) projectNotFound();
       if (project.status !== "ACTIVE")
@@ -5000,11 +5068,13 @@ export class ProjectsHandler {
       }),
     ]);
     const operatorIds = new Set(
-      machineAllocations.flatMap((allocation) =>
-        allocation.shiftAssignments.map(
-          (assignment) => assignment.operatorEmploymentId,
-        ),
-      ).filter((id): id is string => id !== null),
+      machineAllocations
+        .flatMap((allocation) =>
+          allocation.shiftAssignments.map(
+            (assignment) => assignment.operatorEmploymentId,
+          ),
+        )
+        .filter((id): id is string => id !== null),
     );
     const employmentIds = [
       ...employeeAllocations.map((allocation) => allocation.employmentId),
@@ -5159,9 +5229,10 @@ export class ProjectsHandler {
             model: machine.model,
             identifier,
             shift,
-            operator: operatorName && assignment.operatorEmploymentId
-              ? { id: assignment.operatorEmploymentId, name: operatorName }
-              : null,
+            operator:
+              operatorName && assignment.operatorEmploymentId
+                ? { id: assignment.operatorEmploymentId, name: operatorName }
+                : null,
             occupyingFront,
             selected: occupation?.workFrontId === frontId,
             disabled: Boolean(occupation && occupation.workFrontId !== frontId),

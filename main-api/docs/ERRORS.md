@@ -92,22 +92,47 @@ Produção de terraplenagem usa os seguintes códigos públicos:
 Conflitos retornam apenas identificadores, campos pendentes, limites e
 categorias seguras.
 
-## Frentes e frota
+## Project scope, work fronts, and fleet
 
-- `WORK_FRONT_QUANTITY_BELOW_PRODUCED`: a distribuição proposta ficou abaixo
-  da soma oficial produzida na frente e no serviço;
-- `WORK_FRONT_SERVICE_HAS_PRODUCTION`: tentativa de remover um serviço que tem
-  ao menos um lançamento vinculado, ainda que seja rascunho zerado;
-- `MACHINE_LOAD_SPEC_NOT_APPLICABLE`: volume de carga ou peso máximo enviado
-  para máquina que não pertence à linha branca.
-- `MACHINE_MODEL_JOB_ROLE_INVALID`: a função de operador do modelo não está
-  ativa ou não pertence à empresa selecionada.
+- `COMPANY_CONTEXT_REQUIRED` returns `403` when a Company-scoped operation has
+  no Company persisted in the authenticated Session.
+- `PROJECT_WORKSPACE_CHANGED` and `PROJECT_RESOURCE_CONFLICT` return `409`
+  when the selected workspace or project resource snapshot changes
+  concurrently. Safe `details.resources` may identify the affected resource.
+  Em uma mobilização de máquina, `reason: "operator-role-mismatch"` identifica
+  que a função confirmada na alocação da obra não atende à função exigida pelo
+  modelo; o cliente deve orientar a atualização da equipe, sem inferir função
+  pelo nome exibido.
+- `PROJECT_QUANTITY_BASELINE_BELOW_ALLOCATED`,
+  `WORK_FRONT_QUANTITY_EXCEEDS_BALANCE`,
+  `WORK_FRONT_QUANTITY_BELOW_PRODUCED`, `WORK_FRONT_SERVICE_HAS_PRODUCTION`,
+  and `WORK_FRONT_NOT_ELIGIBLE` return `422` for protected project and work
+  front transitions.
+- `MACHINE_LOAD_SPEC_NOT_APPLICABLE` and
+  `MACHINE_MODEL_JOB_ROLE_INVALID` return `422` when a model or load
+  specification is incompatible with the selected Company or machine type.
+- Machine identifier, reading, and allocation conflicts return stable
+  `MACHINE_*` codes with `409`; these include unavailable operational state and
+  attempts to break the monotonic reading chain.
 
-Os três casos usam `422`. Limites quantitativos podem aparecer em `blockers`,
-sem expor payload, SQL ou detalhes de persistência.
+Quantitative limits may appear in safe `blockers` or resource data, but errors
+must not expose request payloads, SQL, Prisma metadata, credentials, or
+personal-data ciphertext.
 
 ## Funções da empresa
 
 - `JOB_ROLE_ALREADY_EXISTS` retorna `409` quando o nome normalizado da função
   já existe na mesma empresa. O mesmo nome pode existir em outra empresa da
   corporação.
+- `JOB_ROLE_UNAVAILABLE` e `JOB_ROLE_CHANGE_CONFLICT` retornam `409` quando a
+  função não está ativa no escopo da empresa ou a alteração concorrente não é
+  mais aplicável.
+
+## Workforce and commercial records
+
+Workforce lifecycle conflicts use stable `EMPLOYMENT_*` and
+`EMPLOYEE_ALLOCATION_*` codes with `409` or `422`, depending on whether the
+state changed concurrently or the requested terms are invalid. Commercial
+duplicates and unavailable records use their documented `*_ALREADY_EXISTS`,
+`*_NOT_FOUND`, and `*_UNAVAILABLE` codes. Consumers should branch on the
+stable code and HTTP status, never on an internal error message.
