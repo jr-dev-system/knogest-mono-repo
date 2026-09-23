@@ -6,6 +6,8 @@
 - Não importe `src/generated/clients` fora de Server Actions ou módulos server-only.
 - Toda Server Action deve verificar sessão e autorização própria.
 - Não confie apenas em `proxy.ts` para proteger dados.
+- O host recebido é normalizado e encaminhado somente pela fronteira server-only;
+  componentes e ações não aceitam Corporation ou Company como escopo confiável.
 
 ## Headers
 
@@ -18,6 +20,8 @@
 - `frame-ancestors 'none'`
 
 O CSP usa nonce por requisição e permite ajustes mínimos para o modo desenvolvimento.
+Componentes de notificação usam CSS estático empacotado pelo aplicativo; não
+dependem da injeção de `<style>` em tempo de execução, que a CSP bloqueia.
 
 ## Tokens
 
@@ -25,6 +29,8 @@ O CSP usa nonce por requisição e permite ajustes mínimos para o modo desenvol
 - Tokens nunca são enviados como props para Client Components.
 - Tokens nunca são adicionados ao retorno público de `session`.
 - O client server-only injeta `Authorization` lendo o JWT no servidor.
+- Uma resposta `401 SESSION_INVALID` usa a renovação single-flight do BFF; a
+  renovação nunca é delegada ao navegador nem repetida recursivamente.
 
 ## Validação
 

@@ -1,7 +1,14 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, Loader2, Pencil, UsersRound } from "lucide-react";
+import {
+  AlertCircle,
+  Loader2,
+  Pencil,
+  Plus,
+  Trash2,
+  UsersRound,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -11,6 +18,7 @@ import {
 import { getProjectTeamMembersAction } from "../projects.actions";
 import type {
   CompensationMode,
+  ProjectTeamMember,
   ProjectTeamMembersPage,
 } from "../projects.types";
 
@@ -38,15 +46,27 @@ const formatCurrency = (value: string) =>
 export function ProjectTeamView({
   canEdit,
   counts,
+  initialShift = "day",
+  onAddShift,
+  onActiveShiftChange,
+  onEditMember,
   onEditShift,
+  onRemoveMember,
   projectId,
+  reloadKey,
 }: {
   canEdit: boolean;
   counts: Record<Shift, number>;
+  initialShift?: Shift;
+  onAddShift: (shift: Shift) => void;
+  onActiveShiftChange?: (shift: Shift) => void;
+  onEditMember: (member: ProjectTeamMember) => void;
   onEditShift: (shift: Shift) => void;
+  onRemoveMember: (member: ProjectTeamMember) => void;
   projectId: string;
+  reloadKey?: number;
 }) {
-  const [activeShift, setActiveShift] = React.useState<Shift>("day");
+  const [activeShift, setActiveShift] = React.useState<Shift>(initialShift);
   const [pages, setPages] =
     React.useState<Record<Shift, ProjectTeamMembersPage[]>>(emptyPages);
   const [pageIndexes, setPageIndexes] = React.useState<Record<Shift, number>>({
@@ -58,6 +78,18 @@ export function ProjectTeamView({
     day: null,
     night: null,
   });
+  const hasObservedReloadKey = React.useRef(false);
+
+  React.useEffect(() => {
+    if (!hasObservedReloadKey.current) {
+      hasObservedReloadKey.current = true;
+      return;
+    }
+    setPages(emptyPages());
+    setPageIndexes({ day: 0, night: 0 });
+    setErrors({ day: null, night: null });
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- A successful mutation invalidates the cursor cache for both shifts.
+  }, [reloadKey]);
 
   const loadPage = React.useCallback(
     async (shift: Shift, cursor?: string | null) => {
@@ -96,6 +128,11 @@ export function ProjectTeamView({
   const page = pages[activeShift][pageIndex];
   const isLoading = loadingShift === activeShift;
 
+  const selectShift = (shift: Shift) => {
+    setActiveShift(shift);
+    onActiveShiftChange?.(shift);
+  };
+
   const goNext = async () => {
     const cached = pages[activeShift][pageIndex + 1];
     if (cached) {
@@ -125,22 +162,32 @@ export function ProjectTeamView({
           ariaLabel="Turno da equipe"
           idPrefix="project-team-shift"
           value={activeShift}
-          onValueChange={setActiveShift}
+          onValueChange={selectShift}
           tabs={[
             { value: "day", label: `Diurno (${counts.day})` },
             { value: "night", label: `Noturno (${counts.night})` },
           ]}
         />
         {canEdit && (
-          <Button
-            type="button"
-            variant="outline"
-            className="min-h-10 shrink-0"
-            onClick={() => onEditShift(activeShift)}
-          >
-            <Pencil className="size-4" />
-            Editar turno
-          </Button>
+          <div className="flex shrink-0 flex-wrap gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              className="min-h-10"
+              onClick={() => onEditShift(activeShift)}
+            >
+              <Pencil className="size-4" />
+              Editar turno
+            </Button>
+            <Button
+              type="button"
+              className="min-h-10"
+              onClick={() => onAddShift(activeShift)}
+            >
+              <Plus className="size-4" />
+              Adicionar funcionários
+            </Button>
+          </div>
         )}
       </div>
 
@@ -189,7 +236,7 @@ export function ProjectTeamView({
                 {page.data.map((member) => (
                   <article
                     key={member.id}
-                    className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-center"
+                    className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[minmax(11rem,1fr)_auto_auto] sm:items-center"
                   >
                     <div className="min-w-0">
                       <p className="truncate font-bold">{member.name}</p>
@@ -223,6 +270,33 @@ export function ProjectTeamView({
                         </dd>
                       </div>
                     </dl>
+                    {canEdit && (
+                      <div
+                        role="group"
+                        aria-label={`Ações para ${member.name}`}
+                        className="flex items-center gap-1 border-t border-border pt-2 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0"
+                      >
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-lg"
+                          aria-label={`Editar ${member.name}`}
+                          onClick={() => onEditMember(member)}
+                        >
+                          <Pencil className="size-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon-lg"
+                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                          aria-label={`Remover ${member.name}`}
+                          onClick={() => onRemoveMember(member)}
+                        >
+                          <Trash2 className="size-4" />
+                        </Button>
+                      </div>
+                    )}
                   </article>
                 ))}
               </div>

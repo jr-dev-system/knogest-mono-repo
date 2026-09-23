@@ -6,26 +6,36 @@ import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
   CalendarDays,
+  CalendarRange,
   Check,
+  ChevronDown,
+  ChevronRight,
+  FileText,
   Fuel,
   Gauge,
   HardHat,
   Loader2,
   PackageCheck,
   Pencil,
+  PanelLeftClose,
+  PanelLeftOpen,
   Play,
   Plus,
+  Route,
   Save,
   Search,
+  Settings2,
   Trash2,
   Truck,
   UsersRound,
   WalletCards,
+  X,
 } from "lucide-react";
 import { useForm, useWatch } from "react-hook-form";
 import { toast } from "sonner";
 
 import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
+import { useAppShellNavigation } from "@/components/layout/app-shell";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -41,10 +51,6 @@ import { OperationsModal } from "@/components/ui/operations-modal";
 import { Button } from "@/components/ui/button";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
-import {
-  OperationTabPanel,
-  OperationTabs,
-} from "@/components/ui/operation-tabs";
 import { useDebouncer } from "@/hooks/useDebouncer";
 import {
   canonicalDecimalToBrazilian,
@@ -72,6 +78,7 @@ import {
   startProjectWorkFrontAction,
   updateProjectWorkFrontAction,
   type ProjectReadinessActionInput,
+  type ProjectReadinessMutationResult,
 } from "../projects.actions";
 import { emptyProjectCommand, type ProjectCommand } from "../projects-schema";
 import type {
@@ -85,6 +92,7 @@ import type {
   ProjectSuppliedItemOfferOption,
   ProjectSuppliedItemOffersPage,
   ProjectTeamCandidatesPage,
+  ProjectTeamMember,
   SupplierOfferOption,
   SuppliedItemSelectorOption,
   SuppliedItemSelectorPage,
@@ -214,6 +222,39 @@ const statusLabels: Record<ProjectDetailSnapshot["status"], string> = {
   cancelled: "Cancelada",
 };
 
+function machineSaveFailureMessage(
+  result: Exclude<ProjectReadinessMutationResult, { kind: "success" }>,
+) {
+  const reason =
+    result.kind === "recoverable-conflict"
+      ? result.resources?.[0]?.reason
+      : undefined;
+  const messageByReason: Record<string, string> = {
+    "already-allocated": "Esta máquina já está mobilizada em outra obra.",
+    "assigned-to-front":
+      "Esta máquina já está vinculada a uma frente e não pode ser alterada aqui.",
+    "job-role-changed":
+      "A função de um integrante da equipe mudou. Atualize a equipe e tente novamente.",
+    "latest-reading-changed":
+      "A última leitura da máquina mudou. Reabra esta edição para usar a leitura atual.",
+    "operator-not-allowed": "Esta máquina não aceita operador.",
+    "operator-required": "Esta máquina exige pelo menos um operador.",
+    "operator-role-mismatch":
+      "O operador não possui a função exigida por esta máquina.",
+    unavailable:
+      "A máquina ou o operador não está mais disponível para esta obra.",
+  };
+  const fallback =
+    result.message === "Project resources changed"
+      ? "A mobilização mudou enquanto você editava. Atualize as máquinas e tente novamente."
+      : result.message || "Não foi possível concluir a mobilização agora.";
+  const message = reason ? (messageByReason[reason] ?? fallback) : fallback;
+
+  return result.requestId
+    ? `${message} Código de atendimento: ${result.requestId}.`
+    : message;
+}
+
 export type FuelDraft = {
   key: string;
   mode: "existing" | "new";
@@ -268,19 +309,66 @@ export type ReadinessOfferCommand =
 
 type ProjectTab =
   | "planning"
+  | "calendar"
   | "fronts"
-  | "fuel"
+  | "overview"
+  | "production"
+  | "reports"
   | "accountability"
   | "team"
   | "machines"
-  | "payments"
+  | "fuel"
   | "materials"
-  | "overview"
-  | "production"
-  | "timekeepers"
-  | "suppliers"
+  | "financial"
+  | "payments";
+
+const projectTabs = new Set<ProjectTab>([
+  "planning",
+  "calendar",
+  "fronts",
+  "overview",
+  "production",
+  "reports",
+  "accountability",
+  "team",
+  "machines",
+  "fuel",
+  "materials",
+  "financial",
+  "payments",
+]);
+
+function resolveInitialProjectTab(
+  status: ProjectDetailSnapshot["status"],
+  requestedSection?: string,
+): ProjectTab {
+  const fallback = status === "active" ? "overview" : "planning";
+  if (!requestedSection || !projectTabs.has(requestedSection as ProjectTab))
+    return fallback;
+  if (
+    status !== "active" &&
+    ["overview", "production", "reports"].includes(requestedSection)
+  )
+    return fallback;
+  return requestedSection as ProjectTab;
+}
+
+type ProjectNavigationGroup =
   | "reports"
+  | "settings"
+  | "suppliers"
   | "financial";
+
+function projectNavigationGroupForTab(
+  tab: ProjectTab,
+): ProjectNavigationGroup | null {
+  if (tab === "accountability" || tab === "machines" || tab === "team")
+    return "settings";
+  if (tab === "fuel" || tab === "materials") return "suppliers";
+  if (tab === "financial" || tab === "payments") return "financial";
+  if (tab === "reports") return "reports";
+  return null;
+}
 
 type ReadinessTone = "ready" | "pending" | "dirty" | "neutral";
 
@@ -409,8 +497,12 @@ function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
       .map((allocation) => ({
         employmentId: allocation.employment!.id,
         shift: allocation.shift,
-        confirmedJobRoleName: allocation.jobRole,
-        confirmedJobRolePeriodId: null,
+        confirmedJobRoleId: allocation.confirmedJobRoleId ?? undefined,
+        confirmedJobRolePeriodId: allocation.confirmedJobRolePeriodId,
+        ...(!allocation.confirmedJobRoleId &&
+        !allocation.confirmedJobRolePeriodId
+          ? { confirmedJobRoleName: allocation.jobRole }
+          : {}),
         monthlyWorkloadHours: allocation.monthlyWorkloadHours,
         compensationMode: allocation.compensationMode,
         compensationValue: allocation.compensationValue,
@@ -418,10 +510,7 @@ function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
       })),
     initialMachineAllocations: project.machineAllocations
       .filter(
-        (allocation) =>
-          allocation.machine &&
-          allocation.operatorAssignments.length > 0 &&
-          allocation.startMeterReading,
+        (allocation) => allocation.machine && allocation.startMeterReading,
       )
       .map((allocation) => ({
         machineId: allocation.machine!.id,
@@ -560,27 +649,111 @@ function SelectableRow({
   );
 }
 
-function TabLabel({
+function ProjectNavigationItem({
+  active,
+  collapsed = false,
+  icon: Icon,
   label,
+  nested = false,
+  onClick,
   status,
 }: {
+  active: boolean;
+  collapsed?: boolean;
+  icon: typeof HardHat;
   label: string;
+  nested?: boolean;
+  onClick: () => void;
   status: { label: string; tone: ReadinessTone };
 }) {
-  const isComplete = status.tone === "ready" || status.label === "Configurado";
   return (
-    <span className="flex items-center gap-2">
-      <span>{label}</span>
+    <button
+      type="button"
+      aria-current={active ? "page" : undefined}
+      aria-label={collapsed ? `${label}: ${status.label}` : undefined}
+      title={collapsed ? `${label}: ${status.label}` : undefined}
+      className={cn(
+        "group flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-semibold transition-colors outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30",
+        collapsed && "justify-center px-0",
+        nested && !collapsed && "ml-3 w-[calc(100%-0.75rem)]",
+        active && "bg-background text-foreground ring-1 ring-border",
+      )}
+      onClick={onClick}
+    >
       <span
-        role="status"
-        aria-label={`${label}: ${status.label}`}
-        title={`${label}: ${status.label}`}
         className={cn(
-          "size-2.5 shrink-0 rounded-full ring-2 ring-background",
-          isComplete ? "bg-emerald-500" : "bg-amber-500",
+          "inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors group-hover:text-primary",
+          active && "bg-primary/10 text-primary",
         )}
-      />
-    </span>
+      >
+        <Icon aria-hidden="true" className="size-4" />
+      </span>
+      {!collapsed && <span className="min-w-0 flex-1 truncate">{label}</span>}
+      {!collapsed && (
+        <span
+          role="status"
+          aria-label={`${label}: ${status.label}`}
+          title={status.label}
+          className={cn(
+            "size-2 shrink-0 rounded-full",
+            status.tone === "ready" && "bg-emerald-500",
+            status.tone === "pending" && "bg-amber-500",
+            status.tone === "dirty" && "bg-primary",
+            status.tone === "neutral" && "bg-muted-foreground",
+          )}
+        />
+      )}
+    </button>
+  );
+}
+
+function ProjectNavigationGroup({
+  children,
+  collapsed,
+  expanded,
+  icon: Icon,
+  label,
+  onClick,
+}: {
+  children: React.ReactNode;
+  collapsed: boolean;
+  expanded: boolean;
+  icon: typeof HardHat;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <div>
+      <button
+        type="button"
+        aria-expanded={expanded}
+        aria-label={collapsed ? label : undefined}
+        title={collapsed ? label : undefined}
+        className={cn(
+          "flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+          collapsed && "justify-center px-0",
+          expanded && !collapsed && "bg-secondary/75 text-foreground",
+        )}
+        onClick={onClick}
+      >
+        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm">
+          <Icon aria-hidden="true" className="size-4" />
+        </span>
+        {!collapsed && (
+          <>
+            <span className="min-w-0 flex-1 truncate">{label}</span>
+            {expanded ? (
+              <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
+            ) : (
+              <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
+            )}
+          </>
+        )}
+      </button>
+      {expanded && !collapsed && (
+        <div className="mt-1 space-y-1">{children}</div>
+      )}
+    </div>
   );
 }
 
@@ -1763,6 +1936,8 @@ export function FuelEditEditor({
 
 export function ProjectDetail({
   initialDailyReports,
+  initialSection,
+  initialTeamShift = "day",
   initialProductions,
   lookupSuppliedItemOfferSuppliersAction,
   lookupSuppliedItemOffersAction,
@@ -1772,6 +1947,8 @@ export function ProjectDetail({
   project: serverProject,
 }: {
   initialDailyReports?: ProjectDailyReportsPage;
+  initialSection?: string;
+  initialTeamShift?: "day" | "night";
   initialProductions?: ProjectProductionsPage;
   lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
   lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
@@ -1781,12 +1958,18 @@ export function ProjectDetail({
   project: ProjectDetailSnapshot;
 }) {
   const router = useRouter();
+  const appShellNavigation = useAppShellNavigation();
   const [project, setProject] = React.useState(serverProject);
   const [isPending, startTransition] = React.useTransition();
   const [isActivating, setIsActivating] = React.useState(false);
+  const [isSavingMachines, setIsSavingMachines] = React.useState(false);
+  const [machineSaveError, setMachineSaveError] = React.useState<string | null>(
+    null,
+  );
   const [isActivationConfirmationOpen, setIsActivationConfirmationOpen] =
     React.useState(false);
   const activationInFlightRef = React.useRef(false);
+  const machineSaveInFlightRef = React.useRef(false);
   const [plannedStartDate, setPlannedStartDate] = React.useState(
     project.baseline?.plannedStartDate ?? "",
   );
@@ -1843,9 +2026,19 @@ export function ProjectDetail({
   >([]);
   const [fuelDirty, setFuelDirty] = React.useState(false);
   const [paymentDirty, setPaymentDirty] = React.useState(false);
-  const [activeTab, setActiveTab] = React.useState<ProjectTab>(
-    project.status === "active" ? "overview" : "planning",
+  const [activeTab, setActiveTab] = React.useState<ProjectTab>(() =>
+    resolveInitialProjectTab(serverProject.status, initialSection),
   );
+  const [isProjectNavigationExpanded, setProjectNavigationExpanded] =
+    React.useState(true);
+  const [openNavigationGroups, setOpenNavigationGroups] = React.useState<
+    ProjectNavigationGroup[]
+  >(() => {
+    const group = projectNavigationGroupForTab(
+      resolveInitialProjectTab(serverProject.status, initialSection),
+    );
+    return group ? [group] : [];
+  });
   const [frontName, setFrontName] = React.useState("");
   const [frontLocation, setFrontLocation] = React.useState("");
   const [editingFrontId, setEditingFrontId] = React.useState<string | null>(
@@ -2008,6 +2201,7 @@ export function ProjectDetail({
     | "quantityBaseline"
     | "accountability"
     | "team"
+    | "teamMember"
     | "machines"
     | "fuelAdd"
     | "fuelEdit"
@@ -2018,12 +2212,22 @@ export function ProjectDetail({
     | "mobilizationHistory"
     | null
   >(null);
-  const [teamShift, setTeamShift] = React.useState<"day" | "night">("day");
-  const [teamEditorTab, setTeamEditorTab] = React.useState<
-    "employees" | "schedule"
-  >("employees");
+  const [selectedTeamShift, setSelectedTeamShift] = React.useState<
+    "day" | "night"
+  >(initialTeamShift);
+  const [teamShift, setTeamShift] = React.useState<"day" | "night">(
+    initialTeamShift,
+  );
   const [teamSearch, setTeamSearch] = React.useState("");
   const debouncedTeamSearch = useDebouncer(teamSearch, 300);
+  const [teamModalMode, setTeamModalMode] = React.useState<"schedule" | "add">(
+    "schedule",
+  );
+  const [editingTeamMember, setEditingTeamMember] =
+    React.useState<ProjectTeamMember | null>(null);
+  const [removingTeamMember, setRemovingTeamMember] =
+    React.useState<ProjectTeamMember | null>(null);
+  const [teamReloadKey, setTeamReloadKey] = React.useState(0);
   const [teamPages, setTeamPages] = React.useState<ProjectTeamCandidatesPage[]>(
     [],
   );
@@ -2033,7 +2237,6 @@ export function ProjectDetail({
   const [teamCandidatesError, setTeamCandidatesError] = React.useState<
     string | null
   >(null);
-  const [teamHasEmployeeDraft, setTeamHasEmployeeDraft] = React.useState(false);
   const teamCandidateRequestId = React.useRef(0);
   const readinessForm = useForm<ProjectCommand>({
     defaultValues: projectToCommand(project),
@@ -2097,10 +2300,10 @@ export function ProjectDetail({
     [debouncedTeamSearch, project.id, teamShift],
   );
 
-  /* eslint-disable react-hooks/set-state-in-effect -- Debounced server lookup resets the cursor page when the modal context changes. */
   React.useEffect(() => {
-    if (openModal === "team") loadTeamCandidatePage();
-  }, [loadTeamCandidatePage, openModal]);
+    if (openModal === "team" && teamModalMode === "add")
+      loadTeamCandidatePage();
+  }, [loadTeamCandidatePage, openModal, teamModalMode]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
   /* eslint-disable react-hooks/set-state-in-effect -- ProjectDetail synchronizes the authoritative server snapshot and resets edit buffers when it changes. */
@@ -2176,6 +2379,13 @@ export function ProjectDetail({
         label: option.label,
         detail: option.detail ?? undefined,
         readingId: option.readingId ?? undefined,
+        manufacturer: option.manufacturer,
+        model: option.model,
+        meterType: option.meterType,
+        requiresOperator: option.requiresOperator,
+        requiredJobRoleId: option.requiredJobRoleId ?? undefined,
+        requiredJobRoleName: option.requiredJobRoleName ?? undefined,
+        acceptsAnyJobRole: option.acceptsAnyJobRole,
       })),
       jobRoles: options.jobRoles.map((option) => ({
         id: option.id,
@@ -2185,19 +2395,45 @@ export function ProjectDetail({
     }),
     [options],
   );
-  const teamEditorOptions = React.useMemo<ProjectWizardOptions>(
+  const teamMemberOptions = React.useMemo<ProjectWizardOptions>(() => {
+    if (!editingTeamMember) return { ...modalOptions, employees: [] };
+    const knownEmployee = modalOptions.employees.find(
+      (employee) => employee.id === editingTeamMember.employmentId,
+    );
+    return {
+      ...modalOptions,
+      employees: [
+        knownEmployee ?? {
+          id: editingTeamMember.employmentId,
+          label: editingTeamMember.name,
+          detail: editingTeamMember.jobRole,
+        },
+      ],
+    };
+  }, [editingTeamMember, modalOptions]);
+  const teamCandidateOptions = React.useMemo<ProjectWizardOptions>(
     () => ({
       ...modalOptions,
-      employees: activeTeamPage.data.map((option) => ({
-        id: option.id,
-        label: option.label,
-        detail: option.detail ?? undefined,
-        jobRolePeriodId: option.jobRolePeriodId ?? undefined,
-        jobRoleId: option.jobRoleId ?? undefined,
-        allocatedShift: option.allocatedShift,
-      })),
+      employees: activeTeamPage.data
+        .filter(
+          (option) =>
+            option.allocatedShift !== teamShift &&
+            !watchedEmployeeAllocations?.some(
+              (allocation) =>
+                allocation.employmentId === option.id &&
+                allocation.shift === teamShift,
+            ),
+        )
+        .map((option) => ({
+          id: option.id,
+          label: option.label,
+          detail: option.detail ?? undefined,
+          jobRolePeriodId: option.jobRolePeriodId ?? undefined,
+          jobRoleId: option.jobRoleId ?? undefined,
+          allocatedShift: option.allocatedShift,
+        })),
     }),
-    [activeTeamPage.data, modalOptions],
+    [activeTeamPage.data, modalOptions, teamShift, watchedEmployeeAllocations],
   );
 
   const paymentModes = React.useMemo(() => {
@@ -2318,139 +2554,59 @@ export function ProjectDetail({
     : materialOffers.length
       ? ({ label: "Configurado", tone: "neutral" } as const)
       : ({ label: "Opcional", tone: "neutral" } as const);
-  const planningTabs = [
-    {
-      value: "planning" as const,
-      label: <TabLabel label="Planejamento" status={planningStatus} />,
-    },
-    {
-      value: "fronts" as const,
-      label: (
-        <TabLabel
-          label="Frentes"
-          status={
-            project.workFronts.some(
-              (front) => front.planningEligibility.isValid,
-            )
-              ? { label: "OK", tone: "ready" }
-              : { label: "Pendente", tone: "pending" }
-          }
-        />
-      ),
-    },
-    {
-      value: "fuel" as const,
-      label: <TabLabel label="Combustível" status={fuelStatus} />,
-    },
-    {
-      value: "accountability" as const,
-      label: <TabLabel label="Responsáveis" status={accountabilityStatus} />,
-    },
-    {
-      value: "team" as const,
-      label: <TabLabel label="Equipe" status={teamStatus} />,
-    },
-    {
-      value: "machines" as const,
-      label: <TabLabel label="Máquinas" status={machinesStatus} />,
-    },
-    {
-      value: "payments" as const,
-      label: <TabLabel label="Pagamentos" status={paymentsStatus} />,
-    },
-    {
-      value: "materials" as const,
-      label: <TabLabel label="Itens" status={materialsStatus} />,
-    },
-  ];
-  const activeTabs = [
-    {
-      value: "overview" as const,
-      label: (
-        <TabLabel
-          label="Visão geral"
-          status={{ label: "Em andamento", tone: "ready" }}
-        />
-      ),
-    },
-    {
-      value: "planning" as const,
-      label: <TabLabel label="Planejamento" status={planningStatus} />,
-    },
-    {
-      value: "team" as const,
-      label: <TabLabel label="Equipe" status={teamStatus} />,
-    },
-    {
-      value: "fronts" as const,
-      label: (
-        <TabLabel
-          label="Frentes"
-          status={
-            project.workFronts.some(
-              (front) => front.planningEligibility.isValid,
-            )
-              ? { label: "OK", tone: "ready" }
-              : { label: "Pendente", tone: "pending" }
-          }
-        />
-      ),
-    },
-    {
-      value: "production" as const,
-      label: (
-        <TabLabel
-          label="Produção"
-          status={
-            initialProductions?.data.length
-              ? {
-                  label: String(initialProductions.data.length),
-                  tone: "ready",
-                }
-              : { label: "Novo", tone: "neutral" }
-          }
-        />
-      ),
-    },
-    {
-      value: "machines" as const,
-      label: <TabLabel label="Máquinas" status={machinesStatus} />,
-    },
-    {
-      value: "timekeepers" as const,
-      label: (
-        <TabLabel
-          label="Apontadores"
-          status={{ label: "Em breve", tone: "neutral" }}
-        />
-      ),
-    },
-    {
-      value: "suppliers" as const,
-      label: <TabLabel label="Fornecedores" status={fuelStatus} />,
-    },
-    {
-      value: "reports" as const,
-      label: (
-        <TabLabel
-          label="Relatórios"
-          status={
-            initialDailyReports?.data.length
-              ? {
-                  label: String(initialDailyReports.data.length),
-                  tone: "ready",
-                }
-              : { label: "Novo", tone: "neutral" }
-          }
-        />
-      ),
-    },
-    {
-      value: "financial" as const,
-      label: <TabLabel label="Financeiro" status={paymentsStatus} />,
-    },
-  ];
-  const tabs = project.status === "active" ? activeTabs : planningTabs;
+  const mainNavigationExpanded =
+    appShellNavigation?.mainNavigationExpanded ?? false;
+
+  /* eslint-disable react-hooks/set-state-in-effect -- Expanding the global navigation deliberately collapses the contextual work navigation. */
+  React.useEffect(() => {
+    if (mainNavigationExpanded) setProjectNavigationExpanded(false);
+  }, [mainNavigationExpanded]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  const isNavigationGroupOpen = (group: ProjectNavigationGroup) =>
+    openNavigationGroups.includes(group);
+  const persistProjectContext = (
+    section: ProjectTab,
+    shift = selectedTeamShift,
+  ) => {
+    if (typeof window === "undefined") return;
+    const url = new URL(window.location.href);
+    url.searchParams.set("section", section);
+    if (section === "team") url.searchParams.set("teamShift", shift);
+    else url.searchParams.delete("teamShift");
+    window.history.replaceState(window.history.state, "", url);
+  };
+  const selectProjectTab = (tab: ProjectTab) => {
+    setActiveTab(tab);
+    persistProjectContext(tab);
+    const group = projectNavigationGroupForTab(tab);
+    if (group && !isNavigationGroupOpen(group)) {
+      setOpenNavigationGroups((current) => [...current, group]);
+    }
+  };
+  const toggleProjectNavigation = () => {
+    if (isProjectNavigationExpanded) {
+      setProjectNavigationExpanded(false);
+      return;
+    }
+    appShellNavigation?.setMainNavigationExpanded(false);
+    setProjectNavigationExpanded(true);
+  };
+  const toggleNavigationGroup = (group: ProjectNavigationGroup) => {
+    if (!isProjectNavigationExpanded) {
+      appShellNavigation?.setMainNavigationExpanded(false);
+      setProjectNavigationExpanded(true);
+      setOpenNavigationGroups((current) =>
+        current.includes(group) ? current : [...current, group],
+      );
+      return;
+    }
+    setOpenNavigationGroups((current) =>
+      current.includes(group)
+        ? current.filter((value) => value !== group)
+        : [...current, group],
+    );
+  };
 
   const savePatch = (
     command: ProjectReadinessActionInput,
@@ -2863,11 +3019,18 @@ export function ProjectDetail({
         teamShift,
       );
       if (result.kind === "success") {
+        const shiftLabel = teamShift === "day" ? "Diurno" : "Noturno";
         toast.success(
-          `Turno ${teamShift === "day" ? "Diurno" : "Noturno"} atualizado.`,
+          openModal === "teamMember"
+            ? "Funcionário atualizado."
+            : teamModalMode === "add"
+              ? `Equipe ${shiftLabel.toLocaleLowerCase("pt-BR")} mobilizada.`
+              : `Jornada ${shiftLabel.toLocaleLowerCase("pt-BR")} atualizada.`,
         );
         setProject(result.project);
         readinessForm.reset(projectToCommand(result.project));
+        setTeamReloadKey((current) => current + 1);
+        setEditingTeamMember(null);
         setOpenModal(null);
         router.refresh();
         return;
@@ -2878,35 +3041,92 @@ export function ProjectDetail({
     });
   };
 
+  const removeTeamMember = () => {
+    if (!removingTeamMember) return;
+    const member = removingTeamMember;
+    const command = projectToCommand(project);
+    const remainingAllocations = command.initialEmployeeAllocations.filter(
+      (allocation) => allocation.employmentId !== member.employmentId,
+    );
+    startTransition(async () => {
+      const result = await saveProjectEmployeeMobilizationAction(
+        project.id,
+        remainingAllocations.filter(
+          (allocation) => allocation.shift === member.shift,
+        ),
+        {
+          weeklySchedule: command.weeklySchedule.filter(
+            (day) => day.shift === member.shift,
+          ),
+          breakTemplates: command.breakTemplates.filter(
+            (item) => item.shift === member.shift,
+          ),
+        },
+        member.shift,
+      );
+      if (result.kind === "success") {
+        setProject(result.project);
+        readinessForm.reset(projectToCommand(result.project));
+        setTeamReloadKey((current) => current + 1);
+        setRemovingTeamMember(null);
+        toast.success(`${member.name} foi removido(a) deste turno.`);
+        router.refresh();
+        return;
+      }
+      setRemovingTeamMember(null);
+      toast.error("Não foi possível remover este funcionário.", {
+        description: result.message,
+      });
+    });
+  };
+
   const saveMachines = () => {
     const values = readinessForm.getValues();
-    if (project.status === "active") {
-      startTransition(async () => {
-        const result = await saveProjectMachineMobilizationAction(
-          project.id,
-          values.initialMachineAllocations,
-        );
+    if (machineSaveInFlightRef.current) return;
+    machineSaveInFlightRef.current = true;
+    setMachineSaveError(null);
+    setIsSavingMachines(true);
+    startTransition(async () => {
+      try {
+        const result =
+          project.status === "active"
+            ? await saveProjectMachineMobilizationAction(
+                project.id,
+                values.initialMachineAllocations,
+              )
+            : await saveProjectReadinessAction(project.id, {
+                machineAllocations: values.initialMachineAllocations,
+              });
         if (result.kind === "success") {
-          toast.success("Máquinas mobilizadas atualizadas.");
-          readinessForm.reset(values);
+          const successMessage =
+            project.status === "active"
+              ? "Máquinas mobilizadas atualizadas."
+              : "Máquinas e operadores salvos.";
+          toast.success(successMessage);
+          setProject(result.project);
+          readinessForm.reset(projectToCommand(result.project));
           setOpenModal(null);
           router.refresh();
           return;
         }
-        toast.error("Não foi possível atualizar as máquinas mobilizadas.", {
-          description: result.message,
+        const message = machineSaveFailureMessage(result);
+        const title =
+          project.status === "active"
+            ? "Não foi possível atualizar as máquinas mobilizadas."
+            : "Não foi possível salvar máquinas e operadores.";
+        setMachineSaveError(message);
+        toast.error(title, { description: message });
+      } catch {
+        const message = "A comunicação com o servidor falhou. Tente novamente.";
+        setMachineSaveError(message);
+        toast.error("Não foi possível salvar máquinas e operadores.", {
+          description: message,
         });
-      });
-      return;
-    }
-    savePatch(
-      { machineAllocations: values.initialMachineAllocations },
-      "Máquinas e operadores salvos.",
-      () => {
-        readinessForm.reset(values);
-        setOpenModal(null);
-      },
-    );
+      } finally {
+        machineSaveInFlightRef.current = false;
+        setIsSavingMachines(false);
+      }
+    });
   };
 
   const savePayments = () => {
@@ -3310,10 +3530,20 @@ export function ProjectDetail({
 
   const closeTeamOrMachineModal = () => {
     readinessForm.reset(projectToCommand(project));
+    if (openModal === "machines") setMachineSaveError(null);
+    if (openModal === "teamMember") setEditingTeamMember(null);
     setOpenModal(null);
   };
 
-  const openTeamModal = (shift: "day" | "night" = "day") => {
+  const openMachinesModal = () => {
+    setMachineSaveError(null);
+    setOpenModal("machines");
+  };
+
+  const openTeamModal = (
+    shift: "day" | "night" = "day",
+    mode: "schedule" | "add" = "schedule",
+  ) => {
     const command = projectToCommand(project);
     if (
       shift === "night" &&
@@ -3337,54 +3567,24 @@ export function ProjectDetail({
       );
     }
     readinessForm.reset(command);
+    setSelectedTeamShift(shift);
     setTeamShift(shift);
-    setTeamEditorTab("employees");
+    persistProjectContext("team", shift);
+    setTeamModalMode(mode);
     setTeamSearch("");
     setTeamPages([]);
     setTeamPageIndex(0);
     setTeamCandidatesError(null);
-    setTeamHasEmployeeDraft(false);
     setOpenModal("team");
   };
 
-  const changeTeamShift = (shift: "day" | "night") => {
-    if (shift === teamShift) return;
-    if (
-      (readinessForm.formState.isDirty || teamHasEmployeeDraft) &&
-      !window.confirm(
-        "Há alterações não salvas neste turno. Descartar o rascunho e trocar de turno?",
-      )
-    )
-      return;
-    const command = projectToCommand(project);
-    if (
-      shift === "night" &&
-      !command.weeklySchedule.some((day) => day.shift === "night")
-    ) {
-      command.weeklySchedule.push(
-        ...command.weeklySchedule
-          .filter((day) => day.shift === "day")
-          .map((day) => ({
-            ...day,
-            shift: "night" as const,
-            startTime: day.isWorking ? "18:00" : null,
-            endTime: day.isWorking ? "06:00" : null,
-            endDayOffset: day.isWorking ? 1 : 0,
-          })),
-      );
-      command.breakTemplates.push(
-        ...command.breakTemplates
-          .filter((item) => item.shift === "day")
-          .map((item) => ({ ...item, shift: "night" as const })),
-      );
-    }
-    readinessForm.reset(command);
-    setTeamShift(shift);
-    setTeamEditorTab("employees");
-    setTeamSearch("");
-    setTeamPages([]);
-    setTeamPageIndex(0);
-    setTeamHasEmployeeDraft(false);
+  const openTeamMemberModal = (member: ProjectTeamMember) => {
+    readinessForm.reset(projectToCommand(project));
+    setSelectedTeamShift(member.shift);
+    setTeamShift(member.shift);
+    setEditingTeamMember(member);
+    persistProjectContext("team", member.shift);
+    setOpenModal("teamMember");
   };
 
   const closePaymentsModal = () => {
@@ -3530,536 +3730,1022 @@ export function ProjectDetail({
         </dl>
       </header>
 
-      <section className="overflow-hidden rounded-lg border border-border bg-card">
-        <div className="border-b border-border bg-secondary/40 px-3 py-3">
-          <div className="overflow-x-auto">
-            <OperationTabs<ProjectTab>
-              className="min-w-max"
-              value={activeTab}
-              tabs={tabs}
-              onValueChange={setActiveTab}
-            />
-          </div>
-        </div>
-        <div className="p-4">
-          {activeTab === "overview" && (
-            <div className="grid gap-4 lg:grid-cols-2">
-              <Section
-                icon={Gauge}
-                title="Quantitativos de referência"
-                description="A linha de base aprovada é comparada à distribuição atual; os apontamentos de produção serão adicionados nesta etapa futura."
-                status={{
-                  label: `Revisão ${project.quantityBaseline.revision ?? 0}`,
-                  tone: "neutral",
-                }}
-              >
-                <div className="grid gap-2 text-sm">
-                  {project.quantityBaseline.items.map((item) => (
-                    <div
-                      key={item.serviceCode}
-                      className="grid grid-cols-3 gap-2 rounded-md border border-border p-2"
-                    >
-                      <span className="font-semibold">
-                        {metricDefinitions.find(
-                          (metric) => metric.code === item.serviceCode,
-                        )?.label ?? item.serviceCode}
-                      </span>
-                      <span>
-                        Distribuído:{" "}
-                        {canonicalDecimalToBrazilian(item.allocated, 3)}
-                      </span>
-                      <span>
-                        Saldo:{" "}
-                        {canonicalDecimalToBrazilian(item.unallocated, 3)}{" "}
-                        {item.unitCode}
-                      </span>
-                    </div>
-                  ))}
+      <div
+        className={cn(
+          "grid gap-4 md:items-start",
+          isProjectNavigationExpanded
+            ? "md:grid-cols-[15rem_minmax(0,1fr)]"
+            : "md:grid-cols-[3.5rem_minmax(0,1fr)]",
+        )}
+      >
+        <aside className="min-w-0 md:sticky md:top-20">
+          <nav
+            aria-label="Navegação da obra"
+            className="w-full max-h-[min(54svh,30rem)] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card p-2 md:max-h-[calc(100dvh-5.75rem)]"
+          >
+            <div
+              className={cn(
+                "mb-2 flex min-h-10 items-center gap-2 border-b border-border px-1 pb-2",
+                !isProjectNavigationExpanded && "justify-center",
+              )}
+            >
+              {isProjectNavigationExpanded && (
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-bold text-foreground">
+                    Navegação da obra
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground">
+                    {project.name}
+                  </p>
                 </div>
-              </Section>
-              <Section
-                icon={HardHat}
-                title="Frentes ativas"
-                description="Acompanhe quais áreas já foram liberadas. Produção executada ainda não é registrada nesta etapa."
-                status={{
-                  label: `${project.workFronts.filter((front) => front.status === "active").length} ativa(s)`,
-                  tone: "ready",
-                }}
+              )}
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={
+                  isProjectNavigationExpanded
+                    ? "Recolher navegação da obra"
+                    : "Expandir navegação da obra"
+                }
+                title={
+                  isProjectNavigationExpanded
+                    ? "Recolher navegação da obra"
+                    : "Expandir navegação da obra"
+                }
+                onClick={toggleProjectNavigation}
               >
-                <div className="grid gap-2 text-sm">
-                  {project.workFronts
-                    .filter((front) => front.status === "active")
-                    .map((front) => (
+                {isProjectNavigationExpanded ? (
+                  <PanelLeftClose className="size-4" />
+                ) : (
+                  <PanelLeftOpen className="size-4" />
+                )}
+              </Button>
+            </div>
+
+            <div className="space-y-1">
+              {project.status === "active" && (
+                <ProjectNavigationItem
+                  active={activeTab === "overview"}
+                  collapsed={!isProjectNavigationExpanded}
+                  icon={Gauge}
+                  label="Visão geral"
+                  status={{ label: "Em andamento", tone: "ready" }}
+                  onClick={() => selectProjectTab("overview")}
+                />
+              )}
+              <ProjectNavigationItem
+                active={activeTab === "planning"}
+                collapsed={!isProjectNavigationExpanded}
+                icon={Route}
+                label="Planejamento"
+                status={planningStatus}
+                onClick={() => selectProjectTab("planning")}
+              />
+              <ProjectNavigationItem
+                active={activeTab === "calendar"}
+                collapsed={!isProjectNavigationExpanded}
+                icon={CalendarRange}
+                label="Calendário"
+                status={{ label: "Em breve", tone: "neutral" }}
+                onClick={() => selectProjectTab("calendar")}
+              />
+              <ProjectNavigationItem
+                active={activeTab === "fronts"}
+                collapsed={!isProjectNavigationExpanded}
+                icon={HardHat}
+                label="Frentes"
+                status={
+                  project.workFronts.some(
+                    (front) => front.planningEligibility.isValid,
+                  )
+                    ? { label: "OK", tone: "ready" }
+                    : { label: "Pendente", tone: "pending" }
+                }
+                onClick={() => selectProjectTab("fronts")}
+              />
+              {project.status === "active" && (
+                <>
+                  <ProjectNavigationItem
+                    active={activeTab === "production"}
+                    collapsed={!isProjectNavigationExpanded}
+                    icon={Gauge}
+                    label="Produção"
+                    status={
+                      initialProductions?.data.length
+                        ? {
+                            label: String(initialProductions.data.length),
+                            tone: "ready",
+                          }
+                        : { label: "Novo", tone: "neutral" }
+                    }
+                    onClick={() => selectProjectTab("production")}
+                  />
+                  <ProjectNavigationGroup
+                    collapsed={!isProjectNavigationExpanded}
+                    expanded={isNavigationGroupOpen("reports")}
+                    icon={FileText}
+                    label="Relatórios"
+                    onClick={() => toggleNavigationGroup("reports")}
+                  >
+                    <ProjectNavigationItem
+                      active={activeTab === "reports"}
+                      icon={PackageCheck}
+                      label="RDO"
+                      nested
+                      status={
+                        initialDailyReports?.data.length
+                          ? {
+                              label: String(initialDailyReports.data.length),
+                              tone: "ready",
+                            }
+                          : { label: "Novo", tone: "neutral" }
+                      }
+                      onClick={() => selectProjectTab("reports")}
+                    />
+                  </ProjectNavigationGroup>
+                </>
+              )}
+
+              <div className="my-2 border-t border-border" />
+
+              <ProjectNavigationGroup
+                collapsed={!isProjectNavigationExpanded}
+                expanded={isNavigationGroupOpen("settings")}
+                icon={Settings2}
+                label="Configurações"
+                onClick={() => toggleNavigationGroup("settings")}
+              >
+                <ProjectNavigationItem
+                  active={activeTab === "accountability"}
+                  icon={HardHat}
+                  label="Responsáveis"
+                  nested
+                  status={accountabilityStatus}
+                  onClick={() => selectProjectTab("accountability")}
+                />
+                <ProjectNavigationItem
+                  active={activeTab === "machines"}
+                  icon={Truck}
+                  label="Máquinas"
+                  nested
+                  status={machinesStatus}
+                  onClick={() => selectProjectTab("machines")}
+                />
+                <ProjectNavigationItem
+                  active={activeTab === "team"}
+                  icon={UsersRound}
+                  label="Equipe"
+                  nested
+                  status={teamStatus}
+                  onClick={() => selectProjectTab("team")}
+                />
+              </ProjectNavigationGroup>
+
+              <ProjectNavigationGroup
+                collapsed={!isProjectNavigationExpanded}
+                expanded={isNavigationGroupOpen("suppliers")}
+                icon={Fuel}
+                label="Fornecedores"
+                onClick={() => toggleNavigationGroup("suppliers")}
+              >
+                <ProjectNavigationItem
+                  active={activeTab === "fuel"}
+                  icon={Fuel}
+                  label="Combustível"
+                  nested
+                  status={fuelStatus}
+                  onClick={() => selectProjectTab("fuel")}
+                />
+                <ProjectNavigationItem
+                  active={activeTab === "materials"}
+                  icon={PackageCheck}
+                  label="Itens fornecidos"
+                  nested
+                  status={materialsStatus}
+                  onClick={() => selectProjectTab("materials")}
+                />
+              </ProjectNavigationGroup>
+
+              <ProjectNavigationGroup
+                collapsed={!isProjectNavigationExpanded}
+                expanded={isNavigationGroupOpen("financial")}
+                icon={WalletCards}
+                label="Financeiro"
+                onClick={() => toggleNavigationGroup("financial")}
+              >
+                <ProjectNavigationItem
+                  active={activeTab === "financial"}
+                  icon={WalletCards}
+                  label="Orçamento"
+                  nested
+                  status={{ label: "Consulta", tone: "neutral" }}
+                  onClick={() => selectProjectTab("financial")}
+                />
+                <ProjectNavigationItem
+                  active={activeTab === "payments"}
+                  icon={CalendarDays}
+                  label="Ciclos de pagamento"
+                  nested
+                  status={paymentsStatus}
+                  onClick={() => selectProjectTab("payments")}
+                />
+              </ProjectNavigationGroup>
+            </div>
+          </nav>
+        </aside>
+
+        <section className="min-h-[calc(100dvh-7rem)] min-w-0 overflow-hidden rounded-lg border border-border bg-card">
+          <div className="p-4">
+            {activeTab === "overview" && (
+              <div className="grid gap-4 lg:grid-cols-2">
+                <Section
+                  icon={Gauge}
+                  title="Quantitativos de referência"
+                  description="A linha de base aprovada é comparada à distribuição atual; os apontamentos de produção serão adicionados nesta etapa futura."
+                  status={{
+                    label: `Revisão ${project.quantityBaseline.revision ?? 0}`,
+                    tone: "neutral",
+                  }}
+                >
+                  <div className="grid gap-2 text-sm">
+                    {project.quantityBaseline.items.map((item) => (
                       <div
-                        key={front.id}
-                        className="rounded-md border border-border p-2 font-semibold"
+                        key={item.serviceCode}
+                        className="grid grid-cols-3 gap-2 rounded-md border border-border p-2"
                       >
-                        {front.name}
+                        <span className="font-semibold">
+                          {metricDefinitions.find(
+                            (metric) => metric.code === item.serviceCode,
+                          )?.label ?? item.serviceCode}
+                        </span>
+                        <span>
+                          Distribuído:{" "}
+                          {canonicalDecimalToBrazilian(item.allocated, 3)}
+                        </span>
+                        <span>
+                          Saldo:{" "}
+                          {canonicalDecimalToBrazilian(item.unallocated, 3)}{" "}
+                          {item.unitCode}
+                        </span>
                       </div>
                     ))}
-                  {!project.workFronts.some(
-                    (front) => front.status === "active",
-                  ) && (
-                    <p className="text-muted-foreground">
-                      Nenhuma frente ativa.
+                  </div>
+                </Section>
+                <Section
+                  icon={HardHat}
+                  title="Frentes ativas"
+                  description="Acompanhe quais áreas já foram liberadas. Produção executada ainda não é registrada nesta etapa."
+                  status={{
+                    label: `${project.workFronts.filter((front) => front.status === "active").length} ativa(s)`,
+                    tone: "ready",
+                  }}
+                >
+                  <div className="grid gap-2 text-sm">
+                    {project.workFronts
+                      .filter((front) => front.status === "active")
+                      .map((front) => (
+                        <div
+                          key={front.id}
+                          className="rounded-md border border-border p-2 font-semibold"
+                        >
+                          {front.name}
+                        </div>
+                      ))}
+                    {!project.workFronts.some(
+                      (front) => front.status === "active",
+                    ) && (
+                      <p className="text-muted-foreground">
+                        Nenhuma frente ativa.
+                      </p>
+                    )}
+                  </div>
+                </Section>
+              </div>
+            )}
+
+            {activeTab === "reports" && (
+              <Section
+                icon={PackageCheck}
+                title="RDO"
+                description="Cadastre, finalize e compartilhe os Relatórios Diários de Obra desta obra."
+                status={{
+                  label: initialDailyReports?.data.length
+                    ? `${initialDailyReports.data.length} RDO(s)`
+                    : "Sem RDO",
+                  tone: initialDailyReports?.data.length ? "ready" : "neutral",
+                }}
+              >
+                <ProjectDailyReports
+                  projectId={project.id}
+                  initialPage={
+                    initialDailyReports ?? {
+                      data: [],
+                      pageInfo: { hasNextPage: false, nextCursor: null },
+                    }
+                  }
+                />
+              </Section>
+            )}
+            {activeTab === "financial" && (
+              <Section
+                icon={WalletCards}
+                title="Orçamento"
+                description="Consulte a referência financeira da obra. Custos reais e medições dependem dos lançamentos futuros."
+                status={{ label: "Planejado", tone: "neutral" }}
+              >
+                <dl className="grid gap-3 sm:grid-cols-2">
+                  <DetailRow
+                    label="Orçamento aprovado"
+                    value={
+                      project.baseline
+                        ? formatMoney(project.baseline.approvedBudget)
+                        : "Não informado"
+                    }
+                  />
+                  <DetailRow
+                    label="Custos reais"
+                    value="Disponíveis com os lançamentos operacionais"
+                  />
+                </dl>
+                <p className="mt-4 rounded-md bg-secondary/55 px-3 py-2.5 text-sm leading-5 text-secondary-foreground">
+                  Os prazos de pagamento da equipe são administrados em
+                  &ldquo;Ciclos de pagamento&rdquo;.
+                </p>
+              </Section>
+            )}
+
+            {activeTab === "calendar" && (
+              <Section
+                icon={CalendarRange}
+                title="Calendário"
+                description="A agenda operacional da obra ficará disponível aqui."
+                status={{ label: "Em breve", tone: "neutral" }}
+              >
+                <EmptyBlock>
+                  Este espaço será usado para acompanhar marcos, atividades e
+                  compromissos da obra.
+                </EmptyBlock>
+              </Section>
+            )}
+
+            {activeTab === "planning" && (
+              <div className="space-y-4">
+                <Section
+                  icon={CalendarDays}
+                  title="Datas planejadas"
+                  description="Período de referência usado para organizar a mobilização e liberar o início operacional."
+                  status={plannedDatesStatus}
+                  action={
+                    isEditable && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-10"
+                        disabled={isPending}
+                        onClick={openPlannedDatesModal}
+                      >
+                        <Pencil className="size-4" />
+                        Editar datas
+                      </Button>
+                    )
+                  }
+                >
+                  <dl className="grid gap-3 sm:grid-cols-2">
+                    <DetailRow
+                      label="Início planejado"
+                      value={formatDate(
+                        project.baseline?.plannedStartDate ?? null,
+                      )}
+                    />
+                    <DetailRow
+                      label="Fim planejado"
+                      value={formatDate(
+                        project.baseline?.plannedEndDate ?? null,
+                      )}
+                    />
+                  </dl>
+                </Section>
+
+                <Section
+                  icon={Gauge}
+                  title="Quantitativos de referência"
+                  description="Este é o total aprovado da obra. As frentes distribuem esse total e não o substituem."
+                  status={metricsStatus}
+                  action={
+                    canManageFronts && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-10"
+                        disabled={isPending}
+                        onClick={openQuantityBaselineModal}
+                      >
+                        <Pencil className="size-4" />
+                        Editar quantitativos
+                      </Button>
+                    )
+                  }
+                >
+                  {project.quantityBaseline.items.length ? (
+                    <div className="overflow-hidden rounded-md border border-border">
+                      <div className="hidden grid-cols-[minmax(0,1fr)_repeat(3,minmax(110px,0.55fr))] gap-3 bg-secondary/45 px-3 py-2 text-xs font-bold text-muted-foreground md:grid">
+                        <span>Serviço</span>
+                        <span>Total</span>
+                        <span>Distribuído</span>
+                        <span>Saldo</span>
+                      </div>
+                      <div className="divide-y divide-border">
+                        {project.quantityBaseline.items.map((item) => (
+                          <div
+                            key={item.serviceCode}
+                            className="grid gap-3 bg-background px-3 py-3 text-sm md:grid-cols-[minmax(0,1fr)_repeat(3,minmax(110px,0.55fr))] md:items-center"
+                          >
+                            <div className="min-w-0">
+                              <p className="font-bold">
+                                {metricDefinitions.find(
+                                  (metric) => metric.code === item.serviceCode,
+                                )?.label ?? item.serviceCode}
+                              </p>
+                              <p className="mt-1 text-xs text-muted-foreground md:hidden">
+                                {item.unitCode}
+                              </p>
+                            </div>
+                            <p>
+                              <span className="font-bold md:hidden">
+                                Total:{" "}
+                              </span>
+                              <strong>
+                                {canonicalDecimalToBrazilian(item.total, 3)}
+                              </strong>{" "}
+                              {item.unitCode}
+                            </p>
+                            <p>
+                              <span className="font-bold md:hidden">
+                                Distribuído:{" "}
+                              </span>
+                              {canonicalDecimalToBrazilian(item.allocated, 3)}
+                            </p>
+                            <p>
+                              <span className="font-bold md:hidden">
+                                Saldo:{" "}
+                              </span>
+                              {canonicalDecimalToBrazilian(item.unallocated, 3)}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <EmptyBlock>
+                      Nenhum quantitativo de referência configurado.
+                    </EmptyBlock>
+                  )}
+                </Section>
+              </div>
+            )}
+
+            {activeTab === "production" && (
+              <Section
+                icon={Gauge}
+                title="Produção"
+                description="Registre quantidades, viagens, DMT, máquinas, horas e paradas por serviço e turno."
+                status={{
+                  label: initialProductions?.data.length
+                    ? `${initialProductions.data.length} lançamento(s)`
+                    : "Sem produção",
+                  tone: initialProductions?.data.length ? "ready" : "neutral",
+                }}
+              >
+                <ProjectProductions
+                  projectId={project.id}
+                  initialPage={
+                    initialProductions ?? {
+                      data: [],
+                      pageInfo: { hasNextPage: false, nextCursor: null },
+                      capabilities: {
+                        createDraft: true,
+                        submit: true,
+                        check: true,
+                        recordTopography: true,
+                        recordLaboratory: true,
+                        approve: true,
+                        reject: true,
+                        release: true,
+                        publishDirect: true,
+                        approveOthers: true,
+                        reopen: true,
+                        viewHistory: true,
+                        measure: false,
+                      },
+                    }
+                  }
+                />
+              </Section>
+            )}
+
+            {activeTab === "fronts" && (
+              <div className="space-y-4">
+                <Section
+                  icon={HardHat}
+                  title="Frentes de serviço"
+                  description="Cadastre a área de atuação e distribua a parcela planejada para cada frente. O saldo continua disponível para novas frentes."
+                  status={
+                    project.workFronts.some(
+                      (front) => front.planningEligibility.isValid,
+                    )
+                      ? { label: "Frente elegível", tone: "ready" }
+                      : { label: "Pendente", tone: "pending" }
+                  }
+                  action={
+                    canManageFronts ? (
+                      <Button
+                        type="button"
+                        className="min-h-10"
+                        disabled={
+                          isPending || !project.quantityBaseline.items.length
+                        }
+                        onClick={openWorkFrontModal}
+                      >
+                        <Plus className="size-4" />
+                        Cadastrar frente
+                      </Button>
+                    ) : undefined
+                  }
+                >
+                  <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
+                    {project.quantityBaseline.items.length
+                      ? "Distribua somente os serviços planejados para esta área. O saldo permanece disponível para as próximas frentes."
+                      : "Salve os quantitativos de referência antes de distribuir serviços em uma frente."}
+                  </p>
+                </Section>
+                <div className="grid gap-3">
+                  {project.workFronts.length ? (
+                    project.workFronts.map((front) => (
+                      <div
+                        key={front.id}
+                        className="rounded-md border border-border bg-background p-3"
+                      >
+                        <div className="flex flex-wrap items-start justify-between gap-3">
+                          <div>
+                            <p className="font-bold">{front.name}</p>
+                            <p className="mt-1 text-sm text-muted-foreground">
+                              {front.location ?? "Localização não informada"}
+                            </p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {front.requiresEmployees && (
+                              <span className="rounded-sm bg-secondary px-2 py-1 text-xs font-bold">
+                                Exige equipe
+                              </span>
+                            )}
+                            {front.requiresMachines && (
+                              <span className="rounded-sm bg-secondary px-2 py-1 text-xs font-bold">
+                                Exige máquinas
+                              </span>
+                            )}
+                            {(front.status === "planned" ||
+                              front.status === "active") && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                variant="outline"
+                                disabled={isPending}
+                                onClick={() => openEditWorkFrontModal(front)}
+                              >
+                                <Pencil className="size-4" />
+                                {front.status === "active"
+                                  ? "Editar distribuição"
+                                  : "Editar frente"}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                        <p className="mt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                          {front.status === "active"
+                            ? "Em execução"
+                            : project.status === "planned"
+                              ? front.planningEligibility.isValid
+                                ? "Planejada e válida"
+                                : front.planningEligibility.blockers.join(" ")
+                              : front.eligibility.canStart
+                                ? "Pronta para iniciar"
+                                : front.eligibility.blockers.join(" ")}
+                        </p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {front.services.map((service) => (
+                            <span
+                              key={service.serviceCode}
+                              className="rounded-sm bg-secondary px-2 py-1 text-xs font-semibold"
+                            >
+                              {metricDefinitions.find(
+                                (metric) => metric.code === service.serviceCode,
+                              )?.label ?? service.serviceCode}
+                              :{" "}
+                              {canonicalDecimalToBrazilian(service.quantity, 3)}{" "}
+                              {service.unitCode}
+                            </span>
+                          ))}
+                        </div>
+                        {project.status === "active" && (
+                          <div className="mt-3 grid gap-2 rounded-md border border-border bg-secondary/20 p-3 text-sm">
+                            <p className="font-bold">Mobilização atual</p>
+                            <p className="text-muted-foreground">
+                              {front.employeeAssignments.length} pessoa(s) ·{" "}
+                              {front.machineAssignments.length} máquina(s)
+                            </p>
+                            {front.status === "active" &&
+                              !front.mobilizationRecorded && (
+                                <p className="font-semibold text-amber-800">
+                                  Mobilização histórica ainda não registrada.
+                                </p>
+                              )}
+                          </div>
+                        )}
+                        {project.status === "active" && (
+                          <div className="mt-3 flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={isPending}
+                              onClick={() => openFrontMobilizationModal(front)}
+                            >
+                              <UsersRound className="size-4" />
+                              {front.mobilizationRecorded
+                                ? "Editar mobilização"
+                                : "Preparar mobilização"}
+                            </Button>
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="outline"
+                              disabled={isPending}
+                              onClick={() =>
+                                openMobilizationHistory("employee", front.id)
+                              }
+                            >
+                              Histórico
+                            </Button>
+                            {front.status === "planned" && (
+                              <Button
+                                type="button"
+                                size="sm"
+                                disabled={
+                                  isPending || !front.eligibility.canStart
+                                }
+                                onClick={() =>
+                                  startTransition(async () => {
+                                    const result =
+                                      await startProjectWorkFrontAction(
+                                        project.id,
+                                        front.id,
+                                      );
+                                    if (result.kind === "success") {
+                                      toast.success("Frente iniciada.");
+                                      router.refresh();
+                                      return;
+                                    }
+                                    toast.error(
+                                      "Não foi possível iniciar esta frente.",
+                                    );
+                                  })
+                                }
+                              >
+                                <Play className="size-4" />
+                                Iniciar frente
+                              </Button>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
+                      Nenhuma frente cadastrada. Cadastre pelo menos uma para
+                      liberar o início da obra.
                     </p>
                   )}
                 </div>
-              </Section>
-            </div>
-          )}
-
-          {activeTab === "timekeepers" && (
-            <Section
-              icon={UsersRound}
-              title="Apontadores"
-              description="O cadastro de apontadores, produção, abastecimento e demais rotinas diárias será conectado aqui. A obra já possui frentes para receber esses lançamentos."
-              status={{ label: "Em breve", tone: "neutral" }}
-            >
-              <p className="text-sm text-muted-foreground">
-                Nenhum lançamento diário é registrado nesta etapa.
-              </p>
-            </Section>
-          )}
-          {activeTab === "reports" && (
-            <Section
-              icon={PackageCheck}
-              title="Relatórios"
-              description="Cadastre, finalize e compartilhe os Relatórios Diários de Obra desta obra."
-              status={{
-                label: initialDailyReports?.data.length
-                  ? `${initialDailyReports.data.length} RDO(s)`
-                  : "Sem RDO",
-                tone: initialDailyReports?.data.length ? "ready" : "neutral",
-              }}
-            >
-              <ProjectDailyReports
-                projectId={project.id}
-                initialPage={
-                  initialDailyReports ?? {
-                    data: [],
-                    pageInfo: { hasNextPage: false, nextCursor: null },
-                  }
-                }
-              />
-            </Section>
-          )}
-          {activeTab === "suppliers" && (
-            <Section
-              icon={Truck}
-              title="Fornecedores"
-              description="Consulte os fornecedores e preços definidos no planejamento. O registro de recebimentos e abastecimentos será incluído depois."
-              status={fuelStatus}
-            >
-              <div className="grid gap-2 text-sm">
-                {[...project.fuelOffers, ...project.supplierOffers].map(
-                  (offer) => (
-                    <div
-                      key={offer.id}
-                      className="rounded-md border border-border p-2"
-                    >
-                      <strong>{offer.supplier?.name ?? "Fornecedor"}</strong> —{" "}
-                      {offer.item?.name ?? "Item"}
-                    </div>
-                  ),
-                )}
-                {!project.fuelOffers.length &&
-                  !project.supplierOffers.length && (
-                    <p className="text-muted-foreground">
-                      Nenhuma oferta vinculada.
-                    </p>
-                  )}
               </div>
-            </Section>
-          )}
-          {activeTab === "financial" && (
-            <Section
-              icon={WalletCards}
-              title="Financeiro"
-              description="O orçamento e os prazos planejados permanecem disponíveis. Custos reais e medições financeiras dependem dos lançamentos futuros."
-              status={{ label: "Planejado", tone: "neutral" }}
-            >
-              <div className="grid gap-2 text-sm">
-                <p>
-                  Orçamento aprovado:{" "}
-                  <strong>
-                    {project.baseline
-                      ? formatMoney(project.baseline.approvedBudget)
-                      : "Não informado"}
-                  </strong>
-                </p>
-                <p>
-                  Modalidades de pagamento configuradas:{" "}
-                  <strong>{project.compensationPaymentTerms.length}</strong>
-                </p>
-              </div>
-            </Section>
-          )}
+            )}
 
-          {activeTab === "planning" && (
-            <div className="space-y-4">
+            {activeTab === "fuel" && (
               <Section
-                icon={CalendarDays}
-                title="Datas planejadas"
-                description="Período de referência usado para organizar a mobilização e liberar o início operacional."
-                status={plannedDatesStatus}
+                icon={Fuel}
+                title="Combustível"
+                description="Selecione ofertas cadastradas no fornecedor e confirme o preço da obra."
+                status={fuelStatus}
                 action={
                   isEditable && (
                     <Button
                       type="button"
                       variant="outline"
                       className="min-h-10"
-                      disabled={isPending}
-                      onClick={openPlannedDatesModal}
+                      onClick={openAddFuelModal}
                     >
-                      <Pencil className="size-4" />
-                      Editar datas
+                      <Plus className="size-4" />
+                      Adicionar combustível
                     </Button>
                   )
                 }
               >
-                <dl className="grid gap-3 sm:grid-cols-2">
-                  <DetailRow
-                    label="Início planejado"
-                    value={formatDate(
-                      project.baseline?.plannedStartDate ?? null,
-                    )}
-                  />
-                  <DetailRow
-                    label="Fim planejado"
-                    value={formatDate(project.baseline?.plannedEndDate ?? null)}
-                  />
-                </dl>
+                <div className="grid gap-2 text-sm">
+                  {fuelOffers.length ? (
+                    fuelOffers.map((offer) => (
+                      <div
+                        key={offer.id}
+                        className="grid gap-3 rounded-md border border-border bg-background px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+                      >
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <p className="min-w-0 font-bold">
+                              {offer.item?.name ?? "Item não encontrado"}
+                            </p>
+                            <span
+                              className={cn(
+                                "inline-flex min-h-6 items-center rounded-sm px-2 text-xs font-bold",
+                                offer.sourceOfferId
+                                  ? "bg-secondary text-secondary-foreground"
+                                  : "bg-primary/10 text-primary",
+                              )}
+                            >
+                              {offer.sourceOfferId
+                                ? "Catálogo"
+                                : "Exclusiva da obra"}
+                            </span>
+                          </div>
+                          <p className="mt-1 text-muted-foreground">
+                            {offer.supplier?.name ??
+                              "Fornecedor não encontrado"}{" "}
+                            · {offer.purchaseUnit?.code ?? "un."} ·{" "}
+                            {formatMoney(offer.price, 4)}
+                          </p>
+                        </div>
+                        {isEditable && (
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="sm"
+                            className="min-h-10 justify-self-start md:justify-self-end"
+                            onClick={() => openEditFuelModal(offer.id)}
+                          >
+                            <Pencil className="size-4" />
+                            Editar oferta
+                          </Button>
+                        )}
+                      </div>
+                    ))
+                  ) : (
+                    <div className="grid gap-3 rounded-md border border-dashed border-border bg-background px-4 py-5 text-center">
+                      <div>
+                        <p className="text-sm font-bold text-foreground">
+                          Nenhum combustível confirmado.
+                        </p>
+                        <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                          Adicione uma oferta existente ou crie uma oferta
+                          exclusiva para esta obra.
+                        </p>
+                      </div>
+                      {isEditable && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="min-h-10 justify-self-center"
+                          onClick={openAddFuelModal}
+                        >
+                          <Plus className="size-4" />
+                          Adicionar combustível
+                        </Button>
+                      )}
+                    </div>
+                  )}
+                </div>
               </Section>
+            )}
 
+            {activeTab === "accountability" && (
               <Section
-                icon={Gauge}
-                title="Quantitativos de referência"
-                description="Este é o total aprovado da obra. As frentes distribuem esse total e não o substituem."
-                status={metricsStatus}
+                icon={HardHat}
+                title="Responsáveis da obra"
+                description="Cliente, gestor e responsabilidade técnica."
+                status={accountabilityStatus}
                 action={
-                  canManageFronts && (
+                  isEditable && (
                     <Button
                       type="button"
                       variant="outline"
                       className="min-h-10"
-                      disabled={isPending}
-                      onClick={openQuantityBaselineModal}
+                      onClick={() => setOpenModal("accountability")}
                     >
                       <Pencil className="size-4" />
-                      Editar quantitativos
+                      Editar
                     </Button>
                   )
                 }
               >
-                {project.quantityBaseline.items.length ? (
-                  <div className="overflow-hidden rounded-md border border-border">
-                    <div className="hidden grid-cols-[minmax(0,1fr)_repeat(3,minmax(110px,0.55fr))] gap-3 bg-secondary/45 px-3 py-2 text-xs font-bold text-muted-foreground md:grid">
-                      <span>Serviço</span>
-                      <span>Total</span>
-                      <span>Distribuído</span>
-                      <span>Saldo</span>
-                    </div>
-                    <div className="divide-y divide-border">
-                      {project.quantityBaseline.items.map((item) => (
-                        <div
-                          key={item.serviceCode}
-                          className="grid gap-3 bg-background px-3 py-3 text-sm md:grid-cols-[minmax(0,1fr)_repeat(3,minmax(110px,0.55fr))] md:items-center"
-                        >
-                          <div className="min-w-0">
-                            <p className="font-bold">
-                              {metricDefinitions.find(
-                                (metric) => metric.code === item.serviceCode,
-                              )?.label ?? item.serviceCode}
-                            </p>
-                            <p className="mt-1 text-xs text-muted-foreground md:hidden">
-                              {item.unitCode}
-                            </p>
-                          </div>
-                          <p>
-                            <span className="font-bold md:hidden">Total: </span>
-                            <strong>
-                              {canonicalDecimalToBrazilian(item.total, 3)}
-                            </strong>{" "}
-                            {item.unitCode}
-                          </p>
-                          <p>
-                            <span className="font-bold md:hidden">
-                              Distribuído:{" "}
-                            </span>
-                            {canonicalDecimalToBrazilian(item.allocated, 3)}
-                          </p>
-                          <p>
-                            <span className="font-bold md:hidden">Saldo: </span>
-                            {canonicalDecimalToBrazilian(item.unallocated, 3)}
-                          </p>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <EmptyBlock>
-                    Nenhum quantitativo de referência configurado.
-                  </EmptyBlock>
-                )}
+                <dl className="grid gap-2">
+                  <DetailRow
+                    label="Cliente"
+                    value={project.client?.name ?? "Não informado"}
+                  />
+                  <DetailRow
+                    label="Gestor"
+                    value={project.manager?.name ?? "Não informado"}
+                  />
+                  <DetailRow
+                    label="Responsáveis técnicos"
+                    value={
+                      project.technicalResponsibilities.length
+                        ? project.technicalResponsibilities
+                            .map((person) => person.name)
+                            .join(", ")
+                        : "Não informado"
+                    }
+                  />
+                </dl>
               </Section>
-            </div>
-          )}
+            )}
 
-          {activeTab === "production" && (
-            <Section
-              icon={Gauge}
-              title="Produção"
-              description="Registre quantidades, viagens, DMT, máquinas, horas e paradas por serviço e turno."
-              status={{
-                label: initialProductions?.data.length
-                  ? `${initialProductions.data.length} lançamento(s)`
-                  : "Sem produção",
-                tone: initialProductions?.data.length ? "ready" : "neutral",
-              }}
-            >
-              <ProjectProductions
-                projectId={project.id}
-                initialPage={
-                  initialProductions ?? {
-                    data: [],
-                    pageInfo: { hasNextPage: false, nextCursor: null },
-                    capabilities: {
-                      createDraft: true,
-                      submit: true,
-                      check: true,
-                      recordTopography: true,
-                      recordLaboratory: true,
-                      approve: true,
-                      reject: true,
-                      release: true,
-                      publishDirect: true,
-                      approveOthers: true,
-                      reopen: true,
-                      viewHistory: true,
-                      measure: false,
-                    },
-                  }
-                }
-              />
-            </Section>
-          )}
-
-          {activeTab === "fronts" && (
-            <div className="space-y-4">
+            {activeTab === "team" && (
               <Section
-                icon={HardHat}
-                title="Frentes de serviço"
-                description="Cadastre a área de atuação e distribua a parcela planejada para cada frente. O saldo continua disponível para novas frentes."
-                status={
-                  project.workFronts.some(
-                    (front) => front.planningEligibility.isValid,
-                  )
-                    ? { label: "Frente elegível", tone: "ready" }
-                    : { label: "Pendente", tone: "pending" }
-                }
+                icon={UsersRound}
+                title="Equipe operacional"
+                description="Funcionários mobilizados com função, jornada e remuneração."
+                status={teamStatus}
                 action={
-                  canManageFronts ? (
+                  <div className="flex flex-wrap gap-2">
                     <Button
                       type="button"
+                      variant="outline"
                       className="min-h-10"
-                      disabled={
-                        isPending || !project.quantityBaseline.items.length
-                      }
-                      onClick={openWorkFrontModal}
+                      onClick={() => openMobilizationHistory("employee")}
                     >
-                      <Plus className="size-4" />
-                      Cadastrar frente
+                      Histórico
                     </Button>
-                  ) : undefined
+                  </div>
                 }
               >
-                <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
-                  {project.quantityBaseline.items.length
-                    ? "Distribua somente os serviços planejados para esta área. O saldo permanece disponível para as próximas frentes."
-                    : "Salve os quantitativos de referência antes de distribuir serviços em uma frente."}
-                </p>
+                <ProjectTeamView
+                  projectId={project.id}
+                  counts={{
+                    day: project.employeeAllocations.filter(
+                      (allocation) => allocation.shift === "day",
+                    ).length,
+                    night: project.employeeAllocations.filter(
+                      (allocation) => allocation.shift === "night",
+                    ).length,
+                  }}
+                  canEdit={canManageMobilization}
+                  initialShift={selectedTeamShift}
+                  onAddShift={(shift) => openTeamModal(shift, "add")}
+                  onActiveShiftChange={(shift) => {
+                    setSelectedTeamShift(shift);
+                    persistProjectContext("team", shift);
+                  }}
+                  onEditMember={openTeamMemberModal}
+                  onEditShift={openTeamModal}
+                  onRemoveMember={setRemovingTeamMember}
+                  reloadKey={teamReloadKey}
+                />
               </Section>
-              <div className="grid gap-3">
-                {project.workFronts.length ? (
-                  project.workFronts.map((front) => (
-                    <div
-                      key={front.id}
-                      className="rounded-md border border-border bg-background p-3"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div>
-                          <p className="font-bold">{front.name}</p>
-                          <p className="mt-1 text-sm text-muted-foreground">
-                            {front.location ?? "Localização não informada"}
-                          </p>
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          {front.requiresEmployees && (
-                            <span className="rounded-sm bg-secondary px-2 py-1 text-xs font-bold">
-                              Exige equipe
-                            </span>
-                          )}
-                          {front.requiresMachines && (
-                            <span className="rounded-sm bg-secondary px-2 py-1 text-xs font-bold">
-                              Exige máquinas
-                            </span>
-                          )}
-                          {(front.status === "planned" ||
-                            front.status === "active") && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              variant="outline"
-                              disabled={isPending}
-                              onClick={() => openEditWorkFrontModal(front)}
-                            >
-                              <Pencil className="size-4" />
-                              {front.status === "active"
-                                ? "Editar distribuição"
-                                : "Editar frente"}
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <p className="mt-2 text-xs font-bold uppercase tracking-wide text-muted-foreground">
-                        {front.status === "active"
-                          ? "Em execução"
-                          : project.status === "planned"
-                            ? front.planningEligibility.isValid
-                              ? "Planejada e válida"
-                              : front.planningEligibility.blockers.join(" ")
-                            : front.eligibility.canStart
-                              ? "Pronta para iniciar"
-                              : front.eligibility.blockers.join(" ")}
-                      </p>
-                      <div className="mt-3 flex flex-wrap gap-2">
-                        {front.services.map((service) => (
-                          <span
-                            key={service.serviceCode}
-                            className="rounded-sm bg-secondary px-2 py-1 text-xs font-semibold"
-                          >
-                            {metricDefinitions.find(
-                              (metric) => metric.code === service.serviceCode,
-                            )?.label ?? service.serviceCode}
-                            : {canonicalDecimalToBrazilian(service.quantity, 3)}{" "}
-                            {service.unitCode}
-                          </span>
-                        ))}
-                      </div>
-                      {project.status === "active" && (
-                        <div className="mt-3 grid gap-2 rounded-md border border-border bg-secondary/20 p-3 text-sm">
-                          <p className="font-bold">Mobilização atual</p>
-                          <p className="text-muted-foreground">
-                            {front.employeeAssignments.length} pessoa(s) ·{" "}
-                            {front.machineAssignments.length} máquina(s)
-                          </p>
-                          {front.status === "active" &&
-                            !front.mobilizationRecorded && (
-                              <p className="font-semibold text-amber-800">
-                                Mobilização histórica ainda não registrada.
-                              </p>
-                            )}
-                        </div>
-                      )}
-                      {project.status === "active" && (
-                        <div className="mt-3 flex flex-wrap gap-2">
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={isPending}
-                            onClick={() => openFrontMobilizationModal(front)}
-                          >
-                            <UsersRound className="size-4" />
-                            {front.mobilizationRecorded
-                              ? "Editar mobilização"
-                              : "Preparar mobilização"}
-                          </Button>
-                          <Button
-                            type="button"
-                            size="sm"
-                            variant="outline"
-                            disabled={isPending}
-                            onClick={() =>
-                              openMobilizationHistory("employee", front.id)
-                            }
-                          >
-                            Histórico
-                          </Button>
-                          {front.status === "planned" && (
-                            <Button
-                              type="button"
-                              size="sm"
-                              disabled={
-                                isPending || !front.eligibility.canStart
-                              }
-                              onClick={() =>
-                                startTransition(async () => {
-                                  const result =
-                                    await startProjectWorkFrontAction(
-                                      project.id,
-                                      front.id,
-                                    );
-                                  if (result.kind === "success") {
-                                    toast.success("Frente iniciada.");
-                                    router.refresh();
-                                    return;
-                                  }
-                                  toast.error(
-                                    "Não foi possível iniciar esta frente.",
-                                  );
-                                })
-                              }
-                            >
-                              <Play className="size-4" />
-                              Iniciar frente
-                            </Button>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p className="rounded-md border border-dashed border-border p-4 text-sm text-muted-foreground">
-                    Nenhuma frente cadastrada. Cadastre pelo menos uma para
-                    liberar o início da obra.
-                  </p>
-                )}
-              </div>
-            </div>
-          )}
+            )}
 
-          {activeTab === "fuel" && (
-            <Section
-              icon={Fuel}
-              title="Combustível"
-              description="Selecione ofertas cadastradas no fornecedor e confirme o preço da obra."
-              status={fuelStatus}
-              action={
-                isEditable && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-10"
-                    onClick={openAddFuelModal}
-                  >
-                    <Plus className="size-4" />
-                    Adicionar combustível
-                  </Button>
-                )
-              }
-            >
-              <div className="grid gap-2 text-sm">
-                {fuelOffers.length ? (
-                  fuelOffers.map((offer) => (
-                    <div
-                      key={offer.id}
-                      className="grid gap-3 rounded-md border border-border bg-background px-3 py-3 md:grid-cols-[minmax(0,1fr)_auto] md:items-center"
+            {activeTab === "machines" && (
+              <Section
+                icon={Truck}
+                title="Máquinas e operadores"
+                description="Cada máquina precisa de operador presente na equipe."
+                status={machinesStatus}
+                action={
+                  <div className="flex flex-wrap gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-10"
+                      onClick={() => openMobilizationHistory("machine")}
                     >
-                      <div className="min-w-0">
+                      Histórico
+                    </Button>
+                    {canManageMobilization && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        className="min-h-10"
+                        onClick={openMachinesModal}
+                      >
+                        <Pencil className="size-4" />
+                        Editar
+                      </Button>
+                    )}
+                  </div>
+                }
+              >
+                <div className="grid gap-2 text-sm">
+                  {project.machineAllocations.length ? (
+                    project.machineAllocations.map((allocation) => (
+                      <div
+                        key={allocation.id}
+                        className="rounded-md border border-border bg-background px-3 py-2"
+                      >
+                        <p className="font-bold">
+                          {allocation.machine?.name ?? "Máquina"}
+                        </p>
+                        <p className="text-muted-foreground">
+                          {allocation.operatorAssignments.length
+                            ? allocation.operatorAssignments
+                                .map(
+                                  (assignment) =>
+                                    `${assignment.shift === "night" ? "Noturno" : "Diurno"}: ${assignment.operator?.name ?? "Não informado"}`,
+                                )
+                                .join(" · ")
+                            : "Nenhum operador por turno informado"}
+                        </p>
+                      </div>
+                    ))
+                  ) : (
+                    <EmptyBlock>Nenhuma máquina alocada.</EmptyBlock>
+                  )}
+                </div>
+              </Section>
+            )}
+
+            {activeTab === "payments" && (
+              <Section
+                icon={WalletCards}
+                title="Ciclos de pagamento"
+                description="Regra de pagamento para cada modalidade presente na equipe."
+                status={paymentsStatus}
+                action={
+                  isEditable && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-10"
+                      onClick={() => setOpenModal("payments")}
+                    >
+                      <Pencil className="size-4" />
+                      Editar
+                    </Button>
+                  )
+                }
+              >
+                {paymentTermRows.length ? (
+                  <div className="grid gap-2 text-sm">
+                    {[...paymentTermRows]
+                      .sort((a, b) =>
+                        paymentModeSort(a.compensationMode, b.compensationMode),
+                      )
+                      .map((term) => (
+                        <p
+                          key={term.compensationMode}
+                          className="rounded-md border border-border bg-background px-3 py-2"
+                        >
+                          <span className="font-bold">
+                            {compensationLabels[term.compensationMode]}:{" "}
+                          </span>
+                          {paymentTermSummary(
+                            term.compensationMode,
+                            term.daysAfterPeriodEnd,
+                          )}
+                        </p>
+                      ))}
+                  </div>
+                ) : (
+                  <EmptyBlock>Nenhum prazo de pagamento confirmado.</EmptyBlock>
+                )}
+              </Section>
+            )}
+
+            {activeTab === "materials" && (
+              <Section
+                icon={PackageCheck}
+                title="Itens e fornecedores"
+                description="Ofertas não-combustível vinculadas à obra."
+                status={materialsStatus}
+                action={
+                  isEditable && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="min-h-10"
+                      onClick={openMaterialsModal}
+                    >
+                      <Pencil className="size-4" />
+                      Editar
+                    </Button>
+                  )
+                }
+              >
+                <div className="grid gap-2 text-sm">
+                  {materialOffers.length ? (
+                    materialOffers.map((offer) => (
+                      <div
+                        key={offer.id}
+                        className="rounded-md border border-border bg-background px-3 py-2"
+                      >
                         <div className="flex flex-wrap items-center gap-2">
-                          <p className="min-w-0 font-bold">
+                          <p className="font-bold">
                             {offer.item?.name ?? "Item não encontrado"}
                           </p>
                           <span
@@ -4075,298 +4761,26 @@ export function ProjectDetail({
                               : "Exclusiva da obra"}
                           </span>
                         </div>
-                        <p className="mt-1 text-muted-foreground">
+                        <p className="text-muted-foreground">
                           {offer.supplier?.name ?? "Fornecedor não encontrado"}{" "}
-                          · {offer.purchaseUnit?.code ?? "un."} ·{" "}
-                          {formatMoney(offer.price, 4)}
+                          · {offer.purchaseUnit?.code ?? "un."} · Quantidade{" "}
+                          {canonicalDecimalToBrazilian(
+                            offer.conversionToBase,
+                            6,
+                          )}{" "}
+                          · {formatMoney(offer.price, 4)}
                         </p>
                       </div>
-                      {isEditable && (
-                        <Button
-                          type="button"
-                          variant="outline"
-                          size="sm"
-                          className="min-h-10 justify-self-start md:justify-self-end"
-                          onClick={() => openEditFuelModal(offer.id)}
-                        >
-                          <Pencil className="size-4" />
-                          Editar oferta
-                        </Button>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <div className="grid gap-3 rounded-md border border-dashed border-border bg-background px-4 py-5 text-center">
-                    <div>
-                      <p className="text-sm font-bold text-foreground">
-                        Nenhum combustível confirmado.
-                      </p>
-                      <p className="mt-1 text-sm leading-5 text-muted-foreground">
-                        Adicione uma oferta existente ou crie uma oferta
-                        exclusiva para esta obra.
-                      </p>
-                    </div>
-                    {isEditable && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="min-h-10 justify-self-center"
-                        onClick={openAddFuelModal}
-                      >
-                        <Plus className="size-4" />
-                        Adicionar combustível
-                      </Button>
-                    )}
-                  </div>
-                )}
-              </div>
-            </Section>
-          )}
-
-          {activeTab === "accountability" && (
-            <Section
-              icon={HardHat}
-              title="Responsáveis da obra"
-              description="Cliente, gestor e responsabilidade técnica."
-              status={accountabilityStatus}
-              action={
-                isEditable && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-10"
-                    onClick={() => setOpenModal("accountability")}
-                  >
-                    <Pencil className="size-4" />
-                    Editar
-                  </Button>
-                )
-              }
-            >
-              <dl className="grid gap-2">
-                <DetailRow
-                  label="Cliente"
-                  value={project.client?.name ?? "Não informado"}
-                />
-                <DetailRow
-                  label="Gestor"
-                  value={project.manager?.name ?? "Não informado"}
-                />
-                <DetailRow
-                  label="Responsáveis técnicos"
-                  value={
-                    project.technicalResponsibilities.length
-                      ? project.technicalResponsibilities
-                          .map((person) => person.name)
-                          .join(", ")
-                      : "Não informado"
-                  }
-                />
-              </dl>
-            </Section>
-          )}
-
-          {activeTab === "team" && (
-            <Section
-              icon={UsersRound}
-              title="Equipe operacional"
-              description="Funcionários mobilizados com função, jornada e remuneração."
-              status={teamStatus}
-              action={
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-10"
-                    onClick={() => openMobilizationHistory("employee")}
-                  >
-                    Histórico
-                  </Button>
-                </div>
-              }
-            >
-              <ProjectTeamView
-                projectId={project.id}
-                counts={{
-                  day: project.employeeAllocations.filter(
-                    (allocation) => allocation.shift === "day",
-                  ).length,
-                  night: project.employeeAllocations.filter(
-                    (allocation) => allocation.shift === "night",
-                  ).length,
-                }}
-                canEdit={canManageMobilization}
-                onEditShift={openTeamModal}
-              />
-            </Section>
-          )}
-
-          {activeTab === "machines" && (
-            <Section
-              icon={Truck}
-              title="Máquinas e operadores"
-              description="Cada máquina precisa de operador presente na equipe."
-              status={machinesStatus}
-              action={
-                <div className="flex flex-wrap gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-10"
-                    onClick={() => openMobilizationHistory("machine")}
-                  >
-                    Histórico
-                  </Button>
-                  {canManageMobilization && (
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="min-h-10"
-                      onClick={() => setOpenModal("machines")}
-                    >
-                      <Pencil className="size-4" />
-                      Editar
-                    </Button>
+                    ))
+                  ) : (
+                    <EmptyBlock>Nenhum item adicional configurado.</EmptyBlock>
                   )}
                 </div>
-              }
-            >
-              <div className="grid gap-2 text-sm">
-                {project.machineAllocations.length ? (
-                  project.machineAllocations.map((allocation) => (
-                    <div
-                      key={allocation.id}
-                      className="rounded-md border border-border bg-background px-3 py-2"
-                    >
-                      <p className="font-bold">
-                        {allocation.machine?.name ?? "Máquina"}
-                      </p>
-                      <p className="text-muted-foreground">
-                        {allocation.operatorAssignments.length
-                          ? allocation.operatorAssignments
-                              .map(
-                                (assignment) =>
-                                  `${assignment.shift === "night" ? "Noturno" : "Diurno"}: ${assignment.operator?.name ?? "Não informado"}`,
-                              )
-                              .join(" · ")
-                          : "Nenhum operador por turno informado"}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyBlock>Nenhuma máquina alocada.</EmptyBlock>
-                )}
-              </div>
-            </Section>
-          )}
-
-          {activeTab === "payments" && (
-            <Section
-              icon={WalletCards}
-              title="Pagamento por modalidade"
-              description="Regra de pagamento para cada modalidade presente na equipe."
-              status={paymentsStatus}
-              action={
-                isEditable && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-10"
-                    onClick={() => setOpenModal("payments")}
-                  >
-                    <Pencil className="size-4" />
-                    Editar
-                  </Button>
-                )
-              }
-            >
-              {paymentTermRows.length ? (
-                <div className="grid gap-2 text-sm">
-                  {[...paymentTermRows]
-                    .sort((a, b) =>
-                      paymentModeSort(a.compensationMode, b.compensationMode),
-                    )
-                    .map((term) => (
-                      <p
-                        key={term.compensationMode}
-                        className="rounded-md border border-border bg-background px-3 py-2"
-                      >
-                        <span className="font-bold">
-                          {compensationLabels[term.compensationMode]}:{" "}
-                        </span>
-                        {paymentTermSummary(
-                          term.compensationMode,
-                          term.daysAfterPeriodEnd,
-                        )}
-                      </p>
-                    ))}
-                </div>
-              ) : (
-                <EmptyBlock>Nenhum prazo de pagamento confirmado.</EmptyBlock>
-              )}
-            </Section>
-          )}
-
-          {activeTab === "materials" && (
-            <Section
-              icon={PackageCheck}
-              title="Itens e fornecedores"
-              description="Ofertas não-combustível vinculadas à obra."
-              status={materialsStatus}
-              action={
-                isEditable && (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    className="min-h-10"
-                    onClick={openMaterialsModal}
-                  >
-                    <Pencil className="size-4" />
-                    Editar
-                  </Button>
-                )
-              }
-            >
-              <div className="grid gap-2 text-sm">
-                {materialOffers.length ? (
-                  materialOffers.map((offer) => (
-                    <div
-                      key={offer.id}
-                      className="rounded-md border border-border bg-background px-3 py-2"
-                    >
-                      <div className="flex flex-wrap items-center gap-2">
-                        <p className="font-bold">
-                          {offer.item?.name ?? "Item não encontrado"}
-                        </p>
-                        <span
-                          className={cn(
-                            "inline-flex min-h-6 items-center rounded-sm px-2 text-xs font-bold",
-                            offer.sourceOfferId
-                              ? "bg-secondary text-secondary-foreground"
-                              : "bg-primary/10 text-primary",
-                          )}
-                        >
-                          {offer.sourceOfferId
-                            ? "Catálogo"
-                            : "Exclusiva da obra"}
-                        </span>
-                      </div>
-                      <p className="text-muted-foreground">
-                        {offer.supplier?.name ?? "Fornecedor não encontrado"} ·{" "}
-                        {offer.purchaseUnit?.code ?? "un."} · Quantidade{" "}
-                        {canonicalDecimalToBrazilian(offer.conversionToBase, 6)}{" "}
-                        · {formatMoney(offer.price, 4)}
-                      </p>
-                    </div>
-                  ))
-                ) : (
-                  <EmptyBlock>Nenhum item adicional configurado.</EmptyBlock>
-                )}
-              </div>
-            </Section>
-          )}
-        </div>
-      </section>
+              </Section>
+            )}
+          </div>
+        </section>
+      </div>
 
       <OperationsModal
         icon={CalendarDays}
@@ -4448,6 +4862,81 @@ export function ProjectDetail({
           </div>
         </div>
       </OperationsModal>
+
+      <OperationsModal
+        icon={UsersRound}
+        open={openModal === "teamMember"}
+        onOpenChange={(open) => {
+          if (!open && !isPending) closeTeamOrMachineModal();
+        }}
+        size="xl"
+        className="sm:max-h-[44rem]"
+        bodyClassName="overscroll-contain"
+        title={
+          editingTeamMember
+            ? `Editar ${editingTeamMember.name}`
+            : "Editar funcionário"
+        }
+        footer={
+          <>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={closeTeamOrMachineModal}
+            >
+              Cancelar
+            </Button>
+            <Button type="button" disabled={isPending} onClick={saveTeam}>
+              <Check className="size-4" />
+              Salvar funcionário
+            </Button>
+          </>
+        }
+      >
+        {editingTeamMember && (
+          <EmployeeMobilization
+            bare
+            fixedShift={editingTeamMember.shift}
+            form={readinessForm}
+            initialEmploymentId={editingTeamMember.employmentId}
+            options={teamMemberOptions}
+            sessionKey={`${project.id}-${editingTeamMember.id}-employee`}
+            showConfirmedCount={false}
+            title={null}
+            description={null}
+          />
+        )}
+      </OperationsModal>
+
+      <AlertDialog
+        open={Boolean(removingTeamMember)}
+        onOpenChange={(open) => {
+          if (!isPending && !open) setRemovingTeamMember(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              Remover este funcionário do turno?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {removingTeamMember
+                ? `${removingTeamMember.name} deixará a equipe ${removingTeamMember.shift === "day" ? "diurna" : "noturna"}.`
+                : null}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isPending}>Cancelar</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              disabled={isPending}
+              onClick={removeTeamMember}
+            >
+              Remover funcionário
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <OperationsModal
         icon={Gauge}
@@ -5379,8 +5868,9 @@ export function ProjectDetail({
           if (!open && !isPending) closeTeamOrMachineModal();
         }}
         size="xl"
-        title="Editar equipe operacional"
-        description="Edite funcionários, jornada e intervalos de um turno por vez."
+        className="sm:max-h-[44rem]"
+        bodyClassName="overscroll-contain"
+        title={`${teamModalMode === "add" ? "Mobilizar equipe" : "Editar jornada"} ${teamShift === "day" ? "diurna" : "noturna"}`}
         footer={
           <>
             <Button
@@ -5392,112 +5882,105 @@ export function ProjectDetail({
             </Button>
             <Button type="button" disabled={isPending} onClick={saveTeam}>
               <Check className="size-4" />
-              Salvar turno
+              {teamModalMode === "add"
+                ? "Salvar mobilização"
+                : "Salvar jornada"}
             </Button>
           </>
         }
       >
-        <div className="grid gap-4">
-          <OperationTabs
-            ariaLabel="Turno da equipe"
-            idPrefix="team-shift"
-            value={teamShift}
-            onValueChange={changeTeamShift}
-            tabs={(["day", "night"] as const).map((shift) => ({
-              value: shift,
-              label: shift === "day" ? "Diurno" : "Noturno",
-            }))}
-          />
-          <OperationTabs
-            ariaLabel="Seção do editor de equipe"
-            idPrefix="team-editor"
-            value={teamEditorTab}
-            onValueChange={setTeamEditorTab}
-            tabs={[
-              { value: "employees", label: "Funcionários" },
-              { value: "schedule", label: "Jornada e intervalos" },
-            ]}
-          />
-          <OperationTabPanel
-            idPrefix="team-editor"
-            value="employees"
-            activeValue={teamEditorTab}
-            className="grid gap-4"
-          >
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Buscar por nome ou função</span>
-              <div className="relative">
-                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input
-                  className="h-11 pl-9"
-                  value={teamSearch}
-                  onChange={(event) => setTeamSearch(event.target.value)}
-                  placeholder="Ex.: Maria ou Operador"
-                />
-              </div>
-            </label>
-            {teamCandidatesError ? (
-              <div
-                role="alert"
-                className="rounded-md border border-destructive/40 p-3 text-sm font-semibold text-destructive"
-              >
-                {teamCandidatesError}
-              </div>
-            ) : teamCandidatesLoading && activeTeamPage.data.length === 0 ? (
-              <div
-                role="status"
-                className="flex min-h-24 items-center justify-center gap-2 text-sm font-semibold text-muted-foreground"
-              >
-                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
-                Carregando funcionários…
-              </div>
-            ) : (
-              <EmployeeMobilization
-                fixedShift={teamShift}
-                form={readinessForm}
-                onDraftStateChange={setTeamHasEmployeeDraft}
-                options={teamEditorOptions}
-                sessionKey={`${project.id}-${teamShift}`}
-              />
-            )}
-            <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
-              <Button
-                type="button"
-                variant="outline"
-                disabled={teamPageIndex === 0 || teamCandidatesLoading}
-                onClick={() => setTeamPageIndex((index) => index - 1)}
-              >
-                Anterior
-              </Button>
-              <span className="text-sm font-semibold text-muted-foreground">
-                Página {teamPageIndex + 1}
-              </span>
-              <Button
-                type="button"
-                variant="outline"
-                disabled={
-                  !activeTeamPage.pageInfo.hasNextPage || teamCandidatesLoading
-                }
-                onClick={() =>
-                  teamPages[teamPageIndex + 1]
-                    ? setTeamPageIndex((index) => index + 1)
-                    : loadTeamCandidatePage(
-                        activeTeamPage.pageInfo.nextCursor,
-                        true,
-                      )
-                }
-              >
-                Próxima
-              </Button>
-            </div>
-          </OperationTabPanel>
-          <OperationTabPanel
-            idPrefix="team-editor"
-            value="schedule"
-            activeValue={teamEditorTab}
-          >
+        <div
+          key={`${teamShift}-${teamModalMode}`}
+          className="grid gap-4 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-200 motion-safe:ease-out"
+        >
+          {teamModalMode === "schedule" ? (
             <Schedule fixedShift={teamShift} form={readinessForm} />
-          </OperationTabPanel>
+          ) : (
+            <>
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span>Buscar por nome ou função</span>
+                <div className="relative">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                  <Input
+                    className="h-11 pl-9"
+                    value={teamSearch}
+                    onChange={(event) => setTeamSearch(event.target.value)}
+                    placeholder="Ex.: Maria ou Operador"
+                  />
+                </div>
+              </label>
+              {teamCandidatesError ? (
+                <div
+                  role="alert"
+                  className="rounded-md border border-destructive/40 p-3 text-sm font-semibold text-destructive"
+                >
+                  <p>{teamCandidatesError}</p>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="mt-3"
+                    onClick={() => loadTeamCandidatePage()}
+                  >
+                    Tentar novamente
+                  </Button>
+                </div>
+              ) : teamCandidatesLoading && activeTeamPage.data.length === 0 ? (
+                <div
+                  role="status"
+                  className="flex min-h-24 items-center justify-center gap-2 text-sm font-semibold text-muted-foreground"
+                >
+                  <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                  Buscando funcionários…
+                </div>
+              ) : (
+                <EmployeeMobilization
+                  bare
+                  fixedShift={teamShift}
+                  form={readinessForm}
+                  options={teamCandidateOptions}
+                  sessionKey={`${project.id}-${teamShift}-candidates`}
+                  showConfirmedCount={false}
+                  title={null}
+                  description={null}
+                />
+              )}
+              {(teamPageIndex > 0 ||
+                teamCandidateOptions.employees.length > 0 ||
+                activeTeamPage.pageInfo.hasNextPage) && (
+                <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={teamPageIndex === 0 || teamCandidatesLoading}
+                    onClick={() => setTeamPageIndex((index) => index - 1)}
+                  >
+                    Anterior
+                  </Button>
+                  <span className="text-sm font-semibold text-muted-foreground">
+                    Página {teamPageIndex + 1}
+                  </span>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={
+                      !activeTeamPage.pageInfo.hasNextPage ||
+                      teamCandidatesLoading
+                    }
+                    onClick={() =>
+                      teamPages[teamPageIndex + 1]
+                        ? setTeamPageIndex((index) => index + 1)
+                        : loadTeamCandidatePage(
+                            activeTeamPage.pageInfo.nextCursor,
+                            true,
+                          )
+                    }
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              )}
+            </>
+          )}
         </div>
       </OperationsModal>
 
@@ -5505,7 +5988,8 @@ export function ProjectDetail({
         icon={Truck}
         open={openModal === "machines"}
         onOpenChange={(open) => {
-          if (!open && !isPending) closeTeamOrMachineModal();
+          if (!open && !isPending && !isSavingMachines)
+            closeTeamOrMachineModal();
         }}
         size="xl"
         title="Editar máquinas e operadores"
@@ -5515,18 +5999,33 @@ export function ProjectDetail({
             <Button
               type="button"
               variant="outline"
+              disabled={isPending || isSavingMachines}
               onClick={closeTeamOrMachineModal}
             >
               Cancelar
             </Button>
-            <Button type="button" disabled={isPending} onClick={saveMachines}>
+            <Button
+              type="button"
+              disabled={isPending || isSavingMachines}
+              onClick={saveMachines}
+            >
               <Check className="size-4" />
-              Salvar máquinas
+              {isSavingMachines ? "Salvando máquinas..." : "Salvar máquinas"}
             </Button>
           </>
         }
       >
-        <MachineMobilization form={readinessForm} options={modalOptions} />
+        <div className="grid gap-4">
+          {machineSaveError && (
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm font-semibold text-destructive"
+            >
+              {machineSaveError}
+            </div>
+          )}
+          <MachineMobilization form={readinessForm} options={modalOptions} />
+        </div>
       </OperationsModal>
 
       <OperationsModal

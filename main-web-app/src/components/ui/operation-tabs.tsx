@@ -90,21 +90,25 @@ export function OperationTabPanel({
   activeValue,
   children,
   className,
+  decorative = false,
   idPrefix,
   value,
 }: {
   activeValue: string;
   children: React.ReactNode;
   className?: string;
+  decorative?: boolean;
   idPrefix?: string;
   value: string;
 }) {
   if (activeValue !== value) return null;
   return (
     <div
-      role="tabpanel"
-      id={idPrefix ? `${idPrefix}-panel-${value}` : undefined}
-      aria-labelledby={idPrefix ? `${idPrefix}-tab-${value}` : undefined}
+      role={decorative ? undefined : "tabpanel"}
+      id={!decorative && idPrefix ? `${idPrefix}-panel-${value}` : undefined}
+      aria-labelledby={
+        !decorative && idPrefix ? `${idPrefix}-tab-${value}` : undefined
+      }
       tabIndex={0}
       className={cn("outline-none", className)}
     >

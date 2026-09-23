@@ -9,6 +9,9 @@ leituras, disponibilidade e histórico operacional.
 `POST /machine-models/:machineModelId/units` acrescenta unidades a um modelo.
 Listagem e detalhe de modelos são paginados e mantêm as unidades físicas como
 referências usadas por obras, frentes, RDOs e produção.
+Na inclusão posterior, a confirmação usa o toast global transitório e atualiza
+o detalhe do modelo; uma falha permanece no formulário com a causa retornada
+para que o cadastro possa ser corrigido e reenviado.
 
 Todo modelo declara `requiresOperator`. Quando verdadeiro, `requiredJobRoleId`
 é obrigatório e precisa apontar para uma função ativa da mesma empresa; quando
@@ -16,6 +19,29 @@ falso, a função é nula e a unidade não aceita operador em mobilizações. Mo
 legados usam a função padrão **Qualquer um**, que conserva a exigência de
 operador sem restringir a função do funcionário. Alterações de requisito ou
 função são bloqueadas enquanto alguma unidade do modelo estiver mobilizada.
+
+As opções de mobilização inicial da obra retornam por unidade `manufacturer`,
+`model`, `meterType`, `requiresOperator`, `requiredJobRoleId`,
+`requiredJobRoleName` e `acceptsAnyJobRole`. A interface apresenta a última
+leitura com máscara brasileira e unidade (`h` ou `km`), solicita operador
+somente para máquinas que o exigem e, nesse caso, mostra apenas integrantes do
+mesmo turno, da função **confirmada na alocação da obra** e ainda não vinculados
+a outra máquina da obra. A função atual do cadastro do funcionário não altera
+essa elegibilidade. Ao editar uma máquina, seu operador atual continua elegível
+para que a alocação possa ser corrigida, mesmo quando ficou incompatível. A
+exceção é `acceptsAnyJobRole`, que aceita qualquer função.
+
+Cada alocação de equipe persiste `confirmedJobRoleId` e, quando a confirmação
+coincide com o vínculo atual, `confirmedJobRolePeriodId`. Registros legados que
+não possuem um identificador confiável de função não são associados por nome:
+ficam indisponíveis para modelos com função específica até que a equipe da obra
+seja atualizada e a função seja confirmada novamente.
+
+O salvamento da mobilização bloqueia novas tentativas enquanto está em curso.
+Ao concluir, a confirmação usa o toast global transitório; se falhar, o modal
+fica aberto e exibe a causa acionável. Conflitos de recurso retornados pela API,
+como leitura alterada, máquina já alocada, operador obrigatório ou função
+incompatível, não dependem exclusivamente de toast para chegar ao usuário.
 
 Máquinas podem ser de linha amarela (`YELLOW_LINE`) ou linha branca
 (`WHITE_LINE`). Somente a linha branca aceita as especificações opcionais:

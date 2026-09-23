@@ -7,7 +7,9 @@ Esta documentação deve orientar novas telas, componentes e ajustes visuais. N�
 ## Regras Para IAs/Agentes
 
 - Trate as cores, sombras, espaçamentos, bordas e composições atuais como base oficial do MVP.
-- Preserve a regra de componentização: reutilizáveis em `src/components` e componentes específicos em `src/components/pages/<rota>`.
+- Preserve a regra de componentização: primitives, layout e cascas compartilhadas
+  em `src/components`; novas telas e componentes de domínio em
+  `src/features/<domínio>/components`.
 - Use `src/components/ui` para primitivas reutilizáveis e evite duplicar controles visuais comuns.
 - Ao alterar estilos, mantenha acessibilidade, contraste, foco visível, responsividade e estados de erro/carregamento.
 - Alterações visuais não podem quebrar as regras server-only, autenticação, Zustand seguro ou restrições de ESLint.
@@ -38,8 +40,11 @@ Componentes auditados:
 - `src/components/ui/operations-table.tsx`
 - `src/components/ui/operations-modal.tsx`
 - `src/components/ui/form-section.tsx`
-- `src/components/pages/company/company-overview.tsx`
-- `src/components/pages/company/company-resource-page.tsx`
+- `src/features/projects/components/project-detail.tsx`
+- `src/features/machines/components/machines-page.tsx`
+
+As cascas legadas em `src/components/pages` continuam válidas, mas novos fluxos
+de domínio não devem ampliar essa árvore.
 
 Páginas auditadas:
 - `/auth/login`

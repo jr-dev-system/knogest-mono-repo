@@ -10,10 +10,10 @@ Componentes reutilizáveis ficam em:
 src/components
 ```
 
-Componentes específicos de página ficam em:
+Componentes de domínio novos ficam preferencialmente em:
 
 ```text
-src/components/pages/<caminho-da-rota>
+src/features/<domínio>/components
 ```
 
 Exemplos:
@@ -21,8 +21,8 @@ Exemplos:
 ```text
 src/components/ui/button.tsx
 src/components/layout/app-shell.tsx
-src/components/pages/auth/login/login-form.tsx
-src/components/pages/home/home-dashboard.tsx
+src/features/projects/components/project-detail.tsx
+src/features/employees/components/employee-detail-page.tsx
 ```
 
 ## Server e Client Components
@@ -45,9 +45,14 @@ src/components/pages/home/home-dashboard.tsx
 - Ao trocar a aparência, preserve a separação entre componentes reutilizáveis e componentes específicos de página.
 - Não duplique padrões visuais locais se eles puderem virar primitiva reutilizável em `src/components/ui`.
 
-## Páginas
+## Páginas e features
 
-Arquivos em `src/app` devem compor dados, auth e layout. A UI específica deve ficar em `src/components/pages`.
+Arquivos em `src/app` compõem rota, dados de entrada, auth e layout. A UI e as
+regras de apresentação específicas ficam em `src/features/<domínio>`. Actions,
+queries server-only, adaptadores e schemas do mesmo domínio permanecem próximos
+dos componentes que os usam. `src/components/pages` contém cascas de rota
+compartilhadas já existentes (login, dashboard e empresa); não deve receber
+novas regras de domínio ou transporte.
 
 ## Formulário Operacional
 
@@ -62,7 +67,8 @@ Validação, mensagens em português, opcionais e máscaras seguem
 Anatomia: cabeçalho com ícone, título e descrição; corpo rolável com seções;
 erros bloqueantes via `FormErrorDeclaration`; e rodapé fixo, fora da rolagem,
 com cancelar e ação primária. Feedback transitório pós-envio usa o Sonner
-global no topo central; `role="status"` fica reservado para estados que fazem
+global no topo central, com o CSS estático oficial incluído no bundle para
+permanecer visível sob CSP; `role="status"` fica reservado para estados que fazem
 parte do conteúdo, como carregamento ou indicador operacional persistente.
 Funcionários, clientes e fornecedores de combustível são as referências do
 padrão reutilizável.
@@ -77,5 +83,11 @@ aba ativa participa da ordem de tabulação; setas esquerda/direita, `Home` e
 sem comprimir os rótulos.
 
 O seletor de contexto (por exemplo, Diurno/Noturno) fica antes das abas de
-tarefa. Trocar contexto com rascunho deve pedir confirmação, e cada painel deve
-manter seus estados de vazio, erro e carregamento no próprio corpo do modal.
+tarefa quando o contexto precisa mudar dentro do mesmo fluxo. Em editores de
+equipe, o turno é escolhido na aba Equipe antes de abrir um modal: não repita
+esse seletor dentro dele. `Editar turno` e `Adicionar funcionários` abrem
+modais focados, cada um com apenas os controles pertinentes. Preserve conteúdo
+já carregado por turno e use transições curtas que respeitem
+`prefers-reduced-motion`, sem redimensionar o diálogo durante a troca de
+conteúdo. A seção aberta e o turno visível usam os parâmetros de URL `section`
+e `teamShift`, para que um recarregamento restaure o mesmo contexto.

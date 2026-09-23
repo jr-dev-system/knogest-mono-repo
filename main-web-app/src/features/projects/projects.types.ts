@@ -106,6 +106,8 @@ export type ProjectDetailSnapshot = {
     employment: ProjectEmployeeSummary | null;
     shift: "day" | "night";
     jobRole: string;
+    confirmedJobRoleId: string | null;
+    confirmedJobRolePeriodId: string | null;
     monthlyWorkloadHours: number;
     compensationMode: CompensationMode;
     compensationValue: string;
@@ -244,6 +246,16 @@ export type ProjectOption = {
   available?: boolean;
 };
 
+export type ProjectMachineOption = ProjectOption & {
+  manufacturer: string;
+  model: string;
+  meterType: "HOUR_METER" | "ODOMETER";
+  requiresOperator: boolean;
+  requiredJobRoleId: string | null;
+  requiredJobRoleName: string | null;
+  acceptsAnyJobRole: boolean;
+};
+
 export type SupplierOfferOption = {
   id: string;
   supplier: FuelSupplierOption;
@@ -294,7 +306,7 @@ export type ProjectSuppliedItemOffersPage = {
 export type ProjectReadinessOptions = {
   clients: ProjectOption[];
   employees: ProjectOption[];
-  machines: ProjectOption[];
+  machines: ProjectMachineOption[];
   jobRoles: ProjectOption[];
   suppliers: FuelSupplierOption[];
   suppliedItems: {

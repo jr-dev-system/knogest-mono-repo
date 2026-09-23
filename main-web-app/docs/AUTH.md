@@ -9,11 +9,15 @@ Client form -> Server Action -> generated Kubb client -> Fastify login -> persis
             <- safe result     <- server-confidential credentials
 ```
 
-- Corporation scope comes from the normalized incoming host, forwarded server-to-server as `X-Forwarded-Host`.
+- Corporation scope comes from the normalized incoming host, forwarded
+  server-to-server as `X-Forwarded-Host`. Company scope comes only from the
+  persisted Fastify Session after workspace selection.
 - The public credential input is only `{ email, password }`.
 - The Server Action converts the API credential result into host-only `HttpOnly` cookies.
 - Client Components, URLs, DOM, Web Storage, and Server Action results never contain access or refresh values.
-- `proxy.ts` checks cookie presence only for navigation. Server pages and actions inspect the persisted Fastify Session.
+- `proxy.ts` checks cookie presence only for navigation. Server pages and
+  actions inspect the persisted Fastify Session; the API rejects a missing
+  Company scope before company-scoped domain work starts.
 
 ## Cookies
 

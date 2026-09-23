@@ -68,12 +68,18 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: refreshMock }),
 }));
 
+vi.mock("@/components/layout/app-shell", () => ({
+  useAppShellNavigation: () => null,
+}));
+
 import {
   activateProjectAction,
   createProjectWorkFrontAction,
   getProjectMobilizationHistoryAction,
   getProjectTeamCandidatesAction,
+  getProjectTeamMembersAction,
   getProjectWorkFrontMobilizationOptionsAction,
+  saveProjectMachineMobilizationAction,
   saveProjectQuantityBaselineAction,
   saveProjectReadinessAction,
   saveProjectWorkFrontMobilizationAction,
@@ -246,9 +252,16 @@ const projectOptions: ProjectReadinessOptions = {
   supplierOffers: fuelOptions,
 };
 
-function projectDetailElement(project: ProjectDetailSnapshot) {
+function projectDetailElement(
+  project: ProjectDetailSnapshot,
+  initialContext: Pick<
+    React.ComponentProps<typeof ProjectDetail>,
+    "initialSection" | "initialTeamShift"
+  > = {},
+) {
   return (
     <ProjectDetail
+      {...initialContext}
       lookupSuppliedItemOfferSuppliersAction={
         lookupSuppliedItemOfferSuppliersAction
       }
@@ -261,8 +274,14 @@ function projectDetailElement(project: ProjectDetailSnapshot) {
   );
 }
 
-function renderProjectDetail(project: ProjectDetailSnapshot) {
-  return render(projectDetailElement(project));
+function renderProjectDetail(
+  project: ProjectDetailSnapshot,
+  initialContext?: Pick<
+    React.ComponentProps<typeof ProjectDetail>,
+    "initialSection" | "initialTeamShift"
+  >,
+) {
+  return render(projectDetailElement(project, initialContext));
 }
 
 const lookupSuppliedItemsAction: React.ComponentProps<
@@ -1122,6 +1141,8 @@ describe("Project active work-front mobilization", () => {
         employment: employee,
         shift: "day",
         jobRole: "Operador",
+        confirmedJobRoleId: "job-role-operator",
+        confirmedJobRolePeriodId: "job-role-period-operator",
         monthlyWorkloadHours: 220,
         compensationMode: "monthly",
         compensationValue: "5000.00",
@@ -1322,6 +1343,147 @@ describe("Project active work-front mobilization", () => {
     );
   });
 
+  it("confirms a machine mobilization save and closes the editor", async () => {
+    const saveMachines = vi.mocked(saveProjectMachineMobilizationAction);
+    saveMachines.mockResolvedValue({
+      kind: "success",
+      project: activeProject,
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(activeProject);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: /^Máquinas/u }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const modal = screen.getByRole("dialog", {
+      name: "Editar máquinas e operadores",
+    });
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar máquinas" }),
+    );
+
+    await waitFor(() => expect(saveMachines).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(toast.success).toHaveBeenCalledWith(
+        "Máquinas mobilizadas atualizadas.",
+      ),
+    );
+    expect(
+      screen.queryByRole("dialog", { name: "Editar máquinas e operadores" }),
+    ).toBeNull();
+    expect(screen.queryByText("Máquinas mobilizadas atualizadas.")).toBeNull();
+  });
+
+  it("keeps the machine editor open and reports a rejected save", async () => {
+    const saveMachines = vi.mocked(saveProjectMachineMobilizationAction);
+    saveMachines.mockRejectedValue(new Error("offline"));
+    const user = userEvent.setup();
+
+    renderProjectDetail(activeProject);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: /^Máquinas/u }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const modal = screen.getByRole("dialog", {
+      name: "Editar máquinas e operadores",
+    });
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar máquinas" }),
+    );
+
+    await waitFor(() =>
+      expect(toast.error).toHaveBeenCalledWith(
+        "Não foi possível salvar máquinas e operadores.",
+        {
+          description: "A comunicação com o servidor falhou. Tente novamente.",
+        },
+      ),
+    );
+    expect(
+      screen.getByRole("dialog", { name: "Editar máquinas e operadores" }),
+    ).toBeTruthy();
+    expect(within(modal).getByRole("alert").textContent).toContain(
+      "A comunicação com o servidor falhou. Tente novamente.",
+    );
+    await waitFor(() =>
+      expect(
+        within(modal).getByRole("button", { name: "Salvar máquinas" }),
+      ).toHaveProperty("disabled", false),
+    );
+  });
+
+  it("shows the actionable resource conflict inside the machine editor", async () => {
+    const saveMachines = vi.mocked(saveProjectMachineMobilizationAction);
+    saveMachines.mockResolvedValue({
+      kind: "recoverable-conflict",
+      code: "PROJECT_RESOURCE_CONFLICT",
+      message: "Project resources changed",
+      resources: [
+        {
+          kind: "employee",
+          id: employee.id,
+          section: "machines",
+          reason: "operator-role-mismatch",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(activeProject);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: /^Máquinas/u }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const modal = screen.getByRole("dialog", {
+      name: "Editar máquinas e operadores",
+    });
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar máquinas" }),
+    );
+
+    await waitFor(() =>
+      expect(within(modal).getByRole("alert").textContent).toContain(
+        "O operador não possui a função exigida por esta máquina.",
+      ),
+    );
+  });
+
+  it("uses the readiness action and keeps feedback visible for a planned project", async () => {
+    const saveReadiness = vi.mocked(saveProjectReadinessAction);
+    saveReadiness.mockResolvedValue({
+      kind: "recoverable-conflict",
+      code: "PROJECT_RESOURCE_CONFLICT",
+      message: "Project resources changed",
+      resources: [
+        {
+          kind: "machine",
+          id: "00000000-0000-4000-8000-000000000055",
+          section: "machines",
+          reason: "latest-reading-changed",
+        },
+      ],
+    });
+    const user = userEvent.setup();
+
+    renderProjectDetail(projectSnapshot);
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: /^Máquinas/u }));
+    await user.click(screen.getByRole("button", { name: "Editar" }));
+    const modal = screen.getByRole("dialog", {
+      name: "Editar máquinas e operadores",
+    });
+    await user.click(
+      within(modal).getByRole("button", { name: "Salvar máquinas" }),
+    );
+
+    await waitFor(() =>
+      expect(saveReadiness).toHaveBeenCalledWith(projectSnapshot.id, {
+        machineAllocations: [],
+      }),
+    );
+    expect(within(modal).getByRole("alert").textContent).toContain(
+      "A última leitura da máquina mudou.",
+    );
+  });
+
   it("loads the auditable mobilization history", async () => {
     const getHistory = vi.mocked(getProjectMobilizationHistoryAction);
     getHistory.mockResolvedValue({
@@ -1344,7 +1506,8 @@ describe("Project active work-front mobilization", () => {
     const user = userEvent.setup();
 
     renderProjectDetail(activeProject);
-    await user.click(screen.getByRole("tab", { name: /Equipe/u }));
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: "Equipe" }));
     await user.click(screen.getByRole("button", { name: "Histórico" }));
 
     const historyModal = await screen.findByRole("dialog", {
@@ -1359,17 +1522,69 @@ describe("Project active work-front mobilization", () => {
     });
   });
 
-  it("debounces team search and protects a dirty shift draft", async () => {
-    const getCandidates = vi.mocked(getProjectTeamCandidatesAction);
-    getCandidates.mockResolvedValue({
+  it("opens only the selected shift schedule from the project view", async () => {
+    const getMembers = vi.mocked(getProjectTeamMembersAction);
+    getMembers.mockImplementation(async ({ shift }) => ({
+      data:
+        shift === "day"
+          ? [
+              {
+                id: "00000000-0000-4000-8000-000000000924",
+                employmentId: employee.id,
+                name: employee.name,
+                jobRole: employee.jobRole,
+                shift: "day",
+                monthlyWorkloadHours: 220,
+                compensationMode: "monthly",
+                overtimeRate: "30.00",
+              },
+            ]
+          : [],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    }));
+    const user = userEvent.setup();
+    renderProjectDetail(activeProject);
+
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: /Equipe/u }));
+    await user.click(screen.getByRole("button", { name: "Editar turno" }));
+    const modal = await screen.findByRole("dialog", {
+      name: "Editar jornada diurna",
+    });
+    expect(within(modal).queryByRole("tab", { name: "Diurno" })).toBeNull();
+    expect(within(modal).queryByRole("tab", { name: "Noturno" })).toBeNull();
+    expect(
+      within(modal).queryByRole("tab", { name: "Funcionários" }),
+    ).toBeNull();
+    expect(within(modal).getAllByLabelText("Início").length).toBeGreaterThan(0);
+    expect(
+      within(modal).queryByRole("button", {
+        name: `Editar condições de ${employee.name}`,
+      }),
+    ).toBeNull();
+
+    await waitFor(() =>
+      expect(getMembers).toHaveBeenCalledWith({
+        projectId: activeProject.id,
+        shift: "day",
+        cursor: undefined,
+      }),
+    );
+  });
+
+  it("opens employee editing from the member row actions", async () => {
+    const getMembers = vi.mocked(getProjectTeamMembersAction);
+    getMembers.mockResolvedValue({
       data: [
         {
-          id: employee.id,
-          label: employee.name,
-          detail: employee.jobRole,
-          jobRoleId: null,
-          jobRolePeriodId: null,
-          allocatedShift: "day",
+          id: "00000000-0000-4000-8000-000000000924",
+          employmentId: employee.id,
+          name: employee.name,
+          jobRole: employee.jobRole,
+          shift: "day",
+          monthlyWorkloadHours: 220,
+          compensationMode: "monthly",
+          overtimeRate: "30.00",
         },
       ],
       pageInfo: { hasNextPage: false, nextCursor: null },
@@ -1377,17 +1592,53 @@ describe("Project active work-front mobilization", () => {
     const user = userEvent.setup();
     renderProjectDetail(activeProject);
 
-    await user.click(screen.getByRole("tab", { name: /Equipe/u }));
-    await user.click(screen.getByRole("button", { name: "Editar turno" }));
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: /Equipe/u }));
+    await user.click(
+      screen.getByRole("button", { name: `Editar ${employee.name}` }),
+    );
+
     const modal = await screen.findByRole("dialog", {
-      name: "Editar equipe operacional",
+      name: `Editar ${employee.name}`,
+    });
+    expect(within(modal).getByLabelText("Carga mensal")).toBeTruthy();
+  });
+
+  it("opens a focused mobilization modal from the active shift", async () => {
+    const getCandidates = vi.mocked(getProjectTeamCandidatesAction);
+    getCandidates.mockResolvedValue({
+      data: [],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    });
+    const user = userEvent.setup();
+    renderProjectDetail(activeProject);
+
+    await user.click(screen.getByRole("button", { name: "Configurações" }));
+    await user.click(screen.getByRole("button", { name: /Equipe/u }));
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar funcionários" }),
+    );
+
+    const modal = await screen.findByRole("dialog", {
+      name: "Mobilizar equipe diurna",
     });
     expect(
-      within(modal).getByRole("tab", { name: "Funcionários" }),
-    ).toBeTruthy();
+      within(modal).queryByRole("tab", { name: "Funcionários" }),
+    ).toBeNull();
     expect(
-      within(modal).getByRole("tab", { name: "Jornada e intervalos" }),
-    ).toBeTruthy();
+      within(modal).queryByRole("tab", { name: "Jornada e intervalos" }),
+    ).toBeNull();
+    expect(
+      within(modal).queryByText(
+        "Inclua e configure funcionários para este turno.",
+      ),
+    ).toBeNull();
+    expect(
+      within(modal).queryByText(
+        "Busque e configure quantos funcionários forem necessários para este turno.",
+      ),
+    ).toBeNull();
+    expect(within(modal).queryByText("Funcionários encontrados")).toBeNull();
 
     await user.type(
       within(modal).getByLabelText("Buscar por nome ou função"),
@@ -1398,31 +1649,108 @@ describe("Project active work-front mobilization", () => {
         expect.objectContaining({ search: "operador", shift: "day" }),
       ),
     );
-
-    await user.click(
-      within(modal).getByRole("button", {
-        name: `Editar condições de ${employee.name}`,
-      }),
-    );
-    await user.selectOptions(
-      within(modal).getByLabelText("Carga mensal"),
-      "180",
-    );
-    await user.click(
-      within(modal).getByRole("button", { name: "Confirmar funcionário" }),
-    );
-    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
-    await user.click(within(modal).getByRole("tab", { name: "Noturno" }));
-    expect(confirm).toHaveBeenCalled();
-    expect(
-      within(modal)
-        .getByRole("tab", { name: "Diurno" })
-        .getAttribute("aria-selected"),
-    ).toBe("true");
   });
 });
 
-describe("Project detail readiness tabs", () => {
+describe("Project detail navigation", () => {
+  it("restores the selected section with its sidebar group and team shift", async () => {
+    renderProjectDetail(
+      {
+        ...projectSnapshot,
+        status: "active",
+        actualStartedAt: "2026-07-20T12:00:00.000Z",
+      },
+      { initialSection: "team", initialTeamShift: "night" },
+    );
+
+    const navigation = screen.getByRole("navigation", {
+      name: "Navegação da obra",
+    });
+    expect(
+      within(navigation)
+        .getByRole("button", { name: "Configurações" })
+        .getAttribute("aria-expanded"),
+    ).toBe("true");
+    expect(
+      within(navigation)
+        .getByRole("button", { name: /Equipe/u })
+        .getAttribute("aria-current"),
+    ).toBe("page");
+    expect(
+      (await screen.findByRole("tab", { name: "Noturno (0)" })).getAttribute(
+        "aria-selected",
+      ),
+    ).toBe("true");
+  });
+
+  it("keeps common work actions visible and reveals grouped configuration", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail({
+      ...projectSnapshot,
+      status: "active",
+      actualStartedAt: "2026-07-20T12:00:00.000Z",
+    });
+
+    const navigation = screen.getByRole("navigation", {
+      name: "Navegação da obra",
+    });
+    expect(
+      within(navigation).getByRole("button", { name: "Visão geral" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Planejamento" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Calendário" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Frentes" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Produção" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Relatórios" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Configurações" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Fornecedores" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Financeiro" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).queryByRole("button", { name: "Equipe" }),
+    ).toBeNull();
+    expect(
+      within(navigation).queryByRole("button", { name: "RDO" }),
+    ).toBeNull();
+
+    await user.click(
+      within(navigation).getByRole("button", { name: "Configurações" }),
+    );
+
+    expect(
+      within(navigation).getByRole("button", { name: "Responsáveis" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Máquinas" }),
+    ).toBeTruthy();
+    expect(
+      within(navigation).getByRole("button", { name: "Equipe" }),
+    ).toBeTruthy();
+
+    await user.click(
+      within(navigation).getByRole("button", { name: "Relatórios" }),
+    );
+
+    expect(
+      within(navigation).getByRole("button", { name: "RDO" }),
+    ).toBeTruthy();
+  });
+
   it("confirms before removing the selected fuel offer", async () => {
     const projectWithFuel: ProjectDetailSnapshot = {
       ...projectSnapshot,
@@ -1437,7 +1765,8 @@ describe("Project detail readiness tabs", () => {
 
     renderProjectDetail(projectWithFuel);
 
-    await user.click(screen.getByRole("tab", { name: /Combustível/u }));
+    await user.click(screen.getByRole("button", { name: "Fornecedores" }));
+    await user.click(screen.getByRole("button", { name: /Combustível/u }));
     await user.click(screen.getByRole("button", { name: /Editar oferta/u }));
     await user.click(screen.getByRole("button", { name: /Remover oferta/u }));
 
@@ -1473,7 +1802,8 @@ describe("Project detail readiness tabs", () => {
 
     renderProjectDetail(projectWithMaterial);
 
-    await user.click(screen.getByRole("tab", { name: /Itens/u }));
+    await user.click(screen.getByRole("button", { name: "Fornecedores" }));
+    await user.click(screen.getByRole("button", { name: /Itens fornecidos/u }));
     await user.click(screen.getByRole("button", { name: /Editar/u }));
     await user.click(screen.getByRole("button", { name: /^Remover$/u }));
 
@@ -1505,6 +1835,8 @@ describe("Project detail readiness tabs", () => {
             isActive: true,
           },
           jobRole: "Operador",
+          confirmedJobRoleId: null,
+          confirmedJobRolePeriodId: null,
           shift: "day",
           monthlyWorkloadHours: 220,
           compensationMode: "daily",
@@ -1521,6 +1853,8 @@ describe("Project detail readiness tabs", () => {
             isActive: true,
           },
           jobRole: "Operador",
+          confirmedJobRoleId: null,
+          confirmedJobRolePeriodId: null,
           shift: "day",
           monthlyWorkloadHours: 220,
           compensationMode: "weekly",
@@ -1537,6 +1871,8 @@ describe("Project detail readiness tabs", () => {
             isActive: true,
           },
           jobRole: "Operador",
+          confirmedJobRoleId: null,
+          confirmedJobRolePeriodId: null,
           shift: "day",
           monthlyWorkloadHours: 180,
           compensationMode: "fortnightly",
@@ -1553,6 +1889,8 @@ describe("Project detail readiness tabs", () => {
             isActive: true,
           },
           jobRole: "Operador",
+          confirmedJobRoleId: null,
+          confirmedJobRolePeriodId: null,
           shift: "day",
           monthlyWorkloadHours: 180,
           compensationMode: "monthly",
@@ -1577,7 +1915,10 @@ describe("Project detail readiness tabs", () => {
 
     renderProjectDetail(projectWithTeam);
 
-    await user.click(screen.getByRole("tab", { name: /Pagamentos/u }));
+    await user.click(screen.getByRole("button", { name: "Financeiro" }));
+    await user.click(
+      screen.getByRole("button", { name: "Ciclos de pagamento" }),
+    );
     await user.click(screen.getByRole("button", { name: /Editar/u }));
     await user.selectOptions(screen.getByLabelText(/Diária/u), "1");
     await user.selectOptions(screen.getByLabelText(/Semanal/u), "5");

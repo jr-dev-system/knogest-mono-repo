@@ -340,6 +340,12 @@ export type ProjectReadinessMutationResult =
       kind: "recoverable-conflict";
       code: string;
       blockers?: { section: string; message: string }[];
+      resources?: {
+        kind: string;
+        id: string;
+        section: string;
+        reason: string;
+      }[];
       message: string;
       requestId?: string;
     }
@@ -534,6 +540,14 @@ export async function finalizeProjectAction(input: {
 }
 
 function parseProjectError(error: unknown): ProjectReadinessMutationResult {
+  if (error instanceof z.ZodError)
+    return {
+      kind: "recoverable-conflict",
+      code: "VALIDATION_ERROR",
+      message:
+        error.issues[0]?.message ??
+        "Os dados informados para a obra são inválidos.",
+    };
   if (!(error instanceof ApiClientError))
     return {
       kind: "terminal-failure",
@@ -567,8 +581,40 @@ function parseProjectError(error: unknown): ProjectReadinessMutationResult {
         )
         .map((item) => ({ section: item.section, message: item.message }))
     : undefined;
+  const resources = Array.isArray(details.resources)
+    ? details.resources
+        .filter(
+          (
+            item,
+          ): item is {
+            kind: string;
+            id: string;
+            section: string;
+            reason: string;
+          } =>
+            Boolean(item) &&
+            typeof item === "object" &&
+            typeof (item as Record<string, unknown>).kind === "string" &&
+            typeof (item as Record<string, unknown>).id === "string" &&
+            typeof (item as Record<string, unknown>).section === "string" &&
+            typeof (item as Record<string, unknown>).reason === "string",
+        )
+        .map((item) => ({
+          kind: item.kind,
+          id: item.id,
+          section: item.section,
+          reason: item.reason,
+        }))
+    : undefined;
   if (error.status === 400 || error.status === 409 || error.status === 422)
-    return { kind: "recoverable-conflict", code, blockers, message, requestId };
+    return {
+      kind: "recoverable-conflict",
+      code,
+      blockers,
+      resources,
+      message,
+      requestId,
+    };
   return { kind: "terminal-failure", code, message, requestId };
 }
 
@@ -577,9 +623,9 @@ export async function saveProjectReadinessAction(
   input: ProjectReadinessActionInput,
 ): Promise<ProjectReadinessMutationResult> {
   configureZodPortugueseErrors();
-  const id = z.string().uuid().parse(projectId);
-  const command = projectReadinessActionSchema.parse(input);
   try {
+    const id = z.string().uuid().parse(projectId);
+    const command = projectReadinessActionSchema.parse(input);
     const response = await client<{
       success: true;
       data: ProjectDetailSnapshot;
@@ -738,11 +784,12 @@ export async function saveProjectMachineMobilizationAction(
   projectId: string,
   allocations: NonNullable<ProjectReadinessActionInput["machineAllocations"]>,
 ): Promise<ProjectReadinessMutationResult> {
-  const id = z.string().uuid().parse(projectId);
-  const parsed = projectReadinessActionSchema.parse({
-    machineAllocations: allocations,
-  }).machineAllocations!;
+  configureZodPortugueseErrors();
   try {
+    const id = z.string().uuid().parse(projectId);
+    const parsed = projectReadinessActionSchema.parse({
+      machineAllocations: allocations,
+    }).machineAllocations!;
     const response = await client<{
       success: true;
       data: ProjectDetailSnapshot;

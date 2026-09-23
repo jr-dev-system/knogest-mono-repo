@@ -1,6 +1,12 @@
 "use client";
 
-import { useRef, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useRef,
+  useState,
+  type ReactNode,
+} from "react";
 import Link from "next/link";
 import {
   Building2,
@@ -9,6 +15,8 @@ import {
   Gauge,
   LayoutDashboard,
   Map,
+  PanelLeftClose,
+  PanelLeftOpen,
   Settings,
   ShieldCheck,
   SunMedium,
@@ -29,6 +37,19 @@ export type AppArea =
   | "works"
   | "suppliers"
   | "settings";
+
+type AppShellNavigation = {
+  mainNavigationExpanded: boolean;
+  setMainNavigationExpanded: (expanded: boolean) => void;
+};
+
+const AppShellNavigationContext = createContext<AppShellNavigation | null>(
+  null,
+);
+
+export function useAppShellNavigation() {
+  return useContext(AppShellNavigationContext);
+}
 
 const areaMeta: Record<
   AppArea,
@@ -106,122 +127,94 @@ const navItems = [
 export function AppShell({
   children,
   companies,
+  navigationMode = "default",
   userId,
   selectedCompany,
   currentArea = "dashboard",
 }: {
   children: ReactNode;
   companies: CompanyOption[];
+  navigationMode?: "default" | "project";
   userId: string;
   selectedCompany: CompanyOption;
   currentArea?: AppArea;
 }) {
   const meta = areaMeta[currentArea];
+  const isProjectNavigation = navigationMode === "project";
+  const [mainNavigationExpanded, setMainNavigationExpanded] = useState(
+    !isProjectNavigation,
+  );
+  const mainSidebarExpanded =
+    !isProjectNavigation || mainNavigationExpanded;
 
   return (
-    <div className="min-h-screen bg-background text-foreground">
-      <aside className="fixed inset-y-0 left-0 hidden w-72 border-r border-sidebar-border bg-sidebar px-4 py-5 md:flex md:flex-col">
-        <Link href="/home" className="flex items-center gap-3 px-2">
-          <span className="flex size-10 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
-            KG
-          </span>
-          <span>
-            <span className="block text-sm font-bold">KnoGest</span>
-            <span className="block text-xs font-medium text-muted-foreground">
-              Operação de campo
-            </span>
-          </span>
-        </Link>
-
-        <CompanySelector
-          companies={companies}
-          selectedCompany={selectedCompany}
-          className="mt-6"
-        />
-
-        <nav className="mt-6 space-y-1" aria-label="Navegação principal">
-          {navItems.map((item) => {
-            const Icon = item.icon;
-            const isActive = item.area === currentArea;
-
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "flex h-11 items-center gap-2 rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
-                  isActive
-                    ? "bg-primary text-primary-foreground"
-                    : "text-sidebar-foreground hover:bg-accent hover:text-accent-foreground",
-                )}
-                aria-current={isActive ? "page" : undefined}
-              >
-                <Icon className="size-4" />
-                {item.label}
-              </Link>
-            );
-          })}
-        </nav>
-
-        <div className="mt-6 rounded-lg border border-border bg-card px-3 py-3 text-sm">
-          <div className="flex items-center gap-2 font-semibold">
-            <SunMedium className="size-4 text-primary" />
-            Escopo confiável
-          </div>
-          <p className="mt-2 text-xs leading-5 text-muted-foreground">
-            As rotas operacionais usam somente a Company persistida na sessão.
-          </p>
-        </div>
-
-        <div className="mt-auto rounded-lg border border-sidebar-border bg-accent px-3 py-3 text-xs text-accent-foreground">
-          <div className="flex items-center gap-2 font-semibold">
-            <ShieldCheck className="size-4" />
-            Sessão corporativa
-          </div>
-          <p className="mt-2 break-all text-primary">{userId}</p>
-        </div>
-      </aside>
-
-      <div className="md:pl-72">
-        <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
-          <div className="flex min-h-16 items-center justify-between gap-4 px-4 py-3 md:px-6 lg:px-8">
-            <div className="min-w-0">
-              {meta.label && (
-                <p className="text-xs font-semibold text-muted-foreground">
-                  {meta.label}
-                </p>
+    <AppShellNavigationContext.Provider
+      value={{ mainNavigationExpanded, setMainNavigationExpanded }}
+    >
+      <div className="min-h-screen bg-background text-foreground">
+        <aside
+          className={cn(
+            "fixed inset-y-0 left-0 z-30 hidden border-r border-sidebar-border bg-sidebar py-5 transition-[width,padding] duration-200 ease-out motion-reduce:transition-none md:flex md:flex-col",
+            mainSidebarExpanded ? "w-64 px-4" : "w-14 px-2",
+          )}
+        >
+          <div
+            className={cn(
+              "flex items-center",
+              mainSidebarExpanded ? "justify-between gap-2 px-2" : "justify-center",
+            )}
+          >
+            <Link
+              href="/home"
+              className={cn(
+                "flex min-w-0 items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                mainSidebarExpanded ? "px-0" : "justify-center",
               )}
-              <h1 className="truncate text-lg font-bold leading-tight">
-                {currentArea === "dashboard"
-                  ? selectedCompany.name
-                  : meta.title}
-              </h1>
-              {meta.subtitle && (
-                <p className="mt-0.5 hidden text-sm text-muted-foreground sm:block">
-                  {meta.subtitle}
-                </p>
-              )}
-            </div>
-
-            <div className="flex items-center gap-2">
-              <span className="hidden items-center gap-2 rounded-md border border-border bg-card px-3 py-2 text-xs font-semibold text-muted-foreground lg:inline-flex">
-                <Gauge className="size-3.5 text-primary" />
-                Sessão protegida
+              aria-label="Ir para visão geral"
+              title={mainSidebarExpanded ? undefined : "KnoGest"}
+            >
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-sm font-bold text-primary-foreground">
+                KG
               </span>
-              <SignOutButton />
-            </div>
+              {mainSidebarExpanded && (
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold">KnoGest</span>
+                  <span className="block text-xs font-medium text-muted-foreground">
+                    Operação de campo
+                  </span>
+                </span>
+              )}
+            </Link>
+            {isProjectNavigation && mainSidebarExpanded && (
+              <button
+                type="button"
+                className="inline-flex size-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+                aria-label="Recolher navegação principal"
+                title="Recolher navegação principal"
+                onClick={() => setMainNavigationExpanded(false)}
+              >
+                <PanelLeftClose className="size-4" />
+              </button>
+            )}
           </div>
 
-          <div className="border-t border-border px-3 py-2 md:hidden">
-            <CompanySelector
-              companies={companies}
-              selectedCompany={selectedCompany}
-              compact
-            />
-          </div>
+          {isProjectNavigation && !mainSidebarExpanded && (
+            <button
+              type="button"
+              className="mt-5 inline-flex size-10 self-center items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+              aria-label="Expandir navegação principal"
+              title="Expandir navegação principal"
+              onClick={() => setMainNavigationExpanded(true)}
+            >
+              <PanelLeftOpen className="size-4" />
+            </button>
+          )}
 
           <nav
-            className="grid grid-cols-3 gap-2 border-t border-border px-3 py-2 sm:grid-cols-6 md:hidden"
+            className={cn(
+              "space-y-1",
+              mainSidebarExpanded || !isProjectNavigation ? "mt-6" : "mt-4",
+            )}
             aria-label="Navegação principal"
           >
             {navItems.map((item) => {
@@ -233,26 +226,128 @@ export function AppShell({
                   key={item.href}
                   href={item.href}
                   className={cn(
-                    "flex min-h-11 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                    "flex h-11 items-center rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                    mainSidebarExpanded || !isProjectNavigation
+                      ? "gap-2 px-3"
+                      : "justify-center px-0",
                     isActive
                       ? "bg-primary text-primary-foreground"
-                      : "bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                      : "text-sidebar-foreground hover:bg-accent hover:text-accent-foreground",
                   )}
                   aria-current={isActive ? "page" : undefined}
+                  aria-label={
+                    mainSidebarExpanded || !isProjectNavigation
+                      ? undefined
+                      : item.label
+                  }
+                  title={
+                    mainSidebarExpanded || !isProjectNavigation
+                      ? undefined
+                      : item.label
+                  }
                 >
-                  <Icon className="size-4" />
-                  <span className="truncate">{item.label}</span>
+                  <Icon className="size-4 shrink-0" />
+                  {(mainSidebarExpanded || !isProjectNavigation) && item.label}
                 </Link>
               );
             })}
           </nav>
-        </header>
 
-        <main className="px-3 py-4 sm:px-5 md:px-6 lg:px-8">
-          <div className="mx-auto w-full max-w-[1500px]">{children}</div>
-        </main>
+          {!isProjectNavigation && (
+            <>
+              <div className="mt-6 rounded-lg border border-border bg-card px-3 py-3 text-sm">
+                <div className="flex items-center gap-2 font-semibold">
+                  <SunMedium className="size-4 text-primary" />
+                  Escopo confiável
+                </div>
+                <p className="mt-2 text-xs leading-5 text-muted-foreground">
+                  As rotas operacionais usam somente a Company persistida na
+                  sessão.
+                </p>
+              </div>
+
+              <div className="mt-auto rounded-lg border border-sidebar-border bg-accent px-3 py-3 text-xs text-accent-foreground">
+                <div className="flex items-center gap-2 font-semibold">
+                  <ShieldCheck className="size-4" />
+                  Sessão corporativa
+                </div>
+                <p className="mt-2 break-all text-primary">{userId}</p>
+              </div>
+            </>
+          )}
+        </aside>
+
+        <div
+          className={cn(
+            "transition-[padding] duration-200 ease-out motion-reduce:transition-none",
+            mainSidebarExpanded ? "md:pl-64" : "md:pl-14",
+          )}
+        >
+          <header className="sticky top-0 z-20 border-b border-border bg-background/95 backdrop-blur">
+            <div className="flex min-h-16 items-center justify-between gap-4 px-4 py-3 md:px-6 lg:px-8">
+              <div className="min-w-0">
+                {meta.label && (
+                  <p className="text-xs font-semibold text-muted-foreground">
+                    {meta.label}
+                  </p>
+                )}
+                <h1 className="truncate text-lg font-bold leading-tight">
+                  {currentArea === "dashboard"
+                    ? selectedCompany.name
+                    : meta.title}
+                </h1>
+                {meta.subtitle && (
+                  <p className="mt-0.5 hidden text-sm text-muted-foreground sm:block">
+                    {meta.subtitle}
+                  </p>
+                )}
+              </div>
+
+              <div className="flex min-w-0 items-center gap-2">
+                <CompanySelector
+                  companies={companies}
+                  selectedCompany={selectedCompany}
+                  compact
+                  className="w-[min(16rem,48vw)]"
+                />
+                <SignOutButton />
+              </div>
+            </div>
+
+            <nav
+              className="grid grid-cols-3 gap-2 border-t border-border px-3 py-2 sm:grid-cols-6 md:hidden"
+              aria-label="Navegação principal"
+            >
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = item.area === currentArea;
+
+                return (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className={cn(
+                      "flex min-h-11 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-semibold transition-colors focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
+                      isActive
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-card text-muted-foreground hover:bg-accent hover:text-accent-foreground",
+                    )}
+                    aria-current={isActive ? "page" : undefined}
+                  >
+                    <Icon className="size-4" />
+                    <span className="truncate">{item.label}</span>
+                  </Link>
+                );
+              })}
+            </nav>
+          </header>
+
+          <main className="px-3 py-4 sm:px-5 md:px-6 lg:px-8">
+            <div className="mx-auto w-full max-w-[1500px]">{children}</div>
+          </main>
+        </div>
       </div>
-    </div>
+    </AppShellNavigationContext.Provider>
   );
 }
 

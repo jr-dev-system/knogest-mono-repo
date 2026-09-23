@@ -1,0 +1,62 @@
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/preflight.css" layer(base);
+@import "tailwindcss/utilities.css";
+
+@import "nativewind/theme";
+
+/* The mobile app uses the same Tailwind scale as the web dashboard. */
+:root {
+  font-size: 16px;
+}
+
+@theme {
+  --color-background: oklch(0.985 0.006 250);
+  --color-foreground: oklch(0.18 0.026 260);
+  --color-card: oklch(0.998 0.002 250);
+  --color-card-foreground: oklch(0.18 0.026 260);
+  --color-popover: oklch(0.998 0.002 250);
+  --color-popover-foreground: oklch(0.18 0.026 260);
+  --color-primary: oklch(0.38 0.09 255);
+  --color-primary-foreground: oklch(0.985 0.006 250);
+  --color-secondary: oklch(0.942 0.016 250);
+  --color-secondary-foreground: oklch(0.22 0.034 260);
+  --color-muted: oklch(0.952 0.012 250);
+  --color-muted-foreground: oklch(0.38 0.034 260);
+  --color-accent: oklch(0.916 0.046 250);
+  --color-accent-foreground: oklch(0.22 0.04 260);
+  --color-destructive: oklch(0.55 0.19 28);
+  --color-border: oklch(0.875 0.018 250);
+  --color-input: oklch(0.82 0.024 250);
+  --color-ring: oklch(0.54 0.09 255);
+  --color-chart-1: oklch(0.58 0.12 255);
+  --color-chart-2: oklch(0.72 0.128 82);
+  --color-chart-3: oklch(0.57 0.13 145);
+  --color-chart-4: oklch(0.62 0.15 35);
+  --color-chart-5: oklch(0.64 0.12 230);
+  --color-sidebar: oklch(0.962 0.014 250);
+  --color-sidebar-foreground: oklch(0.18 0.026 260);
+  --color-sidebar-primary: oklch(0.38 0.09 255);
+  --color-sidebar-primary-foreground: oklch(0.985 0.006 250);
+  --color-sidebar-accent: oklch(0.916 0.046 250);
+  --color-sidebar-accent-foreground: oklch(0.22 0.04 260);
+  --color-sidebar-border: oklch(0.855 0.022 250);
+  --color-sidebar-ring: oklch(0.54 0.09 255);
+
+  --font-sans: "Inter-Regular";
+  --font-sans-medium: "Inter-Medium";
+  --font-sans-semibold: "Inter-SemiBold";
+  --font-sans-bold: "Inter-Bold";
+  --font-heading: "Inter-SemiBold";
+  --font-geist-sans: "Geist-Regular";
+  --font-geist-medium: "Geist-Medium";
+  --font-mono: "GeistMono-Regular";
+
+  --radius: 0.625rem;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+  --radius-2xl: calc(var(--radius) * 1.8);
+  --radius-3xl: calc(var(--radius) * 2.2);
+  --radius-4xl: calc(var(--radius) * 2.6);
+}

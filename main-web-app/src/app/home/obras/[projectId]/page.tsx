@@ -17,12 +17,17 @@ import { getProjectProductions } from "@/features/projects/productions.server";
 
 export default async function Page({
   params,
+  searchParams,
 }: {
   params: Promise<{ projectId: string }>;
+  searchParams: Promise<{ section?: string; teamShift?: string }>;
 }) {
   const { companies, selectedCompany, session } =
     await requireCompanyWorkspace();
-  const { projectId } = await params;
+  const [{ projectId }, { section, teamShift }] = await Promise.all([
+    params,
+    searchParams,
+  ]);
   let project;
   let options;
   let dailyReports;
@@ -43,9 +48,12 @@ export default async function Page({
       selectedCompany={selectedCompany}
       userId={session.user.id}
       currentArea="works"
+      navigationMode="project"
     >
       <ProjectDetail
         initialDailyReports={dailyReports}
+        initialSection={section}
+        initialTeamShift={teamShift === "night" ? "night" : "day"}
         initialProductions={productions}
         lookupSuppliedItemOfferSuppliersAction={
           lookupProjectSuppliedItemOfferSuppliersAction

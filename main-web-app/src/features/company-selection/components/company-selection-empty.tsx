@@ -12,11 +12,6 @@ export function CompanySelectionEmpty() {
         <h1 className="mt-5 text-2xl font-bold tracking-tight">
           Nenhuma empresa ativa disponível
         </h1>
-        <p className="mt-3 max-w-prose text-sm leading-6 text-muted-foreground">
-          Sua sessão corporativa está válida, mas esta Corporation ainda não tem
-          uma Company ativa para operar. Você pode sair com segurança ou pedir
-          que uma empresa seja provisionada pelo comando administrativo.
-        </p>
         <div className="mt-6">
           <SignOutButton />
         </div>

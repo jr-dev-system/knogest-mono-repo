@@ -17,6 +17,8 @@ regras com o `AGENTS.md` mais próximo do arquivo em edição.
 
 ## Fontes canônicas
 
+- Visão do sistema e navegação documental: `docs/index.md` e
+  `docs/architecture.md`.
 - Transporte server-only e Server Actions: `main-web-app/docs/API_CLIENTS.md`.
 - Erros HTTP e observabilidade: `main-api/docs/ERRORS.md`.
 - Regras funcionais compartilhadas: documentos de domínio em `docs/`.
@@ -26,5 +28,11 @@ regras com o `AGENTS.md` mais próximo do arquivo em edição.
 - Regras específicas de cada aplicação: `main-api/AGENTS.md` e
   `main-web-app/AGENTS.md`.
 
-Ao alterar uma rota pública, regenere e valide o OpenAPI e os clientes gerados
-antes de concluir.
+Ao alterar uma rota pública, atualize o schema Fastify, regenere e valide o
+OpenAPI e regenere/valide os clientes Kubb antes de concluir. O documento
+OpenAPI é o catálogo de operações; não mantenha uma segunda lista manual de
+rotas em README ou documentos de domínio.
+
+O app Expo em `app/` está fora do escopo atual de manutenção documental. Não
+o use como fonte de comportamento entregue para Web ou API sem uma solicitação
+explícita.

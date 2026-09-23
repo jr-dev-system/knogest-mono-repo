@@ -10,12 +10,26 @@ Cada frente declara de quais classes de recurso precisa para começar: **equipe*
 
 A soma dos quantitativos das frentes não canceladas não pode ultrapassar o total da linha de base atual. O formulário avisa e bloqueia o envio assim que identifica um valor acima do saldo. A API repete a validação em transação serializável, evitando que cadastros simultâneos consumam o mesmo saldo. Um valor exatamente igual ao saldo é permitido; ao cancelar uma frente, sua parcela volta a ficar disponível.
 
-O inverso também é protegido: uma revisão da linha de base não pode remover um serviço já distribuído nem reduzir seu total para menos do que a soma das frentes não canceladas. Datas planejadas e quantitativos são consultados na tab de planejamento e editados em modais independentes, com salvamentos separados.
+O inverso também é protegido: uma revisão da linha de base não pode remover um serviço já distribuído nem reduzir seu total para menos do que a soma das frentes não canceladas. Datas planejadas e quantitativos são consultados no item Planejamento da navegação da obra e editados em modais independentes, com salvamentos separados.
 
-A tab **Planejamento** também permanece disponível na obra ativa. Nessa fase,
+O item **Planejamento** também permanece disponível na obra ativa. Nessa fase,
 o quantitativo geral pode ser revisto respeitando o total distribuído, e uma
 operação exclusiva permite substituir os serviços de uma frente ativa sem
 alterar nome, localização, datas, notas ou requisitos de mobilização.
+
+No detalhe da obra, a navegação passa a ocupar uma sidebar contextual, fixa no
+desktop. A navegação global inicia compacta, com atalhos por ícone, e o seletor
+de empresa permanece no cabeçalho fixo. Expandir uma sidebar recolhe a outra,
+mantendo espaço útil para o conteúdo e preservando os atalhos de navegação.
+
+**Planejamento**, Calendário, Frentes, Visão geral e Produção são itens diretos
+da obra. O Calendário é um placeholder para a agenda operacional futura. Os
+demais recursos ficam agrupados: **Relatórios** abre RDO e reserva espaço para
+novos relatórios; **Configurações** abre Responsáveis, Máquinas e Equipe;
+**Fornecedores** abre Combustível e Itens fornecidos; e **Financeiro** abre
+Orçamento e Ciclos de pagamento. Os Ciclos de pagamento concentram os prazos
+antes exibidos junto da equipe. Essa organização não altera as permissões de
+edição de cada recurso após o início da obra.
 
 Ao editar a distribuição de uma frente, cada serviço possui limites inclusivos:
 
@@ -53,7 +67,7 @@ Troca de solo não é um único volume: a remoção do material impróprio e o a
 7. Inicie a frente em uma ação separada, somente quando o projeto estiver ativo e a mobilização mínima da frente estiver atendida.
 8. O RDO manual é consolidado por obra e turno, conforme `project-daily-reports.md`; a produção é vinculada explicitamente à frente e ao serviço, enquanto o RDO continua sem frente própria.
 
-Ao acionar **Iniciar obra**, a interface abre um alert modal de confirmação e não chama a API até o usuário escolher **Sim, iniciar obra**. Escolher **Não, cancelar** ou fechar o alert encerra o modal e mantém a obra planejada, sem disparar a ativação. Depois da confirmação, a interface bloqueia novos cliques e informa que a ativação está em andamento. O sucesso aplica imediatamente o snapshot ativo devolvido pela API e libera as tabs operacionais; a atualização da rota apenas reconcilia esse estado. Conflitos de prontidão e falhas de comunicação mantêm o projeto planejado, apresentam um toast acionável e permitem nova tentativa. A API continua sendo a autoridade final da prontidão.
+Ao acionar **Iniciar obra**, a interface abre um alert modal de confirmação e não chama a API até o usuário escolher **Sim, iniciar obra**. Escolher **Não, cancelar** ou fechar o alert encerra o modal e mantém a obra planejada, sem disparar a ativação. Depois da confirmação, a interface bloqueia novos cliques e informa que a ativação está em andamento. O sucesso aplica imediatamente o snapshot ativo devolvido pela API e libera os itens operacionais da navegação; a atualização da rota apenas reconcilia esse estado. Conflitos de prontidão e falhas de comunicação mantêm o projeto planejado, apresentam um toast acionável e permitem nova tentativa. A API continua sendo a autoridade final da prontidão.
 
 ## Mobilização de recursos
 
@@ -61,6 +75,11 @@ A mobilização ocorre em duas camadas:
 
 - **obra**: define o pool atual de pessoas e máquinas disponíveis no projeto;
 - **frente**: destina recursos desse pool para uma área operacional específica.
+
+No wizard de criação, a mobilização inicial apenas forma o pool da obra; ela
+não inicia projeto nem frente e não cria uma destinação de frente. Cada unidade
+retornada nas opções informa se exige operador e, quando aplicável, a função
+compatível para cada turno.
 
 Pessoas e máquinas só podem estar em uma frente por vez dentro da obra. Um recurso ocupado aparece indisponível e deve ser liberado da frente atual antes de outra destinação; não existe transferência automática.
 

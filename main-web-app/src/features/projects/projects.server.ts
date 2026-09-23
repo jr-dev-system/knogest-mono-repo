@@ -122,6 +122,14 @@ export async function getProjectWizardOptions() {
         label: item.name,
         detail: `${item.latestMeterReading!.value}`,
         readingId: item.latestMeterReading!.id,
+        manufacturer: item.manufacturer,
+        model: item.model,
+        meterType: item.meterType,
+        requiresOperator: item.machineModel.requiresOperator,
+        requiredJobRoleId: item.machineModel.requiredJobRole?.id,
+        requiredJobRoleName: item.machineModel.requiredJobRole?.name,
+        acceptsAnyJobRole:
+          item.machineModel.requiredJobRole?.name === "Qualquer um",
       })),
     jobRoles: (jobRoles.data ?? [])
       .filter((item) => item.isActive)

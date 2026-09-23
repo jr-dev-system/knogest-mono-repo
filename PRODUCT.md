@@ -1,14 +1,22 @@
 # Product
 
-## Register
+## Documentation status
 
-product
+This document describes the product direction for the current web and API
+delivery. It is not a statement that every planned role, workflow, or client
+application is already implemented. The operational source of truth is the
+documentation map in `docs/index.md`; the public API source of truth is
+`main-api/artifacts/openapi.json`.
 
 ## Users
 
 KnoGest is for companies that manage earthmoving construction projects and need a web application for operational control, project visibility, and administrative setup.
 
-Primary users are company admins and project managers. Admins sign in, choose a company or workspace, and manage employees, projects, suppliers, machines, and equipment. Project managers use project dashboards to monitor progress, production, equipment allocation, labor, suppliers, and project status.
+The delivered web/API slice authenticates the `MASTER_ADMIN` role. It supports
+company/workspace selection and administration of employees, projects,
+suppliers, machines, catalog data, RDOs, and earthwork production. Project
+manager and operational roles remain product direction, not current runtime
+authorization.
 
 The first product focus is the web application. Users may still access parts of it from tablets or phones in field conditions, so the interface needs strong legibility, clear hierarchy, and controls that remain usable under bright outdoor light.
 
@@ -16,9 +24,14 @@ The first product focus is the web application. Users may still access parts of 
 
 KnoGest is a multi-tenant SaaS for managing earthmoving operations. It gives each corporation a controlled environment where users belong to one corporation, can work across one or more companies inside that corporation, and can access the projects they are responsible for.
 
-The initial product should support login with company/workspace selection, a company admin panel for managing employees, projects, suppliers, machines, and equipment, and a project dashboard that summarizes the operational state of an obra.
+The current product supports login with company/workspace selection, a company
+admin panel, and project operations. Before a project starts, its approved
+quantities must be explicit and at least one valid work front must exist.
+Activating the project never starts a work front automatically.
 
-Success means users can understand the state of a project quickly, keep core operational records organized, and make decisions without fighting generic ERP complexity. Before a project starts, its approved quantities must be explicit and at least one valid work front must exist. Activating the project never starts a work front automatically.
+Success means users can understand the state of a project quickly, keep core
+operational records organized, and make decisions without fighting generic ERP
+complexity.
 
 ## Brand Personality
 

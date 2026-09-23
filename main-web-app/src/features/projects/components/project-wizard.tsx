@@ -29,6 +29,10 @@ import {
   formatBrazilianDecimalInput,
   formatCep,
 } from "@/lib/brazilian-input-mask";
+import {
+  formatMeterReading,
+  type MeterType,
+} from "@/features/machines/meter-format";
 import { cn } from "@/lib/utils";
 import {
   finalizeProjectAction,
@@ -52,6 +56,22 @@ type Option = {
   temporary?: boolean;
 };
 
+type MachineOption = Option & {
+  manufacturer: string;
+  model: string;
+  meterType: MeterType;
+  requiresOperator: boolean;
+  requiredJobRoleId?: string;
+  requiredJobRoleName?: string;
+  acceptsAnyJobRole: boolean;
+};
+
+function machineReadingDetail(option: MachineOption) {
+  return option.detail
+    ? formatMeterReading(option.detail, option.meterType)
+    : "Não informada";
+}
+
 type AddressAutofillState =
   | { status: "locked"; filled: Set<string> }
   | { status: "manual"; filled: Set<string> }
@@ -60,7 +80,7 @@ type AddressAutofillState =
 export type ProjectWizardOptions = {
   clients: Option[];
   employees: Option[];
-  machines: Option[];
+  machines: MachineOption[];
   jobRoles: Option[];
 };
 
@@ -663,22 +683,26 @@ export function Schedule({
     );
   };
   return (
-    <div className="grid gap-4">
-      <h3 className="text-base font-bold">Jornada semanal</h3>
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <p className="text-sm font-semibold text-muted-foreground">
-          O turno diurno é obrigatório. O noturno é opcional e independente.
-        </p>
-        {!fixedShift && enabledShifts.includes("night") ? (
-          <Button type="button" variant="outline" onClick={removeNightShift}>
-            Remover turno noturno
-          </Button>
-        ) : !fixedShift ? (
-          <Button type="button" variant="outline" onClick={addNightShift}>
-            <Plus className="size-4" /> Adicionar turno noturno
-          </Button>
-        ) : null}
-      </div>
+    <div className="grid gap-6">
+      {!fixedShift && (
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h3 className="text-base font-bold">Jornada semanal</h3>
+            <p className="mt-1 text-sm font-medium text-muted-foreground">
+              O turno diurno é obrigatório. O noturno é opcional e independente.
+            </p>
+          </div>
+          {enabledShifts.includes("night") ? (
+            <Button type="button" variant="outline" onClick={removeNightShift}>
+              Remover turno noturno
+            </Button>
+          ) : (
+            <Button type="button" variant="outline" onClick={addNightShift}>
+              <Plus className="size-4" /> Adicionar turno noturno
+            </Button>
+          )}
+        </div>
+      )}
       {enabledShifts.map((shift) => {
         const shiftDays = days
           .map((day, index) => ({ day, index }))
@@ -688,11 +712,15 @@ export function Schedule({
           .filter((entry) => entry.item.shift === shift);
         const label = shift === "day" ? "Diurno" : "Noturno";
         return (
-          <div key={shift} className="grid gap-4 rounded-lg border p-4">
-            <FormSection
-              title={`Turno ${label}`}
-              description="Defina dias e horários próprios para este turno."
-            >
+          <section
+            key={shift}
+            aria-label={`Jornada ${label}`}
+            className="grid gap-6"
+          >
+            {!fixedShift && (
+              <h4 className="text-base font-bold">Turno {label}</h4>
+            )}
+            <div className="grid gap-3">
               <div className="divide-y divide-border rounded-md border bg-background">
                 {shiftDays.map(({ day, index }) => (
                   <div
@@ -765,15 +793,13 @@ export function Schedule({
                   </div>
                 ))}
               </div>
-            </FormSection>
-            <FormSection
-              title={`Intervalos — ${label}`}
-              description="Pausas configuradas exclusivamente para este turno."
+            </div>
+            <section
+              aria-label={`Intervalos ${label}`}
+              className="grid gap-3 border-t border-border pt-5"
             >
               <div className="flex items-center justify-between gap-3">
-                <p className="text-sm font-semibold text-muted-foreground">
-                  {shiftBreaks.length} intervalo(s)
-                </p>
+                <h4 className="text-base font-bold">Intervalos</h4>
                 <Button
                   type="button"
                   variant="outline"
@@ -830,8 +856,8 @@ export function Schedule({
                   </Button>
                 </div>
               ))}
-            </FormSection>
-          </div>
+            </section>
+          </section>
         );
       })}
     </div>
@@ -839,19 +865,32 @@ export function Schedule({
 }
 
 export function EmployeeMobilization({
+  bare = false,
   fixedShift,
   form,
+  initialEmploymentId,
   onDraftStateChange,
   options,
   sessionKey,
+  showConfirmedCount = true,
+  title = "Mobilização inicial da equipe",
+  description = "Opcional. Configure e confirme as condições de cada funcionário antes de mobilizá-lo.",
 }: {
+  bare?: boolean;
   fixedShift?: "day" | "night";
   form: UseFormReturn<ProjectCommand>;
+  initialEmploymentId?: string;
   onDraftStateChange?: (hasDraft: boolean) => void;
   options: ProjectWizardOptions;
   sessionKey: string;
+  showConfirmedCount?: boolean;
+  title?: string | null;
+  description?: string | null;
 }) {
   const allocations = form.watch("initialEmployeeAllocations");
+  const visibleAllocations = fixedShift
+    ? allocations.filter((allocation) => allocation.shift === fixedShift)
+    : allocations;
   const weeklySchedule = form.watch("weeklySchedule");
   const [activeEmploymentId, setActiveEmploymentId] = React.useState<
     string | null
@@ -870,6 +909,7 @@ export function EmployeeMobilization({
   const [newJobRoleName, setNewJobRoleName] = React.useState("");
   const [isAddingJobRole, setIsAddingJobRole] = React.useState(false);
   const [jobRoleMessage, setJobRoleMessage] = React.useState("");
+  const openedInitialEmploymentId = React.useRef<string | null>(null);
 
   React.useEffect(() => {
     /* eslint-disable react-hooks/set-state-in-effect -- Resets transient modal state when the wizard session changes. */
@@ -879,6 +919,7 @@ export function EmployeeMobilization({
     setNewJobRoleName("");
     setIsAddingJobRole(false);
     setJobRoleMessage("");
+    openedInitialEmploymentId.current = null;
     onDraftStateChange?.(false);
     /* eslint-enable react-hooks/set-state-in-effect */
   }, [onDraftStateChange, options.jobRoles, sessionKey]);
@@ -967,6 +1008,19 @@ export function EmployeeMobilization({
     });
     onDraftStateChange?.(true);
   };
+  React.useEffect(() => {
+    if (
+      !initialEmploymentId ||
+      openedInitialEmploymentId.current === initialEmploymentId
+    )
+      return;
+    const option = options.employees.find(
+      (employee) => employee.id === initialEmploymentId,
+    );
+    if (!option) return;
+    openedInitialEmploymentId.current = initialEmploymentId;
+    beginEditing(option);
+  }, [beginEditing, initialEmploymentId, options.employees]);
   const cancelEditing = () => {
     setActiveEmploymentId(null);
     setDraft(null);
@@ -1067,11 +1121,12 @@ export function EmployeeMobilization({
 
   return (
     <FormSection
-      title="Mobilização inicial da equipe"
-      description="Opcional. Configure e confirme as condições de cada funcionário antes de mobilizá-lo."
+      className={bare ? "rounded-none border-0 bg-transparent p-0" : undefined}
+      title={title}
+      description={description}
     >
       {activeOption && draft ? (
-        <div className="grid gap-5 rounded-lg border border-primary/35 bg-primary/[0.035] p-4 sm:p-5">
+        <div className="grid gap-5 rounded-lg border border-primary/35 bg-primary/[0.035] p-4 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-2 motion-safe:duration-200 motion-safe:ease-out sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
             <div className="min-w-0">
               <p className="text-base font-bold">{activeOption.label}</p>
@@ -1343,10 +1398,12 @@ export function EmployeeMobilization({
           </div>
         </div>
       ) : (
-        <>
-          <p className="text-sm font-semibold text-muted-foreground">
-            {allocations.length} funcionário(s) confirmado(s)
-          </p>
+        <div className="grid gap-3 motion-safe:animate-in motion-safe:fade-in-0 motion-safe:duration-150 motion-safe:ease-out">
+          {showConfirmedCount && (
+            <p className="text-sm font-semibold text-muted-foreground">
+              {visibleAllocations.length} funcionário(s) confirmado(s)
+            </p>
+          )}
           <div className="grid gap-2">
             {options.employees.length > 0 ? (
               options.employees.map((option) => {
@@ -1358,7 +1415,10 @@ export function EmployeeMobilization({
                       (item) => item.id === allocation.confirmedJobRoleId,
                     )
                   : undefined;
-                if (!allocation)
+                if (
+                  !allocation ||
+                  (fixedShift && allocation.shift !== fixedShift)
+                )
                   return (
                     <SelectionRow
                       key={option.id}
@@ -1367,6 +1427,9 @@ export function EmployeeMobilization({
                     >
                       {option.label}
                       {option.detail ? ` — ${option.detail}` : ""}
+                      {allocation
+                        ? ` — no turno ${allocation.shift === "day" ? "Diurno" : "Noturno"}`
+                        : ""}
                     </SelectionRow>
                   );
                 return (
@@ -1436,7 +1499,7 @@ export function EmployeeMobilization({
               </p>
             )}
           </div>
-        </>
+        </div>
       )}
     </FormSection>
   );
@@ -1494,12 +1557,28 @@ export function MachineMobilization({
   const enabledShifts = (["day", "night"] as const).filter((shift) =>
     weeklySchedule.some((day) => day.shift === shift),
   );
-  const teamShiftById = React.useMemo(
+  const teamMemberById = React.useMemo(
     () =>
       new Map(
-        employeeAllocations.map((item) => [item.employmentId, item.shift]),
+        employeeAllocations.map((item) => [
+          item.employmentId,
+          {
+            shift: item.shift,
+            confirmedJobRoleId: item.confirmedJobRoleId ?? null,
+          },
+        ]),
       ),
     [employeeAllocations],
+  );
+  const machineRequiresOperatorById = React.useMemo(
+    () =>
+      new Map(
+        options.machines.map((machine) => [
+          machine.id,
+          machine.requiresOperator,
+        ]),
+      ),
+    [options.machines],
   );
   const usedOperatorIds = React.useMemo(
     () =>
@@ -1521,8 +1600,10 @@ export function MachineMobilization({
       ...allocation,
       operatorAssignments: allocation.operatorAssignments.filter(
         (assignment) =>
-          teamShiftById.get(assignment.operatorEmploymentId) ===
-            assignment.shift && enabledShifts.includes(assignment.shift),
+          machineRequiresOperatorById.get(allocation.machineId) !== false &&
+          teamMemberById.get(assignment.operatorEmploymentId)?.shift ===
+            assignment.shift &&
+          enabledShifts.includes(assignment.shift),
       ),
     }));
     if (
@@ -1536,29 +1617,42 @@ export function MachineMobilization({
         shouldDirty: true,
         shouldValidate: true,
       });
-  }, [allocations, enabledShifts, form, teamShiftById]);
+  }, [
+    allocations,
+    enabledShifts,
+    form,
+    machineRequiresOperatorById,
+    teamMemberById,
+  ]);
 
   const cancelEditing = () => {
     setActiveMachineId(null);
     setDraft(null);
     setMachineMessage("");
   };
-  const beginEditing = (option: Option) => {
+  const beginEditing = (option: MachineOption) => {
     const allocation = allocations.find((item) => item.machineId === option.id);
     if (!option.readingId) {
       setMachineMessage("Esta máquina ainda não tem leitura inicial.");
       return;
     }
-    if (!allocation && employeeAllocations.length === 0) return;
+    if (
+      !allocation &&
+      option.requiresOperator &&
+      employeeAllocations.length === 0
+    )
+      return;
     setActiveMachineId(option.id);
     setDraft({
       machineId: option.id,
       operatorAssignments:
         allocation?.operatorAssignments ??
-        enabledShifts.map((shift) => ({
-          shift,
-          operatorEmploymentId: "",
-        })),
+        (option.requiresOperator
+          ? enabledShifts.map((shift) => ({
+              shift,
+              operatorEmploymentId: "",
+            }))
+          : []),
     });
     setMachineMessage("");
   };
@@ -1580,8 +1674,21 @@ export function MachineMobilization({
     const selectedAssignments = draft.operatorAssignments.filter(
       (assignment) => assignment.operatorEmploymentId,
     );
-    if (!selectedAssignments.length) {
+    if (option.requiresOperator && !selectedAssignments.length) {
       setMachineMessage("Selecione ao menos um operador por turno.");
+      return;
+    }
+    if (
+      !option.acceptsAnyJobRole &&
+      selectedAssignments.some(
+        (assignment) =>
+          teamMemberById.get(assignment.operatorEmploymentId)
+            ?.confirmedJobRoleId !== option.requiredJobRoleId,
+      )
+    ) {
+      setMachineMessage(
+        "Atualize a função confirmada deste integrante na equipe antes de vinculá-lo à máquina.",
+      );
       return;
     }
     if (
@@ -1595,7 +1702,7 @@ export function MachineMobilization({
     const allocation = {
       machineId: draft.machineId,
       startMeterReadingId: option.readingId,
-      operatorAssignments: selectedAssignments,
+      operatorAssignments: option.requiresOperator ? selectedAssignments : [],
     };
     form.setValue(
       "initialMachineAllocations",
@@ -1616,81 +1723,125 @@ export function MachineMobilization({
   return (
     <FormSection
       title="Mobilização inicial de máquinas"
-      description="Opcional. Cada máquina selecionada precisa de um operador da equipe inicial."
+      description="Opcional. Máquinas que exigem operador usam integrantes compatíveis da equipe inicial."
     >
       {activeOption && draft ? (
         <div className="grid gap-5 rounded-lg border border-primary/35 bg-primary/[0.035] p-4 sm:p-5">
           <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border pb-4">
             <div className="min-w-0">
-              <p className="text-base font-bold">{activeOption.label}</p>
-              <p className="mt-1 text-sm font-medium text-muted-foreground">
-                Leitura inicial: {activeOption.detail || "Não informada"}
+              <p className="text-base font-bold">
+                {activeOption.label} — {activeOption.manufacturer} /{" "}
+                {activeOption.model}
               </p>
+              <p className="mt-1 text-sm font-medium text-muted-foreground">
+                Leitura inicial: {machineReadingDetail(activeOption)}
+              </p>
+              {activeOption.requiresOperator ? (
+                <p className="mt-1 text-sm font-medium text-muted-foreground">
+                  Função exigida:{" "}
+                  {activeOption.acceptsAnyJobRole
+                    ? "Qualquer função"
+                    : (activeOption.requiredJobRoleName ?? "Não informada")}
+                </p>
+              ) : (
+                <p className="mt-1 text-sm font-medium text-muted-foreground">
+                  Esta máquina não exige operador.
+                </p>
+              )}
             </div>
             <span className="inline-flex min-h-8 items-center rounded-md bg-primary px-2.5 text-sm font-bold text-primary-foreground">
               Em configuração
             </span>
           </div>
-          <div className="grid gap-4">
-            {enabledShifts.map((shift) => {
-              const assignment = draft.operatorAssignments.find(
-                (item) => item.shift === shift,
-              ) ?? { shift, operatorEmploymentId: "" };
-              const teamOptions = options.employees.filter(
-                (option) => teamShiftById.get(option.id) === shift,
-              );
-              return (
-                <label
-                  key={shift}
-                  className="grid gap-1.5 text-sm font-semibold"
-                >
-                  <span>
-                    {shift === "day"
-                      ? "Operador da equipe"
-                      : "Operador — Noturno"}
-                  </span>
-                  <select
-                    className={controlClass}
-                    value={assignment.operatorEmploymentId}
-                    onChange={(event) => {
-                      setDraft((current) => {
-                        if (!current) return current;
-                        const withoutShift = current.operatorAssignments.filter(
-                          (item) => item.shift !== shift,
-                        );
-                        return {
-                          ...current,
-                          operatorAssignments: [
-                            ...withoutShift,
-                            {
-                              shift,
-                              operatorEmploymentId: event.target.value,
-                            },
-                          ],
-                        };
-                      });
-                      setMachineMessage("");
-                    }}
+          {activeOption.requiresOperator && (
+            <div className="grid gap-4">
+              {enabledShifts.map((shift) => {
+                const assignment = draft.operatorAssignments.find(
+                  (item) => item.shift === shift,
+                ) ?? { shift, operatorEmploymentId: "" };
+                const assignmentHasRequiredRole =
+                  activeOption.acceptsAnyJobRole ||
+                  teamMemberById.get(assignment.operatorEmploymentId)
+                    ?.confirmedJobRoleId === activeOption.requiredJobRoleId;
+                const teamOptions = options.employees.filter((option) => {
+                  const teamMember = teamMemberById.get(option.id);
+                  const isCurrentAssignment =
+                    option.id === assignment.operatorEmploymentId;
+                  return (
+                    teamMember?.shift === shift &&
+                    (activeOption.acceptsAnyJobRole ||
+                      teamMember.confirmedJobRoleId ===
+                        activeOption.requiredJobRoleId ||
+                      isCurrentAssignment) &&
+                    (!usedOperatorIds.has(option.id) || isCurrentAssignment)
+                  );
+                });
+                return (
+                  <label
+                    key={shift}
+                    className="grid gap-1.5 text-sm font-semibold"
                   >
-                    <option value="">Não mobilizar neste turno</option>
-                    {teamOptions.map((employee) => (
-                      <option
-                        key={employee.id}
-                        value={employee.id}
-                        disabled={usedOperatorIds.has(employee.id)}
-                      >
-                        {employee.label}
-                        {employee.detail ? ` — ${employee.detail}` : ""}
-                        {usedOperatorIds.has(employee.id)
-                          ? " — já alocado em outra máquina"
-                          : ""}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              );
-            })}
-          </div>
+                    <span>
+                      {shift === "day"
+                        ? "Operador da equipe"
+                        : "Operador — Noturno"}
+                    </span>
+                    <select
+                      className={controlClass}
+                      value={assignment.operatorEmploymentId}
+                      onChange={(event) => {
+                        setDraft((current) => {
+                          if (!current) return current;
+                          const withoutShift =
+                            current.operatorAssignments.filter(
+                              (item) => item.shift !== shift,
+                            );
+                          return {
+                            ...current,
+                            operatorAssignments: [
+                              ...withoutShift,
+                              {
+                                shift,
+                                operatorEmploymentId: event.target.value,
+                              },
+                            ],
+                          };
+                        });
+                        setMachineMessage("");
+                      }}
+                    >
+                      <option value="">Não mobilizar neste turno</option>
+                      {teamOptions.map((employee) => (
+                        <option key={employee.id} value={employee.id}>
+                          {employee.label}
+                          {employee.detail ? ` — ${employee.detail}` : ""}
+                          {employee.id === assignment.operatorEmploymentId &&
+                          !assignmentHasRequiredRole
+                            ? " — função incompatível"
+                            : ""}
+                        </option>
+                      ))}
+                    </select>
+                    {!assignment.operatorEmploymentId &&
+                      teamOptions.length === 0 &&
+                      !activeOption.acceptsAnyJobRole && (
+                        <span className="text-xs font-medium text-muted-foreground">
+                          Nenhum integrante deste turno tem a função confirmada
+                          exigida. Atualize a equipe para continuar.
+                        </span>
+                      )}
+                    {assignment.operatorEmploymentId &&
+                      !assignmentHasRequiredRole && (
+                        <span className="text-xs font-medium text-destructive">
+                          Este operador permanece visível apenas para que você
+                          corrija a mobilização.
+                        </span>
+                      )}
+                  </label>
+                );
+              })}
+            </div>
+          )}
           {machineMessage && (
             <p
               role="status"
@@ -1715,12 +1866,13 @@ export function MachineMobilization({
           <p className="text-sm font-semibold text-muted-foreground">
             {allocations.length} máquina(s) selecionada(s)
           </p>
-          {employeeAllocations.length === 0 && (
-            <p className="text-sm font-medium text-muted-foreground">
-              Selecione funcionários na equipe inicial antes de vincular
-              máquinas.
-            </p>
-          )}
+          {employeeAllocations.length === 0 &&
+            options.machines.some((option) => option.requiresOperator) && (
+              <p className="text-sm font-medium text-muted-foreground">
+                Selecione funcionários na equipe inicial antes de vincular
+                máquinas.
+              </p>
+            )}
           {machineMessage && (
             <p
               role="status"
@@ -1737,7 +1889,9 @@ export function MachineMobilization({
                 );
                 if (!allocation) {
                   const disabled =
-                    !option.readingId || employeeAllocations.length === 0;
+                    !option.readingId ||
+                    (option.requiresOperator &&
+                      employeeAllocations.length === 0);
                   return (
                     <SelectionRow
                       key={option.id}
@@ -1745,10 +1899,13 @@ export function MachineMobilization({
                       disabled={disabled}
                       onChange={(checked) => checked && beginEditing(option)}
                     >
-                      {option.label}
-                      {option.detail ? ` — leitura ${option.detail}` : ""}
+                      {option.label} — {option.manufacturer} / {option.model}
+                      {option.detail
+                        ? ` — leitura ${machineReadingDetail(option)}`
+                        : ""}
                       {!option.readingId ? " — leitura indisponível" : ""}
-                      {employeeAllocations.length === 0
+                      {option.requiresOperator &&
+                      employeeAllocations.length === 0
                         ? " — equipe não selecionada"
                         : ""}
                     </SelectionRow>
@@ -1764,26 +1921,32 @@ export function MachineMobilization({
                       aria-hidden="true"
                     />
                     <p className="min-w-0 flex-1 text-sm font-semibold">
-                      {option.label}
+                      {option.label} — {option.manufacturer} / {option.model}
                     </p>
                     <span className="min-h-7 rounded-md bg-background px-2 py-1 text-xs font-semibold text-muted-foreground">
-                      Leitura {option.detail || "não informada"} ·{" "}
-                      {allocation.operatorAssignments
-                        .map((assignment) => {
-                          const operator = options.employees.find(
-                            (employee) =>
-                              employee.id === assignment.operatorEmploymentId,
-                          );
-                          return `${assignment.shift === "day" ? "Diurno" : "Noturno"}: ${operator?.label ?? "pendente"}`;
-                        })
-                        .join(" · ")}
+                      Leitura {machineReadingDetail(option)} ·{" "}
+                      {option.requiresOperator
+                        ? allocation.operatorAssignments
+                            .map((assignment) => {
+                              const operator = options.employees.find(
+                                (employee) =>
+                                  employee.id ===
+                                  assignment.operatorEmploymentId,
+                              );
+                              return `${assignment.shift === "day" ? "Diurno" : "Noturno"}: ${operator?.label ?? "pendente"}`;
+                            })
+                            .join(" · ")
+                        : "não exige operador"}
                     </span>
                     <Button
                       type="button"
                       variant="ghost"
                       size="icon-lg"
                       aria-label={`Editar máquina ${option.label}`}
-                      disabled={employeeAllocations.length === 0}
+                      disabled={
+                        option.requiresOperator &&
+                        employeeAllocations.length === 0
+                      }
                       onClick={() => beginEditing(option)}
                     >
                       <Pencil className="size-4" />

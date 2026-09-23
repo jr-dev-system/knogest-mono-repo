@@ -21,10 +21,6 @@ export function CompanySelectionPage({
             <h1 className="mt-4 text-2xl font-bold tracking-tight">
               Escolha a empresa de trabalho
             </h1>
-            <p className="mt-2 max-w-prose text-sm leading-6 text-muted-foreground">
-              A partir daqui, todas as ações operacionais usam a Company
-              selecionada como escopo confiável da sessão.
-            </p>
           </div>
           <SignOutButton />
         </div>

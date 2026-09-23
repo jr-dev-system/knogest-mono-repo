@@ -38,21 +38,55 @@ import { lookupProjectAddressByCepAction } from "../projects.actions";
 const options: ProjectWizardOptions = {
   clients: [{ id: "client-1", label: "Cliente Norte" }],
   employees: [
-    { id: "employee-1", label: "Ana Silva", detail: "Engenheira" },
-    { id: "employee-2", label: "Bruno Lima", detail: "Operador" },
+    {
+      id: "employee-1",
+      label: "Ana Silva",
+      detail: "Engenheira",
+      jobRoleId: "job-role-1",
+    },
+    {
+      id: "employee-2",
+      label: "Bruno Lima",
+      detail: "Operador",
+      jobRoleId: "job-role-2",
+    },
   ],
   machines: [
     {
       id: "machine-1",
       label: "Escavadeira",
+      manufacturer: "Caterpillar",
+      model: "320",
       detail: "10.00",
       readingId: "reading-1",
+      meterType: "HOUR_METER",
+      requiresOperator: true,
+      requiredJobRoleId: "job-role-1",
+      requiredJobRoleName: "Engenheira",
+      acceptsAnyJobRole: false,
     },
     {
       id: "machine-2",
       label: "Trator",
+      manufacturer: "John Deere",
+      model: "6110",
       detail: "20.00",
       readingId: "reading-2",
+      meterType: "HOUR_METER",
+      requiresOperator: true,
+      requiredJobRoleName: "Qualquer um",
+      acceptsAnyJobRole: true,
+    },
+    {
+      id: "machine-3",
+      label: "Rolo compactador",
+      manufacturer: "Dynapac",
+      model: "CA2500",
+      detail: "30.00",
+      readingId: "reading-3",
+      meterType: "ODOMETER",
+      requiresOperator: false,
+      acceptsAnyJobRole: false,
     },
   ],
   jobRoles: [{ id: "job-role-1", label: "Engenheira" }],
@@ -149,9 +183,11 @@ function ReviewHarness() {
 
 function MachineHarness({
   duplicateOperator = false,
+  employeeOneConfirmedJobRoleId = "job-role-1",
   withTeam = true,
 }: {
   duplicateOperator?: boolean;
+  employeeOneConfirmedJobRoleId?: string;
   withTeam?: boolean;
 } = {}) {
   const form = useForm<ProjectCommand>({
@@ -162,7 +198,7 @@ function MachineHarness({
             {
               employmentId: "employee-1",
               shift: "day",
-              confirmedJobRoleId: "job-role-1",
+              confirmedJobRoleId: employeeOneConfirmedJobRoleId,
               confirmedJobRolePeriodId: "role-period-1",
               monthlyWorkloadHours: 220,
               compensationMode: "monthly",
@@ -172,7 +208,7 @@ function MachineHarness({
             {
               employmentId: "employee-2",
               shift: "day",
-              confirmedJobRoleId: "job-role-1",
+              confirmedJobRoleId: "job-role-2",
               confirmedJobRolePeriodId: "role-period-2",
               monthlyWorkloadHours: 180,
               compensationMode: "monthly",
@@ -464,6 +500,58 @@ describe("Project wizard polish", () => {
     );
   });
 
+  it("identifies the machine and filters operators by its required job role", async () => {
+    const user = userEvent.setup();
+    render(<MachineHarness />);
+
+    expect(screen.getByLabelText(/Escavadeira.*Caterpillar.*320/)).toBeTruthy();
+    await user.click(screen.getByLabelText(/Escavadeira/));
+
+    expect(screen.getByText("Função exigida: Engenheira")).toBeTruthy();
+    expect(
+      screen.getByRole("option", { name: "Ana Silva — Engenheira" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("option", { name: "Bruno Lima — Operador" }),
+    ).toBeNull();
+    expect(screen.getByText("Leitura inicial: 10,00 h")).toBeTruthy();
+  });
+
+  it("uses the role confirmed for the project instead of the current employee role", async () => {
+    const user = userEvent.setup();
+    render(<MachineHarness employeeOneConfirmedJobRoleId="job-role-2" />);
+
+    await user.click(screen.getByLabelText(/Escavadeira/));
+
+    expect(
+      screen.queryByRole("option", { name: "Ana Silva — Engenheira" }),
+    ).toBeNull();
+    expect(
+      screen.getByText(
+        "Nenhum integrante deste turno tem a função confirmada exigida. Atualize a equipe para continuar.",
+      ),
+    ).toBeTruthy();
+  });
+
+  it("mobilizes a machine without an operator without requiring a team", async () => {
+    const user = userEvent.setup();
+    render(<MachineHarness withTeam={false} />);
+
+    const machine = screen.getByLabelText(
+      /Rolo compactador/,
+    ) as HTMLInputElement;
+    expect(machine.disabled).toBe(false);
+    await user.click(machine);
+
+    expect(screen.getByText("Esta máquina não exige operador.")).toBeTruthy();
+    expect(screen.queryByLabelText("Operador da equipe")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Confirmar máquina" }));
+
+    expect(screen.getByRole("status").textContent).toContain(
+      '"machineId":"machine-3","startMeterReadingId":"reading-3","operatorAssignments":[]',
+    );
+  });
+
   it("removes a confirmed machine allocation from the initial mobilization", async () => {
     const user = userEvent.setup();
     render(<MachineHarness />);
@@ -481,7 +569,7 @@ describe("Project wizard polish", () => {
     expect(screen.getByRole("status").textContent).toBe("[]");
   });
 
-  it("keeps an assigned operator unavailable for other machines", async () => {
+  it("hides an assigned operator from other machines but keeps it on the machine being edited", async () => {
     const user = userEvent.setup();
     render(<MachineHarness />);
 
@@ -494,12 +582,8 @@ describe("Project wizard polish", () => {
 
     await user.click(screen.getByLabelText(/Trator/));
     expect(
-      (
-        screen.getByRole("option", {
-          name: /Ana Silva — Engenheira — já alocado em outra máquina/,
-        }) as HTMLOptionElement
-      ).disabled,
-    ).toBe(true);
+      screen.queryByRole("option", { name: "Ana Silva — Engenheira" }),
+    ).toBeNull();
 
     await user.selectOptions(
       screen.getByLabelText("Operador da equipe"),
@@ -511,12 +595,8 @@ describe("Project wizard polish", () => {
     );
 
     expect(
-      (
-        screen.getByRole("option", {
-          name: "Ana Silva — Engenheira",
-        }) as HTMLOptionElement
-      ).disabled,
-    ).toBe(false);
+      screen.getByRole("option", { name: "Ana Silva — Engenheira" }),
+    ).toBeTruthy();
 
     await user.click(screen.getByRole("button", { name: "Cancelar" }));
     await user.click(

@@ -14,10 +14,23 @@ async function expectTopCenterToast(
   page: import("@playwright/test").Page,
   message: string,
 ) {
-  await expect(page.getByText(message)).toBeVisible();
+  const notification = page.locator("[data-sonner-toast]", {
+    hasText: message,
+  });
+  await expect(notification).toBeVisible();
   const toaster = page.locator("[data-sonner-toaster]");
   await expect(toaster).toHaveAttribute("data-y-position", "top");
   await expect(toaster).toHaveAttribute("data-x-position", "center");
+  await expect
+    .poll(() =>
+      toaster.evaluate((element) => getComputedStyle(element).position),
+    )
+    .toBe("fixed");
+  await expect
+    .poll(() =>
+      notification.evaluate((element) => getComputedStyle(element).opacity),
+    )
+    .toBe("1");
 }
 
 test("creates a model with a unit and opens its catalog detail", async ({
@@ -43,4 +56,10 @@ test("creates a model with a unit and opens its catalog detail", async ({
   await expect(page.getByText("Synthetic / Loader 200")).toBeVisible();
   await expect(page.getByText("Synthetic E2E Machine")).toBeVisible();
   await expect(page.getByText("Não exige operador")).toBeVisible();
+
+  await page.getByLabel("Nome da unidade 1").fill("Synthetic E2E Machine 02");
+  await page.getByLabel("Patrimônio").fill("MCH-E2E-002");
+  await page.getByLabel("Leitura inicial (h)").fill("18.75");
+  await page.getByRole("button", { name: "Adicionar unidades" }).click();
+  await expectTopCenterToast(page, "Unidades adicionadas.");
 });

@@ -125,7 +125,7 @@ seguras dos recursos afetados.
 
 ## Interface e compartilhamento
 
-A aba **Relatórios** oferece criação, continuação de rascunho, paginação e
+A aba **RDO** oferece criação, continuação de rascunho, paginação e
 visualização de finalizados. O formulário usa modal operacional `xl`, React
 Hook Form, Zod e `FormErrorDeclaration`. O preenchimento é um assistente de
 seis etapas: **Dados do dia**, **Horários**, **Serviço**, **Equipe**,

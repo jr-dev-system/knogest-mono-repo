@@ -8,23 +8,6 @@ export function WorkspaceSelection({ companyName }: { companyName: string }) {
         aria-labelledby="workspace-title"
       >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="max-w-3xl">
-            <div className="flex items-center gap-2 text-sm font-bold text-primary">
-              <ShieldCheck className="size-4" />
-              Corporação GTR
-            </div>
-            <h2
-              id="workspace-title"
-              className="mt-2 text-2xl font-bold tracking-normal"
-            >
-              Workspace ativo confirmado
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-muted-foreground">
-              As próximas ações operacionais serão executadas usando somente o
-              escopo confiável desta Company na sessão persistida.
-            </p>
-          </div>
-
           <div className="rounded-md border border-border bg-muted px-4 py-3 text-sm">
             <p className="font-bold">{companyName}</p>
             <p className="mt-1 text-muted-foreground">

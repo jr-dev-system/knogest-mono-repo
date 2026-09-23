@@ -14,8 +14,8 @@ function FormSection({
 }: {
   children: ReactNode;
   className?: string;
-  description?: string;
-  title: string;
+  description?: string | null;
+  title?: string | null;
 }) {
   return (
     <fieldset
@@ -24,7 +24,7 @@ function FormSection({
         className,
       )}
     >
-      <legend className="px-1 text-sm font-bold">{title}</legend>
+      {title && <legend className="px-1 text-sm font-bold">{title}</legend>}
       {description && (
         <p className="-mt-1 text-sm leading-5 text-muted-foreground">
           {description}

@@ -61,16 +61,29 @@ describe("ProjectTeamView", () => {
     );
     const user = userEvent.setup();
 
+    const onEditMember = vi.fn();
+    const onRemoveMember = vi.fn();
     render(
       <ProjectTeamView
         projectId="00000000-0000-4000-8000-000000000901"
         counts={{ day: 16, night: 1 }}
         canEdit
+        onAddShift={vi.fn()}
+        onEditMember={onEditMember}
         onEditShift={vi.fn()}
+        onRemoveMember={onRemoveMember}
       />,
     );
 
     expect(await screen.findByText("Ana")).toBeTruthy();
+    await user.click(screen.getByRole("button", { name: "Editar Ana" }));
+    expect(onEditMember).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Ana", shift: "day" }),
+    );
+    await user.click(screen.getByRole("button", { name: "Remover Ana" }));
+    expect(onRemoveMember).toHaveBeenCalledWith(
+      expect.objectContaining({ name: "Ana", shift: "day" }),
+    );
     await user.click(screen.getByRole("button", { name: "Próxima" }));
     expect(await screen.findByText("Caio")).toBeTruthy();
 
@@ -89,6 +102,7 @@ describe("ProjectTeamView", () => {
       pageInfo: { hasNextPage: false, nextCursor: null },
     });
     const onEditShift = vi.fn();
+    const onAddShift = vi.fn();
     const user = userEvent.setup();
 
     render(
@@ -96,7 +110,10 @@ describe("ProjectTeamView", () => {
         projectId="00000000-0000-4000-8000-000000000901"
         counts={{ day: 0, night: 0 }}
         canEdit
+        onAddShift={onAddShift}
+        onEditMember={vi.fn()}
         onEditShift={onEditShift}
+        onRemoveMember={vi.fn()}
       />,
     );
 
@@ -109,5 +126,43 @@ describe("ProjectTeamView", () => {
     );
     await user.click(screen.getByRole("button", { name: "Editar turno" }));
     expect(onEditShift).toHaveBeenCalledWith("night");
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar funcionários" }),
+    );
+    expect(onAddShift).toHaveBeenCalledWith("night");
+  });
+
+  it("restores the requested shift and reports later changes", async () => {
+    getProjectTeamMembersAction.mockResolvedValue({
+      data: [],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    });
+    const onActiveShiftChange = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ProjectTeamView
+        projectId="00000000-0000-4000-8000-000000000901"
+        counts={{ day: 0, night: 0 }}
+        canEdit={false}
+        initialShift="night"
+        onActiveShiftChange={onActiveShiftChange}
+        onAddShift={vi.fn()}
+        onEditMember={vi.fn()}
+        onEditShift={vi.fn()}
+        onRemoveMember={vi.fn()}
+      />,
+    );
+
+    expect(
+      await screen.findByText("Nenhum funcionário neste turno"),
+    ).toBeTruthy();
+    expect(getProjectTeamMembersAction).toHaveBeenCalledWith({
+      projectId: "00000000-0000-4000-8000-000000000901",
+      shift: "night",
+      cursor: undefined,
+    });
+    await user.click(screen.getByRole("tab", { name: "Diurno (0)" }));
+    expect(onActiveShiftChange).toHaveBeenCalledWith("day");
   });
 });

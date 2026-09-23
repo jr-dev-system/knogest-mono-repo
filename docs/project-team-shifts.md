@@ -72,8 +72,15 @@ mudanças posteriores de turno.
   função, carga mensal, modalidade e valor da hora extra. O cursor é vinculado
   a tenant, empresa, obra e turno.
 - A aba Equipe mantém históricos de paginação independentes para Diurno e
-  Noturno. A ação `Editar turno` abre o editor já no turno visível e salva
-  somente esse recorte; contagens, carregamento, erro e estado vazio são
-  apresentados separadamente por turno.
+  Noturno. Ao lado de `Editar turno`, o turno visível oferece `Adicionar
+funcionários`. Cada ação abre um modal já limitado àquele turno — sem um
+  segundo seletor de Diurno/Noturno. O editor usa `team-members` e mostra
+  exclusivamente a equipe mobilizada; a mobilização usa `team-candidates` e
+  mostra somente os controles necessários para incluir pessoas. Uma pessoa no
+  turno oposto aparece nessa mobilização como transferência e exige confirmação
+  antes de ser realocada.
+- A seção da obra e, na aba Equipe, o turno visível são mantidos na URL por
+  `section` e `teamShift`. Recarregar a página restaura esse contexto, sem
+  retornar automaticamente à visão geral ou ao turno diurno.
 - A carga mensal caracteriza o contrato da pessoa e nunca determina quantas
   horas ela trabalhou em um dia específico.

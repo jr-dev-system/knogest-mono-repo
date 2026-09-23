@@ -1,4 +1,9 @@
-O projeto consistem em um eco sistema de gerenciamento de obras de terraplanagem.
+> Status documental: estas são notas de descoberta e roadmap do produto. Elas
+> não definem o comportamento entregue do dashboard Web ou da API. Para o
+> sistema atual, comece em `docs/index.md`; o aplicativo mobile está fora do
+> escopo de documentação e manutenção desta rodada.
+
+O projeto consiste em um ecossistema de gerenciamento de obras de terraplanagem.
 O modelo será um saas onde quem assina é o admin de uma corporação que pode ter vários usuários
 e esses mesmos usuários não podem pertecer a outras corporações. Cada corporação tem seu domínio
 ou subdomínio personalizado.
@@ -61,15 +66,17 @@ A empresa vai ter as seguintes relações
   -- FUNÇÃO
   -- VALOR HORA EXTRA
 
-## O que é o eco sistema?
+## O que é o ecossistema?
 
 1. Dashboard web para controlar empresas, funcionários, fornecedores, projetos, dashboard da obra, etc...
-2. Aplicativo mobile operacional (offline first)
+2. Aplicativo mobile operacional (offline first, planejado e não documentado
+   como entrega atual)
 
 ## Quem vai usar o sistema?
 
 Deve ter um usuário admin que controla as empresas e pode ver tudo e controlar tudo.
-Mas vai existir basicamente 3 papéis. um operacional, um gestor e o admin.
+Como direção de produto, existirão basicamente 3 papéis: operacional, gestor e
+admin. A implementação atual Web/API autentica somente `MASTER_ADMIN`.
 O gestor pode controlar só um ou vários projetos de uma ou mais empresas.
 O operacional é o apontador funciona somente no aplicativo e deve ser atrelado somente a um projeto.
 
