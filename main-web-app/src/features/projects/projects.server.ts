@@ -7,6 +7,7 @@ import client from "@/lib/api/server-client";
 
 import type {
   ProjectDetailSnapshot,
+  ProjectLifecycleStatus,
   ProjectReadinessOptions,
   ProjectRegistryPage,
 } from "./projects.types";
@@ -30,14 +31,22 @@ export type {
   SupplierOfferOption,
 } from "./projects.types";
 
-export async function getProjectRegistry(search?: string, cursor?: string) {
+export async function getProjectRegistry(
+  search?: string,
+  cursor?: string,
+  options?: {
+    limit?: number;
+    statuses?: ProjectLifecycleStatus[];
+  },
+) {
   const response = await client<{ success: true; data: ProjectRegistryPage }>({
     url: "/api/v1/projects",
     method: "GET",
     params: {
-      limit: 25,
+      limit: options?.limit ?? 25,
       search,
       cursor,
+      statuses: options?.statuses?.join(","),
       sortBy: "createdAt",
       sortDirection: "desc",
     },

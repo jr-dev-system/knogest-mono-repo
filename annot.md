@@ -131,3 +131,51 @@ A distinção entre um card e outro ainda causa um certo peso cgnitivo, não é 
 2.  Na hora de alocar uma máquina à obra não trazer operadores que já estão ocupados na mesma obra e melhorar a visualização mascarada do horímetro ou Km
 
 3.
+
+## Princípio
+
+- Quando se cria uma máquina pega apenas fabricante e modelo do jeito que já está. As unidades físicas não são mais do jeito que estão projetadas agora. Essa unidade física ela pode ser tanto alugada quanto pertencer a propria empresa. Na maioria das vezes, alugada.
+
+\*\* exigir mais um campo opcional chamado versão para criar um modelo e fabricante.
+
+## SE FOR ALUGADA:
+
+- RECEBER QUAL É LOCADORA
+- VALOR DA HORA (Mas confirma ao alocar em uma obra)
+- QUANTIDADE DE HORAS POR MÊS (Somente quando for alocada em uma obra)
+
+## Onde criar essas unidades físicas
+
+- Dentro do modelo pode criar uma unidade e já alocar em uma obra passando a quantidade de horas por mês e até mesmo alocando um funcionário já da obra ou somente criar a unidade mesmo.
+- Dentro do modal de máquinas dentro da obra deve permitir criar uma unidade selecionando fabricante/modelo/versão.
+
+## Listagens
+
+- Na listagem de modelos na página de máquinas da empresa os únicos campos que quero é:
+  \*\* Fabricante/Modelo/Versão em uma única linha, pode fazer em 2 linhas na célula de maneira clara, visível, e com contraste de destaque entre modelo e versão.
+  Ex: Escavadeira - HX220L
+  HYUNDAI
+
+  \*\* Unidades com "?" (caso tenha pelo menos 1) popover já documentado que vai mostrar a identificação de todas as máquinas e o seu status de disponibilidade. Deletados não aparecem aqui.
+
+  \*\* Tipo
+
+  \*\* Capacidade de carga
+
+  \*\* Quantidade de unidades
+
+## Obs
+
+- O tipo de Medidor da máquina deve ser atrlado à unidade física e não ao modelo.
+- Quando uma obra acabar e a máquina for alugada, ela não fica nem disponível nem indiponível, ela vai ter um status "Sem Locação". Essa unidade pode ser excluída by soft delete nesse status mas histórico ainda mantém. Se ela for excluída não impede de ser recriada com a mesma identificação, mesmo tudo (só impede se estiver no catálogo de unidades ainda). Nesse caso, quando for criar tem que buscar se já existe algum deletado com as mesmas identificação (placa ou patrimonio) dentro do mesmo fabricante, modelo e versão. Se encontrar deve perguntar ao usuário se ele quer trazer de volta a máquina ou criar uma máquina nova com as mesmas identificações.
+
+## Proximas implementações de maquinas
+
+- Filtro avançado por fabricante modelo, versão, tipo, capacidade de carga
+
+---
+
+## Equipe
+
+- O único turno que deve vir habilitado é diurno. Noturno não deve vir ativado por padrão. Deve ter um switch de ativação no modal de editar jornada.
+  Ao vincular operador à máquina o turno noturno deve aparecer somente se ele estiver ativado. Todas as operações com turno noturno devem ficar desativadas caso esteja off. Mesmo desativado ele não deve perder nenhuma informação atrelado ao turno noturno.

@@ -3,9 +3,7 @@
 import Link from "next/link";
 import {
   ChevronRight,
-  Eye,
   FileSearch,
-  Gauge,
   Search,
   Tag,
   Truck,
@@ -13,13 +11,22 @@ import {
 } from "lucide-react";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import { FieldHelpPopover } from "@/components/ui/field-help-popover";
 import { Input } from "@/components/ui/input";
 import type { MachineActionState } from "../machines-action-state";
+import { formatLoadCapacity } from "../capacity-format";
+import type {
+  MachineAllocationProjectContextResult,
+  MachineAllocationProjectsResult,
+} from "../machine-allocation.types";
+import type {
+  MachineUnitBatchActionResult,
+  MachineUnitBatchDraft,
+} from "../machine-unit-batch.types";
 import type {
   MachineModelListItem,
   MachinesListQuery,
 } from "../machines.server";
-import { formatMeterReading } from "../meter-format";
 import { MachineModelCreationWizard } from "./machine-model-creation-wizard";
 
 type MachineAction = (
@@ -29,16 +36,30 @@ type MachineAction = (
 
 export function MachinesPageView({
   action,
+  batchAction,
+  loadProjectAction,
   pageInfo,
   query,
   rows,
   jobRoles = [],
+  searchProjectsAction,
 }: {
   action: MachineAction;
+  batchAction: (
+    machineModelId: string,
+    input: MachineUnitBatchDraft,
+  ) => Promise<MachineUnitBatchActionResult>;
+  loadProjectAction: (
+    projectId: string,
+  ) => Promise<MachineAllocationProjectContextResult>;
   pageInfo: { hasNextPage: boolean; nextCursor: string | null };
   query: MachinesListQuery;
   rows: MachineModelListItem[];
   jobRoles?: { id: string; name: string }[];
+  searchProjectsAction: (input?: {
+    cursor?: string | null;
+    search?: string;
+  }) => Promise<MachineAllocationProjectsResult>;
 }) {
   const hasFilters = Boolean(query.search || query.type);
   const nextParams = new URLSearchParams();
@@ -50,18 +71,6 @@ export function MachinesPageView({
 
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 md:grid-cols-3" aria-label="Resumo">
-        <Summary label="Modelos nesta página" value={String(rows.length)} />
-        <Summary
-          label="Unidades cadastradas"
-          value={String(rows.reduce((total, row) => total + row.unitCount, 0))}
-        />
-        <Summary
-          label="Modelos com operador"
-          value={String(rows.filter((row) => row.requiresOperator).length)}
-        />
-      </section>
-
       <section className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="border-b border-border bg-secondary/60 p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -102,23 +111,24 @@ export function MachinesPageView({
               </Button>
             </form>
 
-            <MachineModelCreationWizard action={action} jobRoles={jobRoles} />
+            <MachineModelCreationWizard
+              action={action}
+              batchAction={batchAction}
+              jobRoles={jobRoles}
+              loadProjectAction={loadProjectAction}
+              searchProjectsAction={searchProjectsAction}
+            />
           </div>
         </div>
 
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[980px] text-left text-sm">
+          <table className="w-full min-w-[760px] text-left text-sm">
             <thead>
               <tr className="border-b border-border">
-                <TableHead icon={Truck} label="Modelo" />
+                <TableHead icon={Truck} label="Modelo / versão" />
                 <TableHead icon={Tag} label="Unidades" />
                 <TableHead label="Tipo" />
-                <TableHead label="Fabricante / modelo" />
                 <TableHead label="Capacidade de carga" />
-                <TableHead icon={Gauge} label="Operador" />
-                <th className="px-4 py-3 text-right text-xs font-bold text-muted-foreground">
-                  Detalhe
-                </th>
               </tr>
             </thead>
             <tbody>
@@ -126,29 +136,57 @@ export function MachinesPageView({
                 rows.map((row) => (
                   <tr key={row.id} className="border-b border-border">
                     <td className="px-4 py-3 font-bold">
-                      <span className="block max-w-[24ch] truncate">
-                        {row.manufacturer} / {row.model}
-                      </span>
+                      <Link
+                        href={`/home/maquinas/modelos/${row.id}`}
+                        className="block hover:underline"
+                      >
+                        <span className="block max-w-[24ch] truncate">
+                          {row.model}
+                          {row.version ? ` — ${row.version}` : ""}
+                        </span>
+                        <span className="block text-xs font-semibold tracking-wide text-muted-foreground">
+                          {row.manufacturer}
+                        </span>
+                      </Link>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
                       {row.unitCount}{" "}
                       {row.unitCount === 1 ? "unidade" : "unidades"}
+                      {row.units.length > 0 && (
+                        <span className="ml-2 inline-flex align-middle">
+                          <FieldHelpPopover
+                            compact
+                            title="Unidades ativas"
+                            description="Identificação e situação atual das unidades deste modelo."
+                            footer=""
+                            items={row.units.map((unit) => {
+                              const identifier =
+                                unit.identifiers.plate?.value ??
+                                unit.identifiers.companyTag?.value ??
+                                unit.name;
+                              const state =
+                                unit.availability.state === "available"
+                                  ? "Disponível"
+                                  : unit.availability.state === "without_rental"
+                                    ? "Sem locação"
+                                    : "Indisponível";
+                              return `${identifier} — ${state}`;
+                            })}
+                          />
+                        </span>
+                      )}
                     </td>
                     <td className="px-4 py-3 font-semibold">
                       {typeLabel(row.type)}
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">
-                      {row.requiresOperator
-                        ? `Exige ${row.requiredJobRole?.name ?? "operador"}`
-                        : "Não exige operador"}
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">
                       {row.type === "WHITE_LINE" ? (
                         <>
                           <span className="block font-semibold text-foreground">
-                            {row.loadVolumeM3
-                              ? `${row.loadVolumeM3.replace(".", ",")} m³`
-                              : "Volume não informado"}
+                            {formatLoadCapacity(
+                              row.loadCapacity,
+                              row.loadCapacityUnitCode,
+                            ) ?? "Volume não informado"}
                           </span>
                           <span className="block text-xs">
                             {row.maxSupportedWeightT
@@ -160,31 +198,11 @@ export function MachinesPageView({
                         "Não aplicável"
                       )}
                     </td>
-                    <td className="px-4 py-3 font-semibold">
-                      {row.units[0]?.latestMeterReading
-                        ? formatMeterReading(
-                            row.units[0].latestMeterReading.value,
-                            row.meterType,
-                          )
-                        : "Sem leitura"}
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <Link
-                        href={`/home/maquinas/modelos/${row.id}`}
-                        className={buttonVariants({
-                          size: "sm",
-                          variant: "outline",
-                        })}
-                      >
-                        <Eye className="size-4" />
-                        Ver modelo
-                      </Link>
-                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={7} className="px-4 py-14 text-center">
+                  <td colSpan={4} className="px-4 py-14 text-center">
                     <p className="text-base font-bold">
                       Nenhuma máquina encontrada
                     </p>

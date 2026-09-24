@@ -1149,6 +1149,12 @@ export async function v1ProjectsController(app: FastifyInstance) {
             limit: { type: "integer", minimum: 1, maximum: 100 },
             cursor: { type: "string", maxLength: 2048 },
             search: { type: "string", maxLength: 120 },
+            statuses: {
+              type: "string",
+              maxLength: 80,
+              description:
+                "Lista separada por vírgulas: planned, active, paused, completed, cancelled.",
+            },
             sortBy: { enum: ["name", "createdAt"] },
             sortDirection: { enum: ["asc", "desc"] },
           },

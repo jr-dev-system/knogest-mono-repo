@@ -13,6 +13,7 @@ import {
   correctMachineMeterReadingSchema,
   createMachineModelSchema,
   addMachineModelUnitsSchema,
+  addMachineModelUnitsBatchSchema,
   listMachineModelsQuerySchema,
   machineModelParamsSchema,
   updateMachineModelSchema,
@@ -27,6 +28,12 @@ const decimalStringOpenApiPattern = "^(?:0|[1-9]\\d{0,11})(?:\\.[0-9]{1,2})?$";
 const identifierOpenApiPattern = ".*[A-Za-z0-9].*";
 const positiveSpecificationDecimalOpenApiPattern =
   "^(?:0|[1-9]\\d{0,6})(?:\\.[0-9]{1,3})?$";
+const loadCapacityUnitCodes = [
+  "M3_LOOSE",
+  "M3_COMPACTED",
+  "LITER",
+  "CUBIC_YARD",
+] as const;
 
 const errorSchema = {
   type: "object",
@@ -61,6 +68,8 @@ const machineSchema = {
     "model",
     "version",
     "meterType",
+    "loadCapacity",
+    "loadCapacityUnitCode",
     "loadVolumeM3",
     "maxSupportedWeightT",
     "machineModel",
@@ -79,6 +88,12 @@ const machineSchema = {
     model: { type: "string" },
     version: { type: "string", nullable: true },
     meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
+    loadCapacity: { type: "string", nullable: true },
+    loadCapacityUnitCode: {
+      type: "string",
+      enum: loadCapacityUnitCodes,
+      nullable: true,
+    },
     loadVolumeM3: { type: "string", nullable: true },
     maxSupportedWeightT: { type: "string", nullable: true },
     machineModel: {
@@ -151,6 +166,8 @@ const machineModelSchema = {
     "manufacturer",
     "model",
     "version",
+    "loadCapacity",
+    "loadCapacityUnitCode",
     "loadVolumeM3",
     "maxSupportedWeightT",
     "requiresOperator",
@@ -167,6 +184,12 @@ const machineModelSchema = {
     manufacturer: { type: "string" },
     model: { type: "string" },
     version: { type: "string", nullable: true },
+    loadCapacity: { type: "string", nullable: true },
+    loadCapacityUnitCode: {
+      type: "string",
+      enum: loadCapacityUnitCodes,
+      nullable: true,
+    },
     loadVolumeM3: { type: "string", nullable: true },
     maxSupportedWeightT: { type: "string", nullable: true },
     requiresOperator: { type: "boolean" },
@@ -232,7 +255,7 @@ const machineUnitBodySchema = {
     allocation: {
       type: "object",
       additionalProperties: false,
-      required: ["projectId"],
+      required: ["projectId", "operatorAssignments"],
       properties: {
         projectId: { type: "string", format: "uuid" },
         confirmedHourlyRate: {
@@ -277,6 +300,11 @@ const createMachineModelBodySchema = {
     manufacturer: { type: "string", minLength: 1, maxLength: 120 },
     model: { type: "string", minLength: 1, maxLength: 120 },
     version: { type: "string", maxLength: 120 },
+    loadCapacity: {
+      type: "string",
+      pattern: positiveSpecificationDecimalOpenApiPattern,
+    },
+    loadCapacityUnitCode: { type: "string", enum: loadCapacityUnitCodes },
     loadVolumeM3: {
       type: "string",
       pattern: positiveSpecificationDecimalOpenApiPattern,
@@ -300,6 +328,11 @@ const updateMachineModelBodySchema = {
     manufacturer: { type: "string", minLength: 1, maxLength: 120 },
     model: { type: "string", minLength: 1, maxLength: 120 },
     version: { type: "string", maxLength: 120 },
+    loadCapacity: {
+      type: "string",
+      pattern: positiveSpecificationDecimalOpenApiPattern,
+    },
+    loadCapacityUnitCode: { type: "string", enum: loadCapacityUnitCodes },
     loadVolumeM3: {
       type: "string",
       pattern: positiveSpecificationDecimalOpenApiPattern,
@@ -314,6 +347,62 @@ const updateMachineModelBodySchema = {
 } as const;
 
 const addMachineModelUnitsBodySchema = machineUnitBodySchema;
+
+const addMachineModelUnitsBatchBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["projectId", "units"],
+  properties: {
+    projectId: { type: "string", format: "uuid" },
+    units: {
+      type: "array",
+      minItems: 1,
+      maxItems: 15,
+      items: machineUnitBodySchema,
+    },
+  },
+} as const;
+
+const machineModelUnitsBatchResponseSchema = {
+  type: "object",
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "object",
+      required: ["created", "rejected"],
+      properties: {
+        created: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["index", "machineId"],
+            properties: {
+              index: { type: "integer", minimum: 0, maximum: 14 },
+              machineId: { type: "string", format: "uuid", nullable: true },
+            },
+            additionalProperties: false,
+          },
+        },
+        rejected: {
+          type: "array",
+          items: {
+            type: "object",
+            required: ["index", "code", "message"],
+            properties: {
+              index: { type: "integer", minimum: 0, maximum: 14 },
+              code: { type: "string" },
+              message: { type: "string" },
+            },
+            additionalProperties: false,
+          },
+        },
+      },
+      additionalProperties: false,
+    },
+  },
+} as const;
 
 const machineModelParamsOpenApiSchema = {
   type: "object",
@@ -705,6 +794,45 @@ export const v1FleetController = async (app: FastifyInstance) => {
           request.body as z.infer<typeof addMachineModelUnitsSchema>,
         ),
         statusCode: 201,
+      });
+    },
+  );
+
+  app.post(
+    "/machine-models/:machineModelId/units/batch",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(machineModelParamsSchema),
+        validateBody(addMachineModelUnitsBatchSchema),
+      ],
+      schema: {
+        tags: ["Fleet"],
+        summary: "Add up to 15 physical units to a Machine Model",
+        security: [{ bearerAuth: [] }],
+        params: machineModelParamsOpenApiSchema,
+        body: addMachineModelUnitsBatchBodySchema,
+        response: {
+          200: machineModelUnitsBatchResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          422: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { machineModelId } = request.params as z.infer<
+        typeof machineModelParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        data: await fleetService.addModelUnitsBatch(
+          scopeFromRequest(request),
+          machineModelId,
+          request.body as z.infer<typeof addMachineModelUnitsBatchSchema>,
+        ),
       });
     },
   );

@@ -64,6 +64,11 @@ mudanças posteriores de turno.
 - Jornadas e intervalos incluem `shift`; jornadas incluem `endDayOffset`.
 - Máquinas que exigem operador usam `operatorAssignments[]`, com `shift` e
   `operatorEmploymentId`; máquinas sem requisito enviam a lista vazia.
+- A criação de unidade por modelo pode incluir uma mobilização inicial atômica.
+  Nesse caso, `POST /machine-models/:machineModelId/units` recebe `allocation`
+  com a obra e os mesmos `operatorAssignments[]`; operadores precisam pertencer
+  à equipe e ao turno informados, respeitar a função confirmada e estar livres
+  de outra máquina naquele turno.
 - Mobilização de frente usa `machineAssignments[]`, com `machineId` e `shift`.
 - `PUT /projects/:projectId/mobilization/employees` pode reconciliar equipe,
   jornada e intervalos juntos.

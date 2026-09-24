@@ -35,6 +35,14 @@ const positiveHourlyRateSchema = z
   .regex(/^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/)
   .refine((value) => Number(value) > 0, "Value must be greater than zero");
 
+export const loadCapacityUnitCodeSchema = z.enum([
+  "M3_LOOSE",
+  "M3_COMPACTED",
+  "LITER",
+  "CUBIC_YARD",
+]);
+export type LoadCapacityUnitCode = z.infer<typeof loadCapacityUnitCodeSchema>;
+
 export const createMachineSchema = z
   .object({
     name: z.string().trim().min(1).max(160),
@@ -166,6 +174,8 @@ const machineModelFieldsSchema = z
       .max(120)
       .optional()
       .transform((value) => (value && value.length > 0 ? value : undefined)),
+    loadCapacity: positiveSpecificationDecimalSchema.optional(),
+    loadCapacityUnitCode: loadCapacityUnitCodeSchema.optional(),
     loadVolumeM3: positiveSpecificationDecimalSchema.optional(),
     maxSupportedWeightT: positiveSpecificationDecimalSchema.optional(),
     requiresOperator: z.boolean(),
@@ -175,12 +185,27 @@ const machineModelFieldsSchema = z
   .superRefine((value, context) => {
     if (
       value.type !== "WHITE_LINE" &&
-      (value.loadVolumeM3 || value.maxSupportedWeightT)
+      (value.loadCapacity ||
+        value.loadCapacityUnitCode ||
+        value.loadVolumeM3 ||
+        value.maxSupportedWeightT)
     )
       context.addIssue({
         code: "custom",
         path: ["loadVolumeM3"],
         message: "Load specification is available only for white-line machines",
+      });
+    if (Boolean(value.loadCapacity) !== Boolean(value.loadCapacityUnitCode))
+      context.addIssue({
+        code: "custom",
+        path: [value.loadCapacity ? "loadCapacityUnitCode" : "loadCapacity"],
+        message: "Load capacity and unit must be provided together",
+      });
+    if (value.loadCapacity && value.loadVolumeM3)
+      context.addIssue({
+        code: "custom",
+        path: ["loadVolumeM3"],
+        message: "Use either canonical load capacity or legacy volume",
       });
     if (value.requiresOperator && !value.requiredJobRoleId)
       context.addIssue({
@@ -203,6 +228,26 @@ export type CreateMachineModelInput = z.infer<typeof createMachineModelSchema>;
 export const addMachineModelUnitsSchema = machineUnitSchema;
 export type AddMachineModelUnitsInput = z.infer<
   typeof addMachineModelUnitsSchema
+>;
+
+export const addMachineModelUnitsBatchSchema = z
+  .object({
+    projectId: z.string().uuid(),
+    units: z.array(machineUnitSchema).min(1).max(15),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    value.units.forEach((unit, index) => {
+      if (!unit.allocation || unit.allocation.projectId !== value.projectId)
+        context.addIssue({
+          code: "custom",
+          path: ["units", index, "allocation", "projectId"],
+          message: "Every batch unit must be allocated to the common Project",
+        });
+    });
+  });
+export type AddMachineModelUnitsBatchInput = z.infer<
+  typeof addMachineModelUnitsBatchSchema
 >;
 
 export const updateMachineModelSchema = machineModelFieldsSchema;

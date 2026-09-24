@@ -732,6 +732,8 @@ model MachineModel {
   normalizedVersion      String         @default("") @map("normalized_version") @db.VarChar(120)
   /// Legacy migration value. The public catalog and all new writes use the unit meter type.
   meterType           MachineMeterType? @map("meter_type")
+  loadCapacity        Decimal?         @map("load_capacity") @db.Decimal(12, 3)
+  loadCapacityUnitCode String?         @map("load_capacity_unit_code") @db.VarChar(32)
   loadVolumeM3        Decimal?         @map("load_volume_m3") @db.Decimal(10, 3)
   maxSupportedWeightT Decimal?         @map("max_supported_weight_t") @db.Decimal(10, 3)
   requiresOperator    Boolean          @default(true) @map("requires_operator")

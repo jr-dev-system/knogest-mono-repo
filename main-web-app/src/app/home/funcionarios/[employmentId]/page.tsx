@@ -22,8 +22,10 @@ export default async function Page({
 }: {
   params: Promise<{ employmentId: string }>;
 }) {
-  const [{ companies, selectedCompany, session }, { employmentId }] =
-    await Promise.all([requireCompanyWorkspace(), params]);
+  const [{ companies, selectedCompany }, { employmentId }] = await Promise.all([
+    requireCompanyWorkspace(),
+    params,
+  ]);
   const [record, jobRoles, projectRegistry, destinations] = await Promise.all([
     getEmployeeDetail(employmentId),
     getJobRoles(),
@@ -35,7 +37,6 @@ export default async function Page({
     <AppShell
       companies={companies}
       selectedCompany={selectedCompany}
-      userId={session.user.id}
       currentArea="employees"
     >
       <EmployeeDetailPage

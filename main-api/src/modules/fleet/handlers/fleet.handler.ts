@@ -10,6 +10,14 @@ import type { HandlerContext } from "../../../lib/utils/handler.dto";
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/iu;
 
+function normalizedJobRoleName(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
+}
+
 export interface MachineRecord {
   id: string;
   corporationId: string;
@@ -22,6 +30,12 @@ export interface MachineRecord {
   meterType: "HOUR_METER" | "ODOMETER";
   loadVolumeM3: Prisma.Decimal | null;
   maxSupportedWeightT: Prisma.Decimal | null;
+  transportSpecification: {
+    nominalCapacity: Prisma.Decimal;
+    effectiveCapacity: Prisma.Decimal;
+    capacityUnitCode: string;
+    maxSupportedWeightT: Prisma.Decimal | null;
+  } | null;
   isActive: boolean;
   createdAt: Date;
   updatedAt: Date;
@@ -33,6 +47,8 @@ export interface MachineRecord {
     manufacturer: string;
     model: string;
     version: string | null;
+    loadCapacity: Prisma.Decimal | null;
+    loadCapacityUnitCode: string | null;
     loadVolumeM3: Prisma.Decimal | null;
     maxSupportedWeightT: Prisma.Decimal | null;
     requiresOperator: boolean;
@@ -85,6 +101,14 @@ function machineSelect(companyId: string) {
     meterType: true,
     loadVolumeM3: true,
     maxSupportedWeightT: true,
+    transportSpecification: {
+      select: {
+        nominalCapacity: true,
+        effectiveCapacity: true,
+        capacityUnitCode: true,
+        maxSupportedWeightT: true,
+      },
+    },
     isActive: true,
     createdAt: true,
     updatedAt: true,
@@ -97,6 +121,8 @@ function machineSelect(companyId: string) {
         manufacturer: true,
         model: true,
         version: true,
+        loadCapacity: true,
+        loadCapacityUnitCode: true,
         loadVolumeM3: true,
         maxSupportedWeightT: true,
         requiresOperator: true,
@@ -337,6 +363,8 @@ export async function createMachineHandler(
     manufacturer: string;
     model: string;
     version?: string;
+    loadCapacity?: string;
+    loadCapacityUnitCode?: string;
     meterType: "HOUR_METER" | "ODOMETER";
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
@@ -383,13 +411,17 @@ export async function createMachineHandler(
       },
       select: { id: true },
     });
-    if (input.type === "WHITE_LINE" && input.loadVolumeM3)
+    if (
+      input.type === "WHITE_LINE" &&
+      input.loadCapacity &&
+      input.loadCapacityUnitCode
+    )
       await context.prisma.machineTransportSpecification.create({
         data: {
           machineId: machine.id,
-          nominalCapacity: input.loadVolumeM3,
-          effectiveCapacity: input.loadVolumeM3,
-          capacityUnitCode: "M3_LOOSE",
+          nominalCapacity: input.loadCapacity,
+          effectiveCapacity: input.loadCapacity,
+          capacityUnitCode: input.loadCapacityUnitCode,
           maxSupportedWeightT: input.maxSupportedWeightT,
         },
       });
@@ -447,6 +479,12 @@ async function createLegacyMachineModel(
     manufacturer: string;
     model: string;
     version?: string;
+    loadCapacity?: string;
+    loadCapacityUnitCode?:
+      | "M3_LOOSE"
+      | "M3_COMPACTED"
+      | "LITER"
+      | "CUBIC_YARD";
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
   },
@@ -482,6 +520,8 @@ async function createLegacyMachineModel(
         .toLocaleLowerCase("pt-BR"),
       normalizedModel: input.model.trim().toLocaleLowerCase("pt-BR"),
       normalizedVersion: input.version?.trim().toLocaleLowerCase("pt-BR") ?? "",
+      loadCapacity: input.loadCapacity,
+      loadCapacityUnitCode: input.loadCapacityUnitCode,
       loadVolumeM3: input.loadVolumeM3,
       maxSupportedWeightT: input.maxSupportedWeightT,
       requiresOperator: true,
@@ -501,6 +541,8 @@ function machineModelSelect(companyId: string) {
     manufacturer: true,
     model: true,
     version: true,
+    loadCapacity: true,
+    loadCapacityUnitCode: true,
     loadVolumeM3: true,
     maxSupportedWeightT: true,
     requiresOperator: true,
@@ -528,6 +570,8 @@ export async function createMachineModelHandler(
     manufacturer: string;
     model: string;
     version?: string;
+    loadCapacity?: string;
+    loadCapacityUnitCode?: string;
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
     requiresOperator: boolean;
@@ -551,6 +595,8 @@ export async function createMachineModelHandler(
         normalizedModel: input.model.trim().toLocaleLowerCase("pt-BR"),
         normalizedVersion:
           input.version?.trim().toLocaleLowerCase("pt-BR") ?? "",
+        loadCapacity: input.loadCapacity,
+        loadCapacityUnitCode: input.loadCapacityUnitCode,
         loadVolumeM3: input.loadVolumeM3,
         maxSupportedWeightT: input.maxSupportedWeightT,
         requiresOperator: input.requiresOperator,
@@ -710,6 +756,8 @@ export async function addMachineModelUnitsHandler(
     model: model.model,
     version: model.version ?? undefined,
     meterType: input.unit.meterType,
+    loadCapacity: model.loadCapacity?.toFixed(3) ?? undefined,
+    loadCapacityUnitCode: model.loadCapacityUnitCode ?? undefined,
     loadVolumeM3: model.loadVolumeM3?.toFixed(3) ?? undefined,
     maxSupportedWeightT: model.maxSupportedWeightT?.toFixed(3) ?? undefined,
     ownershipKind: input.unit.ownershipKind,
@@ -799,8 +847,8 @@ export async function allocateNewMachineUnitHandler(
       statusCode: 409,
     });
   for (const assignment of input.allocation.operatorAssignments) {
-    const employment = await context.prisma.projectEmployeeAllocation.findFirst(
-      {
+    const [employment, occupiedAssignment] = await Promise.all([
+      context.prisma.projectEmployeeAllocation.findFirst({
         where: {
           corporationId: input.corporationId,
           companyId: input.companyId,
@@ -810,11 +858,28 @@ export async function allocateNewMachineUnitHandler(
           effectiveTo: null,
         },
         select: { id: true, confirmedJobRoleId: true },
-      },
-    );
+      }),
+      context.prisma.projectMachineShiftAssignment.findFirst({
+        where: {
+          corporationId: input.corporationId,
+          companyId: input.companyId,
+          projectId: project.id,
+          shift: assignment.shift === "day" ? "DAY" : "NIGHT",
+          operatorEmploymentId: assignment.operatorEmploymentId,
+          effectiveTo: null,
+        },
+        select: { id: true },
+      }),
+    ]);
+    const acceptsAnyJobRole =
+      input.machine.machineModel.requiredJobRole !== null &&
+      normalizedJobRoleName(input.machine.machineModel.requiredJobRole.name) ===
+        "qualquer um";
     if (
       !employment ||
-      (input.machine.machineModel.requiredJobRoleId &&
+      occupiedAssignment ||
+      (!acceptsAnyJobRole &&
+        input.machine.machineModel.requiredJobRoleId &&
         employment.confirmedJobRoleId !==
           input.machine.machineModel.requiredJobRoleId)
     )
@@ -879,6 +944,8 @@ export async function updateMachineModelHandler(
     manufacturer: string;
     model: string;
     version?: string;
+    loadCapacity?: string;
+    loadCapacityUnitCode?: string;
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
     requiresOperator: boolean;
@@ -920,6 +987,8 @@ export async function updateMachineModelHandler(
         .toLocaleLowerCase("pt-BR"),
       normalizedModel: input.model.trim().toLocaleLowerCase("pt-BR"),
       normalizedVersion: input.version?.trim().toLocaleLowerCase("pt-BR") ?? "",
+      loadCapacity: input.loadCapacity,
+      loadCapacityUnitCode: input.loadCapacityUnitCode,
       loadVolumeM3: input.loadVolumeM3,
       maxSupportedWeightT: input.maxSupportedWeightT,
       requiresOperator: input.requiresOperator,
@@ -938,6 +1007,33 @@ export async function updateMachineModelHandler(
       maxSupportedWeightT: input.maxSupportedWeightT,
     },
   });
+  const machines = await context.prisma.machine.findMany({
+    where: { machineModelId: input.machineModelId, isActive: true },
+    select: { id: true },
+  });
+  if (input.loadCapacity && input.loadCapacityUnitCode) {
+    for (const machine of machines)
+      await context.prisma.machineTransportSpecification.upsert({
+        where: { machineId: machine.id },
+        create: {
+          machineId: machine.id,
+          nominalCapacity: input.loadCapacity,
+          effectiveCapacity: input.loadCapacity,
+          capacityUnitCode: input.loadCapacityUnitCode,
+          maxSupportedWeightT: input.maxSupportedWeightT,
+        },
+        update: {
+          nominalCapacity: input.loadCapacity,
+          effectiveCapacity: input.loadCapacity,
+          capacityUnitCode: input.loadCapacityUnitCode,
+          maxSupportedWeightT: input.maxSupportedWeightT,
+        },
+      });
+  } else {
+    await context.prisma.machineTransportSpecification.deleteMany({
+      where: { machineId: { in: machines.map((machine) => machine.id) } },
+    });
+  }
   return findMachineModelDetailHandler(context, input);
 }
 

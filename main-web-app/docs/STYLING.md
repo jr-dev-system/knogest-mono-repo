@@ -123,6 +123,9 @@ Contrato visual:
 Contrato técnico:
 
 - Use `open`/`onOpenChange` quando o formulário precisar fechar após salvar.
+- O backdrop de qualquer modal deve desfocar e escurecer moderadamente o
+  conteúdo de fundo. O clique externo não fecha o modal por padrão; preserve
+  `Escape`, o botão de fechar e as ações explícitas como saídas acessíveis.
 - O formulário deve ter labels visíveis, foco visível e campos obrigatórios nativos.
 - Erros de validação e de API devem usar `FormErrorDeclaration`; reserve
   `role="status"` para sucesso ou mensagens não bloqueantes.

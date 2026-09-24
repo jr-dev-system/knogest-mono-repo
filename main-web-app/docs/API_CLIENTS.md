@@ -141,16 +141,50 @@ edição de serviços de uma frente ativa chama
 de metadados da frente. A interface consome `produced`, `minimumQuantity` e
 `maximumQuantity` do snapshot, sem recalcular a regra de domínio.
 
-O cadastro de máquinas usa `POST /machine-models`: o modelo recebe os campos
-comuns, `requiresOperator`, `requiredJobRoleId` condicional e `units[]` com os
-identificadores e leituras iniciais. A inclusão posterior usa
-`POST /machine-models/:machineModelId/units`: a Server Action retorna resultado
-serializável, o sucesso é anunciado pelo toast global transitório e a página
-reconcilia o detalhe revalidado; falhas ficam no formulário para correção e
-nova tentativa. Ações Server-only carregam as funções ativas para o select e
-nunca aceitam função quando o modelo não exige operador. `loadVolumeM3` e
+O cadastro de máquinas usa `POST /machine-models` somente para o catálogo:
+fabricante, modelo, `version` opcional, campos comuns, `requiresOperator` e
+`requiredJobRoleId` condicional. A unidade é criada individualmente por
+`POST /machine-models/:machineModelId/units`, com medidor, identificadores,
+leitura e propriedade próprios; se alugada, inclui locadora e valor sugerido.
+O wizard do detalhe sempre passa por identificação, medição/propriedade,
+alocação opcional e revisão. Os botões intermediários apenas validam e avançam;
+somente a ação final da revisão chama a Server Action.
+
+O cadastro do modelo envia `loadCapacity` e `loadCapacityUnitCode` somente para
+linha branca. A etapa de capacidade é condicional e a revisão final é uma etapa
+de navegação real: entrar nela não chama a Server Action. O resultado da criação
+devolve o ID e a regra de operador para o alerta pós-sucesso e para o fluxo de
+unidades, sem importar o cliente gerado no componente.
+
+Depois da saída animada do formulário de modelo, uma confirmação compacta pode
+iniciar `POST
+/machine-models/:machineModelId/units/batch`. A Server Action recebe uma obra
+comum e entre 1 e 15 unidades completas. O retorno contém `created[]` e
+`rejected[]`; o componente retira as linhas criadas e preserva as rejeitadas
+com feedback persistente para reenvio. Um sucesso parcial não é convertido em
+erro global e nunca repete as unidades já persistidas.
+
+Quando a pessoa escolhe mobilizar a nova unidade, a Server Action consulta
+`GET /projects` com `statuses=planned,active`, busca por texto e cursor. O
+filtro é aplicado pela API antes da paginação, e a interface preserva as páginas
+já carregadas ao pedir mais obras. Em seguida, a Server Action acrescenta o
+bloco `allocation` ao mesmo comando, com `projectId`,
+`operatorAssignments[]` por turno e, para unidade alugada,
+`confirmedHourlyRate` e `monthlyHours`. As obras são buscadas de forma
+paginada entre estados elegíveis, e o contexto da obra selecionada é carregado
+server-only para filtrar turnos e integrantes compatíveis. O cliente nunca
+substitui a lista de máquinas já mobilizadas da obra: a API cria somente a nova
+alocação dentro da mesma transação da unidade. Uma falha mantém o modal aberto e
+não produz cadastro parcial.
+
+O envelope de conflito `MACHINE_DELETED_IDENTIFIER_MATCH` inclui candidatos
+seguros para que o fluxo de interface solicite a decisão explícita de restaurar
+ou criar nova unidade. Sucesso é anunciado pelo toast global transitório e
+falhas ficam acionáveis no formulário.
+Ações Server-only carregam as funções ativas para o select e nunca aceitam
+função quando o modelo não exige operador. `loadCapacity`, sua unidade e
 `maxSupportedWeightT` são enviados somente para `WHITE_LINE`. A API mantém
-esses campos compatíveis sincronizados com
+`loadVolumeM3` como projeção compatível em m³ e sincroniza esses campos com
 `MachineTransportSpecification`, que define capacidade nominal/efetiva,
 unidade e peso máximo para a seleção de caminhões. A edição usa
 `PATCH /machines/:machineId/load-specification`, enviando cada campo como string

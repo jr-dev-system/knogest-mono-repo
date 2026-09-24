@@ -48,22 +48,6 @@ export function EmployeesPageView({
 
   return (
     <div className="space-y-4">
-      <section className="grid gap-3 md:grid-cols-3" aria-label="Resumo">
-        <Summary label="Vínculos ativos" value={String(rows.length)} />
-        <Summary
-          label="Disponíveis"
-          value={String(
-            rows.filter((row) => row.availability.state === "available").length,
-          )}
-        />
-        <Summary
-          label="Sem alocação"
-          value={String(
-            rows.filter((row) => !row.availability.hasOpenAllocation).length,
-          )}
-        />
-      </section>
-
       <section className="overflow-hidden rounded-lg border border-border bg-card">
         <div className="border-b border-border bg-secondary/60 p-3">
           <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">

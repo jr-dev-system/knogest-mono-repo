@@ -126,6 +126,15 @@ categorias seguras.
   `MACHINE_RENTAL_ACTIVE` protect history and active rental terms. Operator
   compatibility during unit creation uses `MACHINE_OPERATOR_REQUIRED`,
   `MACHINE_OPERATOR_NOT_ALLOWED`, or `MACHINE_OPERATOR_INVALID`.
+- Em `POST /machine-models/:machineModelId/units`, erros da alocação inicial
+  pertencem ao mesmo comando da criação. Qualquer `4xx` desfaz unidade,
+  identificadores, leitura, propriedade/locação e mobilização; o cliente pode
+  corrigir os dados e reenviar o formulário completo com segurança.
+- Em `POST /machine-models/:machineModelId/units/batch`, erros de negócio de
+  uma unidade aparecem em `data.rejected[]` com índice, código e mensagem; a
+  resposta permanece `200` e `data.created[]` identifica as unidades válidas.
+  Erros de formato do envelope ou do limite de 15 itens continuam usando o
+  envelope canônico `4xx` e impedem o processamento do lote inteiro.
 
 Quantitative limits may appear in safe `blockers` or resource data, but errors
 must not expose request payloads, SQL, Prisma metadata, credentials, or

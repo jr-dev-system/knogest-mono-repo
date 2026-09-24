@@ -237,24 +237,17 @@ export function BaseFormModal<TData extends FieldValues>({
 
   const handleFormSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     if (isWizard) {
-      const submitter = (event.nativeEvent as SubmitEvent).submitter;
-      const isExplicitFinalAction =
-        submitter instanceof HTMLElement &&
-        submitter.dataset.wizardSubmit === "true";
-
-      if (!isLastStep) {
-        event.preventDefault();
-        void handleNextStep();
-        return;
-      }
-
-      if (!isExplicitFinalAction) {
-        event.preventDefault();
-        return;
-      }
+      event.preventDefault();
+      if (!isLastStep) void handleNextStep();
+      return;
     }
 
     void form.handleSubmit(handleSubmitWrapper, handleInvalidSubmit)(event);
+  };
+
+  const handleFinalAction = () => {
+    if (!isWizard || !isLastStep || navigationDisabled) return;
+    void form.handleSubmit(handleSubmitWrapper, handleInvalidSubmit)();
   };
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLFormElement>) => {
@@ -353,6 +346,7 @@ export function BaseFormModal<TData extends FieldValues>({
 
               {!isLastStep ? (
                 <Button
+                  key="wizard-next"
                   type="button"
                   size="lg"
                   className="min-h-11"
@@ -364,11 +358,12 @@ export function BaseFormModal<TData extends FieldValues>({
                 </Button>
               ) : (
                 <Button
-                  type="submit"
-                  data-wizard-submit="true"
+                  key="wizard-submit"
+                  type="button"
                   size="lg"
                   className="min-h-11"
                   disabled={navigationDisabled}
+                  onClick={handleFinalAction}
                 >
                   {isSubmitting ? (
                     <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />

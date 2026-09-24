@@ -11,8 +11,7 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { companies, selectedCompany, session } =
-    await requireCompanyWorkspace();
+  const { companies, selectedCompany } = await requireCompanyWorkspace();
   const params = await searchParams;
   const first = (value: string | string[] | undefined) =>
     Array.isArray(value) ? value[0] : value;
@@ -27,7 +26,6 @@ export default async function Page({
     <AppShell
       companies={companies}
       selectedCompany={selectedCompany}
-      userId={session.user.id}
       currentArea="works"
     >
       <ProjectsRegistry

@@ -3,6 +3,7 @@ import {
   formatProjectAddress,
   projectCommandSchema,
   projectIdempotencyKeySchema,
+  projectListQuerySchema,
   projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
   projectTeamCandidatesQuerySchema,
@@ -456,5 +457,14 @@ describe("Projects DTO", () => {
         services: [{ serviceCode: "cut", unitCode: "M3", quantity: "10.1255" }],
       }).success,
     ).toBe(false);
+  });
+  it("normalizes the status filter used before project pagination", () => {
+    expect(
+      projectListQuerySchema.parse({ statuses: "active, planned,active" }),
+    ).toMatchObject({ statuses: ["active", "planned"] });
+    expect(() =>
+      projectListQuerySchema.parse({ statuses: "archived" }),
+    ).toThrow();
+    expect(() => projectListQuerySchema.parse({ statuses: "," })).toThrow();
   });
 });

@@ -47,6 +47,12 @@ import {
 
 const BUSINESS_TIME_ZONE = "America/Sao_Paulo";
 
+function transportCapacityInM3(value: string, unitCode: string) {
+  const factor =
+    unitCode === "LITER" ? 0.001 : unitCode === "CUBIC_YARD" ? 0.764555 : 1;
+  return (Number(value) * factor).toFixed(3);
+}
+
 const roleToDb = {
   excavation: "EXCAVATION",
   loading: "LOADING",
@@ -1075,9 +1081,10 @@ export class ProductionsService {
         meterTypeSnapshot: assignment.machine.meterType,
         role: roleToDb[entry.role],
         operatorEmploymentId: entry.operatorEmploymentId,
-        operatorNameSnapshot: entry.operatorEmploymentId && assignment.operator
-          ? assignment.operator.person.displayName
-          : null,
+        operatorNameSnapshot:
+          entry.operatorEmploymentId && assignment.operator
+            ? assignment.operator.person.displayName
+            : null,
         initialMeterValue: entry.initialMeterValue
           ? normalizeDecimal(entry.initialMeterValue, 2)
           : null,
@@ -1213,7 +1220,10 @@ export class ProductionsService {
               if (!assignment || !specification)
                 throw resourceUnavailable("truck");
               return {
-                capacity: specification.effectiveCapacity.toFixed(3),
+                capacity: transportCapacityInM3(
+                  specification.effectiveCapacity.toFixed(3),
+                  specification.capacityUnitCode,
+                ),
                 acceptedTrips: truck.acceptedTrips,
                 partialTripCount: truck.partialTripCount,
                 partialVolume: normalizeDecimal(truck.partialVolume, 3),
@@ -1389,9 +1399,10 @@ export class ProductionsService {
               return {
                 machineId: truck.machineId,
                 driverEmploymentId: truck.driverEmploymentId,
-                driverNameSnapshot: truck.driverEmploymentId && assignment.operator
-                  ? assignment.operator.person.displayName
-                  : null,
+                driverNameSnapshot:
+                  truck.driverEmploymentId && assignment.operator
+                    ? assignment.operator.person.displayName
+                    : null,
                 machineNameSnapshot: assignment.machine.name,
                 identifierSnapshot:
                   assignment.machine.identifiers[0]?.value ?? null,

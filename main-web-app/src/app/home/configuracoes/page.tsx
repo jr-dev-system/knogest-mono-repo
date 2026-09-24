@@ -6,15 +6,13 @@ import { getJobRoles } from "@/features/employees/employees.server";
 import { JobRolesSettings } from "@/features/job-roles/job-roles-settings";
 
 export default async function Page() {
-  const { companies, selectedCompany, session } =
-    await requireCompanyWorkspace();
+  const { companies, selectedCompany } = await requireCompanyWorkspace();
   const jobRoles = await getJobRoles();
 
   return (
     <AppShell
       companies={companies}
       selectedCompany={selectedCompany}
-      userId={session.user.id}
       currentArea="settings"
     >
       <JobRolesSettings roles={jobRoles ?? []} />

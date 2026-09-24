@@ -1,17 +1,86 @@
 # Catálogo de modelos e unidades de máquina
 
-O catálogo pertence à empresa e separa o **modelo** da **unidade física**. Um
-modelo define fabricante, modelo, tipo, medidor, descrição, capacidade e a
-regra de operador; uma ou mais unidades registram nome, placa/patrimônio,
-leituras, disponibilidade e histórico operacional.
+O catálogo pertence à empresa e separa definitivamente o **modelo** da
+**unidade física**. O modelo pode existir sem unidades e define fabricante,
+modelo, versão opcional, tipo, descrição, capacidades e regra de operador. A
+combinação normalizada fabricante/modelo/versão é única por empresa; versão
+vazia é a versão sem valor.
 
-`POST /machine-models` cria o modelo e ao menos uma unidade no mesmo comando.
-`POST /machine-models/:machineModelId/units` acrescenta unidades a um modelo.
-Listagem e detalhe de modelos são paginados e mantêm as unidades físicas como
-referências usadas por obras, frentes, RDOs e produção.
+O medidor pertence à unidade física, é obrigatório e não muda depois do
+cadastro. Cada unidade também guarda nome opcional, placa e/ou patrimônio,
+leitura inicial, propriedade/locação, disponibilidade e histórico operacional.
+`POST /machine-models` cria somente o modelo e
+`POST /machine-models/:machineModelId/units` cria uma unidade por vez. Não há
+mais criação pública direta de unidade nem alocação isolada que ignore o modelo.
+Listagem e detalhe de modelos mantêm as unidades ativas como referências usadas
+por obras, frentes, RDOs e produção.
+
+Unidades novas são `OWNED` ou `RENTED`. Alugadas exigem locadora em texto livre
+e valor-hora sugerido positivo em BRL, com duas casas. Ao mobilizá-las, a
+alocação persiste locadora, valor-hora confirmado e horas mensais inteiras de 1
+a 744; unidades próprias não aceitam esses termos. `THIRD_PARTY` legado segue
+legível, mas não é oferecido em novos comandos.
+
+O estado é derivado: `available` para unidade ativa com propriedade/locação
+vigente sem alocação, `unavailable` para alocação aberta e `without_rental`
+para unidade historicamente alugada sem locação vigente. Ao removê-la da obra,
+a alocação e a locação vigente encerram juntas; uma unidade própria volta a
+`available`. A reconciliação de mobilização preserva períodos inalterados.
+
+`DELETE /machines/:machineId` faz soft delete apenas de unidade própria livre
+ou alugada em `without_rental`; locação vigente, alocação, frente ou bloqueio
+operacional impedem a exclusão. A operação fecha o período próprio aberto e
+libera identificadores, preservando histórico. Ao coincidir placa ou patrimônio
+com unidade excluída do mesmo modelo, a criação responde
+`409 MACHINE_DELETED_IDENTIFIER_MATCH` com candidatos seguros. O cliente pode
+restaurar o mesmo ID (com nova leitura não inferior à última) ou criar uma nova
+unidade com as mesmas identificações.
 Na inclusão posterior, a confirmação usa o toast global transitório e atualiza
 o detalhe do modelo; uma falha permanece no formulário com a causa retornada
 para que o cadastro possa ser corrigido e reenviado.
+
+No detalhe do modelo, a inclusão de uma unidade usa quatro etapas:
+identificação, medição/propriedade, alocação inicial e revisão. A alocação é
+opcional e começa desativada; quando selecionada, aceita somente obras
+`PLANNED` ou `ACTIVE`, carrega os turnos e a equipe atual da obra e solicita ao
+menos um operador elegível quando o modelo exigir operador. A etapa final
+permite retornar diretamente ao grupo que precisa de correção sem perder o
+preenchimento. Avançar entre etapas nunca cria a unidade: somente a confirmação
+explícita na revisão envia o comando.
+
+Na criação do modelo, o formulário também é dividido em etapas: identificação,
+capacidade condicional para linha branca, regra de operador e revisão. A etapa
+de capacidade não aparece para linha amarela. Chegar à revisão nunca envia o
+comando; somente **Criar modelo** persiste o catálogo. Após o sucesso, um
+convite compacto pergunta se a pessoa deseja criar unidades agora.
+
+Após o cadastro do modelo, uma confirmação compacta oferece iniciar a criação
+de unidades, sem interromper a transição entre os modais. Quando aceita, o
+fluxo cria de 1 a 15 unidades para uma única obra. Cada linha
+mantém identificação, medidor, leitura, propriedade/locação e operadores por
+turno próprios. `POST /machine-models/:machineModelId/units/batch` processa
+cada unidade em uma transação independente e retorna os índices criados e
+rejeitados. As válidas permanecem criadas; a interface remove essas linhas e
+mantém somente as rejeitadas para correção, sem reenviar as já concluídas.
+
+O bloco opcional `allocation` de
+`POST /machine-models/:machineModelId/units` contém a obra, as designações de
+operador por turno e, para unidade alugada, valor-hora confirmado e horas
+mensais. Criação, leitura inicial, propriedade/locação e mobilização são
+executadas na mesma transação. Obra indisponível, operador incompatível ou já
+ocupado, termos de locação inválidos e demais conflitos desfazem toda a
+operação; não permanece uma unidade parcialmente criada. Sem `allocation`, o
+comportamento permanece a criação de uma unidade disponível no catálogo.
+
+As unidades existentes aparecem em uma tabela operacional com busca local por
+nome, placa ou patrimônio, filtros de disponibilidade e medidor, ordenação e
+paginação. Esses controles operam sobre as unidades ativas já retornadas pelo
+detalhe.
+
+A seleção de obra para mobilização busca páginas de 15 registros pelo nome ou
+contrato. A API aplica o filtro `statuses=planned,active` antes da paginação;
+assim, somente obras planejadas ou em andamento aparecem e o cursor não avança
+por páginas de obras inelegíveis.
 
 Todo modelo declara `requiresOperator`. Quando verdadeiro, `requiredJobRoleId`
 é obrigatório e precisa apontar para uma função ativa da mesma empresa; quando
@@ -44,10 +113,19 @@ como leitura alterada, máquina já alocada, operador obrigatório ou função
 incompatível, não dependem exclusivamente de toast para chegar ao usuário.
 
 Máquinas podem ser de linha amarela (`YELLOW_LINE`) ou linha branca
-(`WHITE_LINE`). Somente a linha branca aceita as especificações opcionais:
+(`WHITE_LINE`). Somente a linha branca aceita as especificações opcionais. A
+capacidade canônica usa `loadCapacity` com `loadCapacityUnitCode`, aceitando:
 
-- `loadVolumeM3`: volume de carga em metros cúbicos;
-- `maxSupportedWeightT`: peso máximo suportado em toneladas.
+- `M3_LOOSE`: metro cúbico solto;
+- `M3_COMPACTED`: metro cúbico compactado;
+- `LITER`: litro;
+- `CUBIC_YARD`: jarda cúbica.
+
+`loadVolumeM3` permanece no contrato como projeção legada em m³. Para produção,
+litros são convertidos por `0,001` e jardas cúbicas por `0,764555`; as duas
+variações de m³ preservam o valor numérico, enquanto o snapshot conserva a
+unidade original. `maxSupportedWeightT` continua representando o peso máximo
+suportado em toneladas.
 
 Quando informados, os valores devem ser positivos e ter no máximo três casas
 decimais. Linha amarela não persiste esses campos. O banco e a API repetem a

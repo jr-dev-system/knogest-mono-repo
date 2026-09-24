@@ -8,15 +8,16 @@ export default async function Page({
 }: {
   params: Promise<{ clientId: string }>;
 }) {
-  const [{ companies, selectedCompany, session }, { clientId }] =
-    await Promise.all([requireCompanyWorkspace(), params]);
+  const [{ companies, selectedCompany }, { clientId }] = await Promise.all([
+    requireCompanyWorkspace(),
+    params,
+  ]);
   const record = await getRegistryDetail("clients", clientId);
 
   return (
     <AppShell
       companies={companies}
       selectedCompany={selectedCompany}
-      userId={session.user.id}
       currentArea="clients"
     >
       <RegistryDetailPage

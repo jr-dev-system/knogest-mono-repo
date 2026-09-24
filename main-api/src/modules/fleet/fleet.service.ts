@@ -2,14 +2,17 @@ import {
   buildCursorPage,
   parseBoundCursor,
 } from "../../lib/utils/cursor-pagination";
-import { AppError } from "../../lib/utils/appError";
+import { AppError, isAppError } from "../../lib/utils/appError";
 import type { HandlerContext } from "../../lib/utils/handler.dto";
+import { loadCapacityInCubicMeters } from "../../lib/utils/load-capacity";
 import type {
   AppendMachineMeterReadingInput,
   CorrectMachineMeterReadingInput,
   CreateMachineInput,
   CreateMachineModelInput,
   AddMachineModelUnitsInput,
+  AddMachineModelUnitsBatchInput,
+  LoadCapacityUnitCode,
   ListMachineModelsQuery,
   AllocateMachineInput,
   ListMachinesQuery,
@@ -59,6 +62,28 @@ function normalizeDecimal(value: string) {
 function normalizeSpecificationDecimal(value: string) {
   const [whole, fraction = ""] = value.split(".");
   return `${whole}.${fraction.padEnd(3, "0").slice(0, 3)}`;
+}
+
+function canonicalLoadSpecification(input: {
+  loadCapacity?: string;
+  loadCapacityUnitCode?: LoadCapacityUnitCode;
+  loadVolumeM3?: string;
+}) {
+  const capacity = input.loadCapacity ?? input.loadVolumeM3;
+  const unit =
+    input.loadCapacityUnitCode ?? (input.loadVolumeM3 ? "M3_LOOSE" : undefined);
+  if (!capacity || !unit)
+    return {
+      loadCapacity: undefined,
+      loadCapacityUnitCode: undefined,
+      loadVolumeM3: undefined,
+    };
+  const normalizedCapacity = normalizeSpecificationDecimal(capacity);
+  return {
+    loadCapacity: normalizedCapacity,
+    loadCapacityUnitCode: unit,
+    loadVolumeM3: loadCapacityInCubicMeters(normalizedCapacity, unit),
+  };
 }
 
 function loadSpecificationNotApplicable(): never {
@@ -152,6 +177,10 @@ function toMachineDto(
     manufacturer: record.manufacturer,
     model: record.model,
     version: record.version,
+    loadCapacity:
+      record.transportSpecification?.nominalCapacity.toFixed(3) ?? null,
+    loadCapacityUnitCode:
+      record.transportSpecification?.capacityUnitCode ?? null,
     meterType: record.meterType,
     loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
     maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
@@ -188,6 +217,8 @@ function toMachineModelDto(
     manufacturer: record.manufacturer,
     model: record.model,
     version: record.version,
+    loadCapacity: record.loadCapacity?.toFixed(3) ?? null,
+    loadCapacityUnitCode: record.loadCapacityUnitCode,
     loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
     maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
     requiresOperator: record.requiresOperator,
@@ -272,6 +303,7 @@ export class FleetService {
       (input.loadVolumeM3 || input.maxSupportedWeightT)
     )
       loadSpecificationNotApplicable();
+    const loadSpecification = canonicalLoadSpecification(input);
     return this.context.transaction(async (transactionContext) => {
       const record = await createMachineHandler(transactionContext, {
         ...scope,
@@ -282,9 +314,7 @@ export class FleetService {
         manufacturer: input.manufacturer,
         model: input.model,
         meterType: input.meterType,
-        loadVolumeM3: input.loadVolumeM3
-          ? normalizeSpecificationDecimal(input.loadVolumeM3)
-          : undefined,
+        ...loadSpecification,
         maxSupportedWeightT: input.maxSupportedWeightT
           ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
           : undefined,
@@ -319,14 +349,13 @@ export class FleetService {
     input: CreateMachineModelInput,
   ) {
     const requiredJobRoleId = await this.validateRequiredJobRole(scope, input);
+    const loadSpecification = canonicalLoadSpecification(input);
     return this.context.transaction(async (transactionContext) => {
       const record = await createMachineModelHandler(transactionContext, {
         ...scope,
         ...input,
         requiredJobRoleId,
-        loadVolumeM3: input.loadVolumeM3
-          ? normalizeSpecificationDecimal(input.loadVolumeM3)
-          : undefined,
+        ...loadSpecification,
         maxSupportedWeightT: input.maxSupportedWeightT
           ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
           : undefined,
@@ -483,6 +512,43 @@ export class FleetService {
     });
   }
 
+  async addModelUnitsBatch(
+    scope: AuthenticatedCompanyScope,
+    machineModelId: string,
+    input: AddMachineModelUnitsBatchInput,
+  ) {
+    const created: Array<{ index: number; machineId: string | null }> = [];
+    const rejected: Array<{ index: number; code: string; message: string }> =
+      [];
+
+    for (const [index, unit] of input.units.entries()) {
+      try {
+        const model = await this.addModelUnits(scope, machineModelId, unit);
+        const plate = unit.plate?.replace(/[^A-Za-z0-9]/gu, "").toUpperCase();
+        const companyTag = unit.companyTag
+          ?.replace(/[^A-Za-z0-9]/gu, "")
+          .toUpperCase();
+        const createdUnit = model.units.find(
+          (candidate) =>
+            (plate && candidate.identifiers.plate?.normalizedValue === plate) ||
+            (companyTag &&
+              candidate.identifiers.companyTag?.normalizedValue === companyTag),
+        );
+        created.push({ index, machineId: createdUnit?.id ?? null });
+      } catch (error) {
+        rejected.push({
+          index,
+          code: isAppError(error) ? error.code : "INTERNAL_ERROR",
+          message: isAppError(error)
+            ? error.message
+            : "Machine unit could not be created",
+        });
+      }
+    }
+
+    return { created, rejected };
+  }
+
   async softDelete(scope: AuthenticatedCompanyScope, machineId: string) {
     return this.context.transaction(async (transactionContext) => {
       const status = await this.operationalStatus.getStatus({
@@ -508,6 +574,7 @@ export class FleetService {
     input: import("./fleet.dto").UpdateMachineModelInput,
   ) {
     const requiredJobRoleId = await this.validateRequiredJobRole(scope, input);
+    const loadSpecification = canonicalLoadSpecification(input);
     return this.context.transaction(async (transactionContext) =>
       toMachineModelDto(
         await updateMachineModelHandler(transactionContext, {
@@ -515,9 +582,7 @@ export class FleetService {
           ...input,
           machineModelId,
           requiredJobRoleId,
-          loadVolumeM3: input.loadVolumeM3
-            ? normalizeSpecificationDecimal(input.loadVolumeM3)
-            : undefined,
+          ...loadSpecification,
           maxSupportedWeightT: input.maxSupportedWeightT
             ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
             : undefined,

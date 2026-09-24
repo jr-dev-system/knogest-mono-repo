@@ -22,8 +22,7 @@ export default async function Page({
   params: Promise<{ projectId: string }>;
   searchParams: Promise<{ section?: string; teamShift?: string }>;
 }) {
-  const { companies, selectedCompany, session } =
-    await requireCompanyWorkspace();
+  const { companies, selectedCompany } = await requireCompanyWorkspace();
   const [{ projectId }, { section, teamShift }] = await Promise.all([
     params,
     searchParams,
@@ -46,7 +45,6 @@ export default async function Page({
     <AppShell
       companies={companies}
       selectedCompany={selectedCompany}
-      userId={session.user.id}
       currentArea="works"
       navigationMode="project"
     >

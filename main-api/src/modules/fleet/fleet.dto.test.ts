@@ -4,6 +4,8 @@ import {
   appendMachineMeterReadingSchema,
   correctMachineMeterReadingSchema,
   createMachineSchema,
+  createMachineModelSchema,
+  addMachineModelUnitsBatchSchema,
   listMachinesQuerySchema,
   updateMachineLoadSpecificationSchema,
 } from "./fleet.dto";
@@ -128,6 +130,73 @@ describe("fleet DTOs", () => {
     ).toMatchObject({ reason: "Initial reading typo" });
     expect(() =>
       correctMachineMeterReadingSchema.parse({ reason: "", value: "-1" }),
+    ).toThrow();
+  });
+
+  it("accepts the operational load-capacity unit catalog only for white-line models", () => {
+    for (const loadCapacityUnitCode of [
+      "M3_LOOSE",
+      "M3_COMPACTED",
+      "LITER",
+      "CUBIC_YARD",
+    ] as const) {
+      expect(
+        createMachineModelSchema.parse({
+          type: "WHITE_LINE",
+          manufacturer: "Volvo",
+          model: "VM",
+          loadCapacity: "12.345",
+          loadCapacityUnitCode,
+          requiresOperator: false,
+        }),
+      ).toMatchObject({ loadCapacityUnitCode });
+    }
+    expect(() =>
+      createMachineModelSchema.parse({
+        type: "YELLOW_LINE",
+        manufacturer: "Caterpillar",
+        model: "320",
+        loadCapacity: "12",
+        loadCapacityUnitCode: "LITER",
+        requiresOperator: false,
+      }),
+    ).toThrow();
+  });
+
+  it("limits a unit batch to 15 entries and one common Project", () => {
+    const projectId = "00000000-0000-4000-8000-000000000001";
+    const unit = (index: number) => ({
+      companyTag: `PAT-${index}`,
+      meterType: "HOUR_METER" as const,
+      initialMeterReading: "0",
+      ownership: { kind: "OWNED" as const },
+      allocation: { projectId, operatorAssignments: [] },
+    });
+    expect(
+      addMachineModelUnitsBatchSchema.parse({
+        projectId,
+        units: Array.from({ length: 15 }, (_, index) => unit(index)),
+      }).units,
+    ).toHaveLength(15);
+    expect(() =>
+      addMachineModelUnitsBatchSchema.parse({
+        projectId,
+        units: Array.from({ length: 16 }, (_, index) => unit(index)),
+      }),
+    ).toThrow();
+    expect(() =>
+      addMachineModelUnitsBatchSchema.parse({
+        projectId,
+        units: [
+          {
+            ...unit(1),
+            allocation: {
+              projectId: "00000000-0000-4000-8000-000000000002",
+              operatorAssignments: [],
+            },
+          },
+        ],
+      }),
     ).toThrow();
   });
 });

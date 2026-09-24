@@ -38,6 +38,25 @@ src/features/employees/components/employee-detail-page.tsx
 - Prefira controles familiares: botões com ícone, inputs, segmentados, toggles e menus.
 - Evite guardar regra de negócio em componentes de UI.
 
+## App shell responsivo
+
+O `AppShell` mantém a navegação global em uma sidebar fixa a partir de `lg`
+(1024 px). Abaixo desse breakpoint, o header permanece fixo e abre a mesma
+navegação em um drawer modal; o backdrop bloqueia a página e desfoca o conteúdo
+somente enquanto o drawer está aberto. Troca de empresa e saída pertencem ao
+rodapé da navegação global, não ao header.
+
+O drawer fecha por botão, `Escape` ou escolha de uma rota e deve devolver o
+foco ao gatilho. Clique no backdrop não o fecha por padrão, preservando a
+navegação quando o toque externo for acidental. Itens preservam alvo de toque
+mínimo de 44 px, não quebram rótulos e as transições respeitam movimento
+reduzido.
+
+Em páginas de obra, a navegação contextual continua dentro do conteúdo e não é
+movida para o drawer global. No desktop, ela mantém a coordenação de expansão
+com a sidebar principal; em mobile e tablet, os dois controles permanecem
+independentes.
+
 ## Estilização Demonstrativa
 
 - Cores, espaçamentos, sombras, radius e composições atuais são exemplos do starter.
@@ -60,6 +79,13 @@ Use `OperationsModal` para a casca de criação/edição e
 `src/components/ui/form-section.tsx` para agrupar campos relacionados. A seção
 é um `fieldset` com título obrigatório e descrição opcional; não deve conter
 regras de negócio nem controlar o envio.
+
+Todos os modais usam um backdrop com desfoque e escurecimento moderado para
+separar a tarefa ativa do conteúdo de fundo. `Dialog` bloqueia o fechamento por
+clique externo por padrão; `AlertDialog` também o bloqueia por natureza. Ambos
+continuam fechando por `Escape` e por um controle de fechamento explícito.
+Quando uma exceção realmente precisar fechar pelo backdrop, use
+`disablePointerDismissal={false}` diretamente no `Dialog`.
 
 Validação, mensagens em português, opcionais e máscaras seguem
 `docs/FORM_VALIDATION.md`.

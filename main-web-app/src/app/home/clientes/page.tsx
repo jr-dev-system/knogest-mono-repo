@@ -7,14 +7,13 @@ export default async function Page({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const [{ companies, selectedCompany, session }, resolvedSearchParams] =
+  const [{ companies, selectedCompany }, resolvedSearchParams] =
     await Promise.all([requireCompanyWorkspace(), searchParams]);
 
   return (
     <AppShell
       companies={companies}
       selectedCompany={selectedCompany}
-      userId={session.user.id}
       currentArea="clients"
     >
       <ClientsPage searchParams={resolvedSearchParams} />

@@ -1,4 +1,9 @@
-import { createMachineModelAction } from "./machines.actions";
+import {
+  addMachineModelUnitsBatchAction,
+  createMachineModelAction,
+  getMachineAllocationProjectContextAction,
+  searchMachineAllocationProjectsAction,
+} from "./machines.actions";
 import {
   getMachineModelsList,
   parseMachinesSearchParams,
@@ -19,6 +24,9 @@ export async function MachinesPage({
   return (
     <MachinesPageView
       action={createMachineModelAction}
+      batchAction={addMachineModelUnitsBatchAction}
+      loadProjectAction={getMachineAllocationProjectContextAction}
+      searchProjectsAction={searchMachineAllocationProjectsAction}
       pageInfo={page.pageInfo}
       query={query}
       rows={page.data}

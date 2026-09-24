@@ -1,40 +1,154 @@
 "use client";
 
+import * as React from "react";
 import Link from "next/link";
-import { useActionState, useState } from "react";
-import { ArrowLeft, Plus, Truck } from "lucide-react";
-import { toast } from "sonner";
+import type { ColumnDef } from "@tanstack/react-table";
+import {
+  ArrowLeft,
+  Eye,
+  Gauge,
+  Tag,
+  Truck,
+  type LucideIcon,
+} from "lucide-react";
 
-import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { Button, buttonVariants } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { OperationsTable } from "@/components/ui/operations-table";
+import { cn } from "@/lib/utils";
+import type {
+  MachineAllocationProjectContextResult,
+  MachineAllocationProjectsResult,
+} from "../machine-allocation.types";
 import type { MachineActionState } from "../machines-action-state";
 import type { MachineModelDetail } from "../machines.server";
+import { formatLoadCapacity } from "../capacity-format";
+import { formatMeterReading, meterTypeLabel } from "../meter-format";
+import { MachineUnitCreationWizard } from "./machine-unit-creation-wizard";
 
-type AddUnitsAction = (
+type MachineAction = (
   state: MachineActionState,
   formData: FormData,
 ) => Promise<MachineActionState>;
+type MachineUnit = MachineModelDetail["units"][number];
+type AvailabilityFilter = "" | MachineUnit["availability"]["state"];
+type MeterFilter = "" | MachineUnit["meterType"];
+
+const controlClass =
+  "h-10 rounded-md border border-input bg-background px-3 text-sm font-semibold text-foreground outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30";
 
 export function MachineModelDetailPage({
   model,
   action,
+  loadProjectAction,
+  searchProjectsAction,
 }: {
   model: MachineModelDetail;
-  action: AddUnitsAction;
+  action: MachineAction;
+  loadProjectAction: (
+    projectId: string,
+  ) => Promise<MachineAllocationProjectContextResult>;
+  searchProjectsAction: (input?: {
+    cursor?: string | null;
+    search?: string;
+  }) => Promise<MachineAllocationProjectsResult>;
 }) {
-  const [unitCount, setUnitCount] = useState(1);
-  const [state, formAction, pending] = useActionState(
-    async (previousState: MachineActionState, formData: FormData) => {
-      const result = await action(previousState, formData);
-      if (result.ok) {
-        toast.success(result.message);
-      }
-      return result;
-    },
-    { ok: false, message: "" },
+  const [search, setSearch] = React.useState("");
+  const [availability, setAvailability] =
+    React.useState<AvailabilityFilter>("");
+  const [meterType, setMeterType] = React.useState<MeterFilter>("");
+  const hasFilters = Boolean(search || availability || meterType);
+
+  const rows = React.useMemo(() => {
+    const term = normalize(search);
+    return model.units.filter((unit) => {
+      const matchesSearch =
+        !term ||
+        [
+          unit.name,
+          unit.identifiers.plate?.value,
+          unit.identifiers.companyTag?.value,
+        ].some((value) => value && normalize(value).includes(term));
+      const matchesAvailability =
+        !availability || unit.availability.state === availability;
+      const matchesMeter = !meterType || unit.meterType === meterType;
+      return matchesSearch && matchesAvailability && matchesMeter;
+    });
+  }, [availability, meterType, model.units, search]);
+
+  const columns = React.useMemo<ColumnDef<MachineUnit>[]>(
+    () => [
+      {
+        accessorKey: "name",
+        header: "Unidade",
+        cell: ({ row }) => (
+          <div>
+            <span className="block font-bold text-foreground">
+              {row.original.name}
+            </span>
+            <span className="mt-0.5 block text-xs font-medium text-muted-foreground">
+              Cadastrada em {formatDate(row.original.createdAt)}
+            </span>
+          </div>
+        ),
+      },
+      {
+        id: "identifiers",
+        accessorFn: (unit) => identifierLabel(unit),
+        header: "Identificadores",
+        cell: ({ row }) => (
+          <span className="text-muted-foreground">
+            {identifierLabel(row.original)}
+          </span>
+        ),
+      },
+      {
+        id: "latestMeterReading",
+        accessorFn: (unit) => unit.latestMeterReading?.value ?? "",
+        header: "Última leitura",
+        cell: ({ row }) => (
+          <div>
+            <span className="block font-semibold text-foreground">
+              {row.original.latestMeterReading
+                ? formatMeterReading(
+                    row.original.latestMeterReading.value,
+                    row.original.meterType,
+                  )
+                : "Sem leitura"}
+            </span>
+            <span className="mt-0.5 block text-xs text-muted-foreground">
+              {meterTypeLabel(row.original.meterType)}
+            </span>
+          </div>
+        ),
+      },
+      {
+        id: "availability",
+        accessorFn: (unit) => availabilityLabel(unit.availability.state),
+        header: "Disponibilidade",
+        cell: ({ row }) => (
+          <AvailabilityBadge state={row.original.availability.state} />
+        ),
+      },
+      {
+        id: "detail",
+        enableSorting: false,
+        header: "Detalhe",
+        cell: ({ row }) => (
+          <Link
+            href={`/home/maquinas/${row.original.id}`}
+            className={buttonVariants({ size: "sm", variant: "outline" })}
+            aria-label={`Ver unidade ${row.original.name}`}
+          >
+            <Eye className="size-4" />
+            Ver
+          </Link>
+        ),
+      },
+    ],
+    [],
   );
-  const unit = model.meterType === "HOUR_METER" ? "h" : "km";
+
+  const displayName = `${model.model}${model.version ? ` — ${model.version}` : ""}`;
 
   return (
     <div className="space-y-4">
@@ -42,153 +156,220 @@ export function MachineModelDetailPage({
         href="/home/maquinas"
         className={buttonVariants({ size: "sm", variant: "outline" })}
       >
-        <ArrowLeft className="size-4" /> Voltar
+        <ArrowLeft className="size-4" />
+        Voltar para máquinas
       </Link>
-      <section className="rounded-lg border border-border bg-card p-4">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <p className="text-sm font-semibold text-muted-foreground">
-              Modelo de máquina
-            </p>
-            <h2 className="text-2xl font-bold">
-              {model.manufacturer} / {model.model}
-            </h2>
-            <p className="mt-1 text-sm text-muted-foreground">
-              {model.description ?? "Sem descrição"}
-            </p>
-          </div>
-          <div className="rounded-md bg-secondary px-3 py-2 text-sm font-semibold">
-            {model.requiresOperator
-              ? `Exige: ${model.requiredJobRole?.name ?? "operador"}`
-              : "Não exige operador"}
+
+      <section className="overflow-hidden rounded-lg border border-border bg-card">
+        <div className="border-b border-border bg-secondary/60 px-4 py-4 sm:px-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-sm font-semibold text-muted-foreground">
+                {model.manufacturer}
+              </p>
+              <h2 className="mt-1 text-2xl font-bold tracking-tight text-balance">
+                {displayName}
+              </h2>
+              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground text-pretty">
+                {model.description ?? "Nenhuma descrição informada."}
+              </p>
+            </div>
+            <span className="inline-flex min-h-9 shrink-0 items-center self-start rounded-full border border-border bg-background px-3 text-sm font-bold text-foreground">
+              {model.requiresOperator
+                ? `Exige ${model.requiredJobRole?.name ?? "operador"}`
+                : "Dispensa operador"}
+            </span>
           </div>
         </div>
-        <dl className="mt-4 grid gap-3 sm:grid-cols-3">
-          <Info
-            label="Tipo"
+
+        <dl className="grid sm:grid-cols-2 lg:grid-cols-4">
+          <ModelFact icon={Truck} label="Tipo" value={typeLabel(model.type)} />
+          <ModelFact
+            icon={Gauge}
+            label="Capacidade"
+            value={capacityLabel(model)}
+          />
+          <ModelFact
+            icon={Tag}
+            label="Regra de operador"
             value={
-              model.type === "WHITE_LINE" ? "Linha branca" : "Linha amarela"
+              model.requiresOperator
+                ? (model.requiredJobRole?.name ?? "Qualquer operador")
+                : "Não exige operador"
             }
           />
-          <Info
-            label="Medidor"
-            value={model.meterType === "HOUR_METER" ? "Horímetro" : "Odômetro"}
+          <ModelFact
+            icon={Truck}
+            label="Unidades ativas"
+            value={`${model.unitCount} ${model.unitCount === 1 ? "unidade" : "unidades"}`}
           />
-          <Info label="Unidades" value={String(model.unitCount)} />
         </dl>
       </section>
 
-      <section className="rounded-lg border border-border bg-card p-4">
-        <h3 className="font-bold">Unidades cadastradas</h3>
-        <div className="mt-3 grid gap-2">
-          {model.units.map((machine) => (
-            <Link
-              key={machine.id}
-              href={`/home/maquinas/${machine.id}`}
-              className="flex items-center justify-between rounded-md border border-border px-3 py-2 hover:bg-secondary/50"
-            >
-              <span className="font-semibold">{machine.name}</span>
-              <span className="text-sm text-muted-foreground">
-                {machine.identifiers.plate?.value ??
-                  machine.identifiers.companyTag?.value ??
-                  "Sem identificador"}
-              </span>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      <form
-        action={formAction}
-        aria-busy={pending}
-        className="rounded-lg border border-border bg-card p-4"
-      >
-        <h3 className="font-bold">Adicionar unidades</h3>
-        <p className="mt-1 text-sm text-muted-foreground">
-          Cada nova unidade terá sua própria identificação e leitura inicial.
-        </p>
-        <div className="mt-4 grid gap-3">
-          {Array.from({ length: unitCount }, (_, index) => (
-            <div
-              key={index}
-              className="grid gap-3 rounded-md border border-border p-3 sm:grid-cols-2"
-            >
-              <Field
-                name="unitName"
-                label={`Nome da unidade ${index + 1}`}
-                required
-                disabled={pending}
-              />
-              <Field name="unitPlate" label="Placa" disabled={pending} />
-              <Field
-                name="unitCompanyTag"
-                label="Patrimônio"
-                disabled={pending}
-              />
-              <Field
-                name="unitInitialMeterReading"
-                label={`Leitura inicial (${unit})`}
-                required
-                disabled={pending}
-              />
-            </div>
-          ))}
-        </div>
-        {!state.ok && state.message && (
-          <FormErrorDeclaration
-            className="mt-4"
-            title="Não foi possível adicionar as unidades."
-            issues={[{ message: state.message }]}
+      <OperationsTable
+        title="Unidades cadastradas"
+        columns={columns}
+        data={rows}
+        searchValue={search}
+        onSearchChange={setSearch}
+        searchPlaceholder="Buscar por nome, placa ou patrimônio"
+        emptyTitle={
+          hasFilters
+            ? "Nenhuma unidade corresponde aos filtros"
+            : "Nenhuma unidade cadastrada"
+        }
+        emptyDescription={
+          hasFilters
+            ? "Ajuste a busca ou limpe os filtros para visualizar outras unidades."
+            : "Crie a primeira unidade física deste modelo para iniciar o controle operacional."
+        }
+        getRowLabel={(unit) => unit.name}
+        filters={
+          <>
+            <label>
+              <span className="sr-only">Filtrar por disponibilidade</span>
+              <select
+                aria-label="Disponibilidade"
+                className={controlClass}
+                value={availability}
+                onChange={(event) =>
+                  setAvailability(event.target.value as AvailabilityFilter)
+                }
+              >
+                <option value="">Todas as situações</option>
+                <option value="available">Disponíveis</option>
+                <option value="unavailable">Indisponíveis</option>
+                <option value="without_rental">Sem locação vigente</option>
+              </select>
+            </label>
+            <label>
+              <span className="sr-only">Filtrar por medidor</span>
+              <select
+                aria-label="Tipo de medidor"
+                className={controlClass}
+                value={meterType}
+                onChange={(event) =>
+                  setMeterType(event.target.value as MeterFilter)
+                }
+              >
+                <option value="">Todos os medidores</option>
+                <option value="HOUR_METER">Horímetro</option>
+                <option value="ODOMETER">Odômetro</option>
+              </select>
+            </label>
+            {hasFilters && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setSearch("");
+                  setAvailability("");
+                  setMeterType("");
+                }}
+              >
+                Limpar filtros
+              </Button>
+            )}
+          </>
+        }
+        actions={
+          <MachineUnitCreationWizard
+            action={action}
+            loadProjectAction={loadProjectAction}
+            modelName={displayName}
+            modelRule={{
+              requiresOperator: model.requiresOperator,
+              requiredJobRoleId: model.requiredJobRole?.id ?? null,
+              requiredJobRoleName: model.requiredJobRole?.name ?? null,
+            }}
+            searchProjectsAction={searchProjectsAction}
           />
-        )}
-        <div className="mt-4 flex flex-wrap justify-end gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={pending}
-            onClick={() => setUnitCount((count) => count + 1)}
-          >
-            <Plus className="size-4" /> Outra unidade
-          </Button>
-          <Button type="submit" disabled={pending}>
-            <Truck className="size-4" />{" "}
-            {pending ? "Salvando" : "Adicionar unidades"}
-          </Button>
-        </div>
-      </form>
+        }
+      />
     </div>
   );
 }
 
-function Field({
+function ModelFact({
+  icon: Icon,
   label,
-  name,
-  required = false,
-  disabled = false,
+  value,
 }: {
+  icon: LucideIcon;
   label: string;
-  name: string;
-  required?: boolean;
-  disabled?: boolean;
+  value: string;
 }) {
   return (
-    <label className="grid gap-1.5 text-sm font-semibold">
-      <span>{label}</span>
-      <Input
-        name={name}
-        required={required}
-        disabled={disabled}
-        className="h-11"
-      />
-    </label>
+    <div className="border-b border-border px-4 py-3 last:border-b-0 sm:[&:nth-last-child(-n+2)]:border-b-0 sm:[&:nth-child(odd)]:border-r lg:border-b-0 lg:border-r lg:last:border-r-0">
+      <dt className="flex items-center gap-2 text-xs font-bold text-muted-foreground">
+        <Icon className="size-3.5" />
+        {label}
+      </dt>
+      <dd className="mt-1.5 font-bold text-foreground">{value}</dd>
+    </div>
   );
 }
 
-function Info({ label, value }: { label: string; value: string }) {
+function AvailabilityBadge({
+  state,
+}: {
+  state: MachineUnit["availability"]["state"];
+}) {
   return (
-    <div>
-      <dt className="text-sm font-semibold text-muted-foreground">{label}</dt>
-      <dd className="mt-1 font-bold">{value}</dd>
-    </div>
+    <span
+      className={cn(
+        "inline-flex min-h-7 items-center rounded-full px-2.5 text-xs font-bold",
+        state === "available" && "bg-primary text-primary-foreground",
+        state === "unavailable" &&
+          "border border-border bg-muted text-muted-foreground",
+        state === "without_rental" && "bg-accent text-accent-foreground",
+      )}
+    >
+      {availabilityLabel(state)}
+    </span>
+  );
+}
+
+function normalize(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLocaleLowerCase("pt-BR")
+    .trim();
+}
+
+function identifierLabel(unit: MachineUnit) {
+  const identifiers = [
+    unit.identifiers.plate?.value,
+    unit.identifiers.companyTag?.value,
+  ].filter(Boolean);
+  return identifiers.length > 0 ? identifiers.join(" · ") : "Sem identificador";
+}
+
+function availabilityLabel(state: MachineUnit["availability"]["state"]) {
+  if (state === "available") return "Disponível";
+  if (state === "without_rental") return "Sem locação vigente";
+  return "Indisponível";
+}
+
+function typeLabel(type: MachineModelDetail["type"]) {
+  return type === "YELLOW_LINE" ? "Linha amarela" : "Linha branca";
+}
+
+function capacityLabel(model: MachineModelDetail) {
+  if (model.type !== "WHITE_LINE") return "Não aplicável";
+  const capacity = [
+    formatLoadCapacity(model.loadCapacity, model.loadCapacityUnitCode),
+    model.maxSupportedWeightT
+      ? `${model.maxSupportedWeightT.replace(".", ",")} t`
+      : null,
+  ].filter(Boolean);
+  return capacity.length > 0 ? capacity.join(" · ") : "Não informada";
+}
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("pt-BR", { timeZone: "UTC" }).format(
+    new Date(value),
   );
 }

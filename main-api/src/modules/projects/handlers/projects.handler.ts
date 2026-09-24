@@ -4806,11 +4806,12 @@ export class ProjectsHandler {
 
   async list(scope: ProjectScope, query: ProjectListQuery) {
     const normalizedSearch = query.search?.toLocaleLowerCase("pt-BR");
+    const normalizedStatuses = query.statuses ?? null;
     const boundary = parseBoundCursor({
       cursor: query.cursor,
       resource: "projects",
       scope: { corporationId: scope.corporationId, companyId: scope.companyId },
-      query: { search: normalizedSearch },
+      query: { search: normalizedSearch, statuses: normalizedStatuses },
       sortBy: query.sortBy,
       sortDirection: query.sortDirection,
     });
@@ -4844,11 +4845,21 @@ export class ProjectsHandler {
           ],
         }
       : undefined;
+    const statusesWhere: Prisma.ProjectWhereInput | undefined =
+      normalizedStatuses
+        ? {
+            status: {
+              in: normalizedStatuses.map(
+                (status) => status.toUpperCase() as ProjectLifecycleStatus,
+              ),
+            },
+          }
+        : undefined;
     const rows = await this.context.prisma.project.findMany({
       where: {
         corporationId: scope.corporationId,
         companyId: scope.companyId,
-        AND: [searchWhere, cursorWhere].filter(
+        AND: [searchWhere, statusesWhere, cursorWhere].filter(
           (item): item is Prisma.ProjectWhereInput => Boolean(item),
         ),
       },
@@ -4870,7 +4881,7 @@ export class ProjectsHandler {
       limit: query.limit,
       resource: "projects",
       scope: { corporationId: scope.corporationId, companyId: scope.companyId },
-      query: { search: normalizedSearch },
+      query: { search: normalizedSearch, statuses: normalizedStatuses },
       sortBy: query.sortBy,
       sortDirection: query.sortDirection,
       getLast: (row) => ({

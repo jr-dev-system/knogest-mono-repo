@@ -7580,6 +7580,14 @@
                     "maxLength": 120
                   },
                   "version": { "type": "string", "maxLength": 120 },
+                  "loadCapacity": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,6})(?:\\.[0-9]{1,3})?$"
+                  },
+                  "loadCapacityUnitCode": {
+                    "type": "string",
+                    "enum": ["M3_LOOSE", "M3_COMPACTED", "LITER", "CUBIC_YARD"]
+                  },
                   "loadVolumeM3": {
                     "type": "string",
                     "pattern": "^(?:0|[1-9]\\d{0,6})(?:\\.[0-9]{1,3})?$"
@@ -7620,6 +7628,8 @@
                         "manufacturer",
                         "model",
                         "version",
+                        "loadCapacity",
+                        "loadCapacityUnitCode",
                         "loadVolumeM3",
                         "maxSupportedWeightT",
                         "requiresOperator",
@@ -7639,6 +7649,17 @@
                         "manufacturer": { "type": "string" },
                         "model": { "type": "string" },
                         "version": { "type": "string", "nullable": true },
+                        "loadCapacity": { "type": "string", "nullable": true },
+                        "loadCapacityUnitCode": {
+                          "type": "string",
+                          "enum": [
+                            "M3_LOOSE",
+                            "M3_COMPACTED",
+                            "LITER",
+                            "CUBIC_YARD"
+                          ],
+                          "nullable": true
+                        },
                         "loadVolumeM3": { "type": "string", "nullable": true },
                         "maxSupportedWeightT": {
                           "type": "string",
@@ -7669,6 +7690,8 @@
                               "model",
                               "version",
                               "meterType",
+                              "loadCapacity",
+                              "loadCapacityUnitCode",
                               "loadVolumeM3",
                               "maxSupportedWeightT",
                               "machineModel",
@@ -7695,6 +7718,20 @@
                               "meterType": {
                                 "type": "string",
                                 "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "loadCapacity": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "loadCapacityUnitCode": {
+                                "type": "string",
+                                "enum": [
+                                  "M3_LOOSE",
+                                  "M3_COMPACTED",
+                                  "LITER",
+                                  "CUBIC_YARD"
+                                ],
+                                "nullable": true
                               },
                               "loadVolumeM3": {
                                 "type": "string",
@@ -8032,6 +8069,8 @@
                               "manufacturer",
                               "model",
                               "version",
+                              "loadCapacity",
+                              "loadCapacityUnitCode",
                               "loadVolumeM3",
                               "maxSupportedWeightT",
                               "requiresOperator",
@@ -8054,6 +8093,20 @@
                               "manufacturer": { "type": "string" },
                               "model": { "type": "string" },
                               "version": { "type": "string", "nullable": true },
+                              "loadCapacity": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "loadCapacityUnitCode": {
+                                "type": "string",
+                                "enum": [
+                                  "M3_LOOSE",
+                                  "M3_COMPACTED",
+                                  "LITER",
+                                  "CUBIC_YARD"
+                                ],
+                                "nullable": true
+                              },
                               "loadVolumeM3": {
                                 "type": "string",
                                 "nullable": true
@@ -8087,6 +8140,8 @@
                                     "model",
                                     "version",
                                     "meterType",
+                                    "loadCapacity",
+                                    "loadCapacityUnitCode",
                                     "loadVolumeM3",
                                     "maxSupportedWeightT",
                                     "machineModel",
@@ -8119,6 +8174,20 @@
                                     "meterType": {
                                       "type": "string",
                                       "enum": ["HOUR_METER", "ODOMETER"]
+                                    },
+                                    "loadCapacity": {
+                                      "type": "string",
+                                      "nullable": true
+                                    },
+                                    "loadCapacityUnitCode": {
+                                      "type": "string",
+                                      "enum": [
+                                        "M3_LOOSE",
+                                        "M3_COMPACTED",
+                                        "LITER",
+                                        "CUBIC_YARD"
+                                      ],
+                                      "nullable": true
                                     },
                                     "loadVolumeM3": {
                                       "type": "string",
@@ -8398,6 +8467,14 @@
                     "maxLength": 120
                   },
                   "version": { "type": "string", "maxLength": 120 },
+                  "loadCapacity": {
+                    "type": "string",
+                    "pattern": "^(?:0|[1-9]\\d{0,6})(?:\\.[0-9]{1,3})?$"
+                  },
+                  "loadCapacityUnitCode": {
+                    "type": "string",
+                    "enum": ["M3_LOOSE", "M3_COMPACTED", "LITER", "CUBIC_YARD"]
+                  },
                   "loadVolumeM3": {
                     "type": "string",
                     "pattern": "^(?:0|[1-9]\\d{0,6})(?:\\.[0-9]{1,3})?$"
@@ -8446,6 +8523,8 @@
                         "manufacturer",
                         "model",
                         "version",
+                        "loadCapacity",
+                        "loadCapacityUnitCode",
                         "loadVolumeM3",
                         "maxSupportedWeightT",
                         "requiresOperator",
@@ -8465,6 +8544,17 @@
                         "manufacturer": { "type": "string" },
                         "model": { "type": "string" },
                         "version": { "type": "string", "nullable": true },
+                        "loadCapacity": { "type": "string", "nullable": true },
+                        "loadCapacityUnitCode": {
+                          "type": "string",
+                          "enum": [
+                            "M3_LOOSE",
+                            "M3_COMPACTED",
+                            "LITER",
+                            "CUBIC_YARD"
+                          ],
+                          "nullable": true
+                        },
                         "loadVolumeM3": { "type": "string", "nullable": true },
                         "maxSupportedWeightT": {
                           "type": "string",
@@ -8495,6 +8585,8 @@
                               "model",
                               "version",
                               "meterType",
+                              "loadCapacity",
+                              "loadCapacityUnitCode",
                               "loadVolumeM3",
                               "maxSupportedWeightT",
                               "machineModel",
@@ -8521,6 +8613,20 @@
                               "meterType": {
                                 "type": "string",
                                 "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "loadCapacity": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "loadCapacityUnitCode": {
+                                "type": "string",
+                                "enum": [
+                                  "M3_LOOSE",
+                                  "M3_COMPACTED",
+                                  "LITER",
+                                  "CUBIC_YARD"
+                                ],
+                                "nullable": true
                               },
                               "loadVolumeM3": {
                                 "type": "string",
@@ -8830,6 +8936,8 @@
                         "manufacturer",
                         "model",
                         "version",
+                        "loadCapacity",
+                        "loadCapacityUnitCode",
                         "loadVolumeM3",
                         "maxSupportedWeightT",
                         "requiresOperator",
@@ -8849,6 +8957,17 @@
                         "manufacturer": { "type": "string" },
                         "model": { "type": "string" },
                         "version": { "type": "string", "nullable": true },
+                        "loadCapacity": { "type": "string", "nullable": true },
+                        "loadCapacityUnitCode": {
+                          "type": "string",
+                          "enum": [
+                            "M3_LOOSE",
+                            "M3_COMPACTED",
+                            "LITER",
+                            "CUBIC_YARD"
+                          ],
+                          "nullable": true
+                        },
                         "loadVolumeM3": { "type": "string", "nullable": true },
                         "maxSupportedWeightT": {
                           "type": "string",
@@ -8879,6 +8998,8 @@
                               "model",
                               "version",
                               "meterType",
+                              "loadCapacity",
+                              "loadCapacityUnitCode",
                               "loadVolumeM3",
                               "maxSupportedWeightT",
                               "machineModel",
@@ -8905,6 +9026,20 @@
                               "meterType": {
                                 "type": "string",
                                 "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "loadCapacity": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "loadCapacityUnitCode": {
+                                "type": "string",
+                                "enum": [
+                                  "M3_LOOSE",
+                                  "M3_COMPACTED",
+                                  "LITER",
+                                  "CUBIC_YARD"
+                                ],
+                                "nullable": true
                               },
                               "loadVolumeM3": {
                                 "type": "string",
@@ -9209,7 +9344,7 @@
                   "allocation": {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["projectId"],
+                    "required": ["projectId", "operatorAssignments"],
                     "properties": {
                       "projectId": { "type": "string", "format": "uuid" },
                       "confirmedHourlyRate": {
@@ -9288,6 +9423,8 @@
                         "manufacturer",
                         "model",
                         "version",
+                        "loadCapacity",
+                        "loadCapacityUnitCode",
                         "loadVolumeM3",
                         "maxSupportedWeightT",
                         "requiresOperator",
@@ -9307,6 +9444,17 @@
                         "manufacturer": { "type": "string" },
                         "model": { "type": "string" },
                         "version": { "type": "string", "nullable": true },
+                        "loadCapacity": { "type": "string", "nullable": true },
+                        "loadCapacityUnitCode": {
+                          "type": "string",
+                          "enum": [
+                            "M3_LOOSE",
+                            "M3_COMPACTED",
+                            "LITER",
+                            "CUBIC_YARD"
+                          ],
+                          "nullable": true
+                        },
                         "loadVolumeM3": { "type": "string", "nullable": true },
                         "maxSupportedWeightT": {
                           "type": "string",
@@ -9337,6 +9485,8 @@
                               "model",
                               "version",
                               "meterType",
+                              "loadCapacity",
+                              "loadCapacityUnitCode",
                               "loadVolumeM3",
                               "maxSupportedWeightT",
                               "machineModel",
@@ -9363,6 +9513,20 @@
                               "meterType": {
                                 "type": "string",
                                 "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "loadCapacity": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "loadCapacityUnitCode": {
+                                "type": "string",
+                                "enum": [
+                                  "M3_LOOSE",
+                                  "M3_COMPACTED",
+                                  "LITER",
+                                  "CUBIC_YARD"
+                                ],
+                                "nullable": true
                               },
                               "loadVolumeM3": {
                                 "type": "string",
@@ -9617,6 +9781,339 @@
         }
       }
     },
+    "/api/v1/machine-models/{machineModelId}/units/batch": {
+      "post": {
+        "summary": "Add up to 15 physical units to a Machine Model",
+        "tags": ["Fleet"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["projectId", "units"],
+                "properties": {
+                  "projectId": { "type": "string", "format": "uuid" },
+                  "units": {
+                    "type": "array",
+                    "minItems": 1,
+                    "maxItems": 15,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": [
+                        "meterType",
+                        "initialMeterReading",
+                        "ownership"
+                      ],
+                      "anyOf": [
+                        { "required": ["plate"] },
+                        { "required": ["companyTag"] }
+                      ],
+                      "properties": {
+                        "name": {
+                          "type": "string",
+                          "minLength": 1,
+                          "maxLength": 160
+                        },
+                        "plate": {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": ".*[A-Za-z0-9].*"
+                        },
+                        "companyTag": {
+                          "type": "string",
+                          "maxLength": 80,
+                          "pattern": ".*[A-Za-z0-9].*"
+                        },
+                        "meterType": {
+                          "type": "string",
+                          "enum": ["HOUR_METER", "ODOMETER"]
+                        },
+                        "initialMeterReading": {
+                          "type": "string",
+                          "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.[0-9]{1,2})?$"
+                        },
+                        "ownership": {
+                          "oneOf": [
+                            {
+                              "type": "object",
+                              "required": ["kind"],
+                              "properties": { "kind": { "enum": ["OWNED"] } },
+                              "additionalProperties": false
+                            },
+                            {
+                              "type": "object",
+                              "required": [
+                                "kind",
+                                "lessorName",
+                                "suggestedHourlyRate"
+                              ],
+                              "properties": {
+                                "kind": { "enum": ["RENTED"] },
+                                "lessorName": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 180
+                                },
+                                "suggestedHourlyRate": {
+                                  "type": "string",
+                                  "pattern": "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$"
+                                }
+                              },
+                              "additionalProperties": false
+                            }
+                          ]
+                        },
+                        "allocation": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["projectId", "operatorAssignments"],
+                          "properties": {
+                            "projectId": { "type": "string", "format": "uuid" },
+                            "confirmedHourlyRate": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$"
+                            },
+                            "monthlyHours": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 744
+                            },
+                            "operatorAssignments": {
+                              "type": "array",
+                              "maxItems": 2,
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": ["shift", "operatorEmploymentId"],
+                                "properties": {
+                                  "shift": {
+                                    "type": "string",
+                                    "enum": ["day", "night"]
+                                  },
+                                  "operatorEmploymentId": {
+                                    "type": "string",
+                                    "format": "uuid"
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "deletedMatchResolution": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["action"],
+                          "properties": {
+                            "action": {
+                              "type": "string",
+                              "enum": ["RESTORE", "CREATE_NEW"]
+                            },
+                            "machineId": { "type": "string", "format": "uuid" }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "machineModelId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["created", "rejected"],
+                      "properties": {
+                        "created": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["index", "machineId"],
+                            "properties": {
+                              "index": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 14
+                              },
+                              "machineId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              }
+                            },
+                            "additionalProperties": false
+                          }
+                        },
+                        "rejected": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "required": ["index", "code", "message"],
+                            "properties": {
+                              "index": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 14
+                              },
+                              "code": { "type": "string" },
+                              "message": { "type": "string" }
+                            },
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/api/v1/machines": {
       "get": {
         "summary": "List Machines in the selected Company",
@@ -9710,6 +10207,8 @@
                               "model",
                               "version",
                               "meterType",
+                              "loadCapacity",
+                              "loadCapacityUnitCode",
                               "loadVolumeM3",
                               "maxSupportedWeightT",
                               "machineModel",
@@ -9736,6 +10235,20 @@
                               "meterType": {
                                 "type": "string",
                                 "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "loadCapacity": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "loadCapacityUnitCode": {
+                                "type": "string",
+                                "enum": [
+                                  "M3_LOOSE",
+                                  "M3_COMPACTED",
+                                  "LITER",
+                                  "CUBIC_YARD"
+                                ],
+                                "nullable": true
                               },
                               "loadVolumeM3": {
                                 "type": "string",
@@ -10005,6 +10518,8 @@
                         "model",
                         "version",
                         "meterType",
+                        "loadCapacity",
+                        "loadCapacityUnitCode",
                         "loadVolumeM3",
                         "maxSupportedWeightT",
                         "machineModel",
@@ -10029,6 +10544,17 @@
                         "meterType": {
                           "type": "string",
                           "enum": ["HOUR_METER", "ODOMETER"]
+                        },
+                        "loadCapacity": { "type": "string", "nullable": true },
+                        "loadCapacityUnitCode": {
+                          "type": "string",
+                          "enum": [
+                            "M3_LOOSE",
+                            "M3_COMPACTED",
+                            "LITER",
+                            "CUBIC_YARD"
+                          ],
+                          "nullable": true
                         },
                         "loadVolumeM3": { "type": "string", "nullable": true },
                         "maxSupportedWeightT": {
@@ -10493,6 +11019,8 @@
                         "model",
                         "version",
                         "meterType",
+                        "loadCapacity",
+                        "loadCapacityUnitCode",
                         "loadVolumeM3",
                         "maxSupportedWeightT",
                         "machineModel",
@@ -10517,6 +11045,17 @@
                         "meterType": {
                           "type": "string",
                           "enum": ["HOUR_METER", "ODOMETER"]
+                        },
+                        "loadCapacity": { "type": "string", "nullable": true },
+                        "loadCapacityUnitCode": {
+                          "type": "string",
+                          "enum": [
+                            "M3_LOOSE",
+                            "M3_COMPACTED",
+                            "LITER",
+                            "CUBIC_YARD"
+                          ],
+                          "nullable": true
                         },
                         "loadVolumeM3": { "type": "string", "nullable": true },
                         "maxSupportedWeightT": {
@@ -10817,6 +11356,8 @@
                         "model",
                         "version",
                         "meterType",
+                        "loadCapacity",
+                        "loadCapacityUnitCode",
                         "loadVolumeM3",
                         "maxSupportedWeightT",
                         "machineModel",
@@ -10841,6 +11382,17 @@
                         "meterType": {
                           "type": "string",
                           "enum": ["HOUR_METER", "ODOMETER"]
+                        },
+                        "loadCapacity": { "type": "string", "nullable": true },
+                        "loadCapacityUnitCode": {
+                          "type": "string",
+                          "enum": [
+                            "M3_LOOSE",
+                            "M3_COMPACTED",
+                            "LITER",
+                            "CUBIC_YARD"
+                          ],
+                          "nullable": true
                         },
                         "loadVolumeM3": { "type": "string", "nullable": true },
                         "maxSupportedWeightT": {
@@ -11176,6 +11728,8 @@
                         "model",
                         "version",
                         "meterType",
+                        "loadCapacity",
+                        "loadCapacityUnitCode",
                         "loadVolumeM3",
                         "maxSupportedWeightT",
                         "machineModel",
@@ -11200,6 +11754,17 @@
                         "meterType": {
                           "type": "string",
                           "enum": ["HOUR_METER", "ODOMETER"]
+                        },
+                        "loadCapacity": { "type": "string", "nullable": true },
+                        "loadCapacityUnitCode": {
+                          "type": "string",
+                          "enum": [
+                            "M3_LOOSE",
+                            "M3_COMPACTED",
+                            "LITER",
+                            "CUBIC_YARD"
+                          ],
+                          "nullable": true
                         },
                         "loadVolumeM3": { "type": "string", "nullable": true },
                         "maxSupportedWeightT": {
@@ -15998,6 +16563,13 @@
             "in": "query",
             "name": "search",
             "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 80 },
+            "in": "query",
+            "name": "statuses",
+            "required": false,
+            "description": "Lista separada por vírgulas: planned, active, paused, completed, cancelled."
           },
           {
             "schema": { "enum": ["name", "createdAt"] },

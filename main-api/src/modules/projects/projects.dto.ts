@@ -676,6 +676,33 @@ export const projectListQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).default(25),
     cursor: z.string().max(2048).optional(),
     search: z.string().trim().max(120).optional(),
+    statuses: z
+      .string()
+      .trim()
+      .min(1)
+      .max(80)
+      .transform((value, context) => {
+        const values = value
+          .split(",")
+          .map((status) => status.trim())
+          .filter(Boolean);
+        const parsed = z
+          .array(
+            z.enum(["planned", "active", "paused", "completed", "cancelled"]),
+          )
+          .min(1)
+          .max(5)
+          .safeParse(values);
+        if (!parsed.success) {
+          context.addIssue({
+            code: "custom",
+            message: "Invalid project statuses",
+          });
+          return z.NEVER;
+        }
+        return [...new Set(parsed.data)].sort();
+      })
+      .optional(),
     sortBy: z.enum(["name", "createdAt"]).default("createdAt"),
     sortDirection: z.enum(["asc", "desc"]).default("desc"),
   })

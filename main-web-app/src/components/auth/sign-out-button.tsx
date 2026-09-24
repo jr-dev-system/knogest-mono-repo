@@ -6,8 +6,15 @@ import { useTransition } from "react";
 
 import { Button } from "@/components/ui/button";
 import { forgetBrowserSessionAction } from "@/features/auth/actions/forget-browser-session.action";
+import { cn } from "@/lib/utils";
 
-export function SignOutButton() {
+export function SignOutButton({
+  className,
+  compact = false,
+}: {
+  className?: string;
+  compact?: boolean;
+}) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -15,8 +22,11 @@ export function SignOutButton() {
     <Button
       type="button"
       variant="outline"
-      size="sm"
+      size={compact ? "icon-lg" : "sm"}
+      className={cn(className)}
       disabled={isPending}
+      aria-label={compact ? (isPending ? "Saindo…" : "Sair") : undefined}
+      title={compact ? (isPending ? "Saindo…" : "Sair") : undefined}
       onClick={() =>
         startTransition(async () => {
           await forgetBrowserSessionAction();
@@ -26,7 +36,7 @@ export function SignOutButton() {
       }
     >
       <LogOut />
-      {isPending ? "Saindo…" : "Sair"}
+      {!compact && (isPending ? "Saindo…" : "Sair")}
     </Button>
   );
 }

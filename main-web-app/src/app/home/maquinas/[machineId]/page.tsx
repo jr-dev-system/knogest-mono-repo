@@ -9,8 +9,7 @@ export default async function Page({
 }: {
   params: Promise<{ machineId: string }>;
 }) {
-  const { companies, selectedCompany, session } =
-    await requireCompanyWorkspace();
+  const { companies, selectedCompany } = await requireCompanyWorkspace();
   const { machineId } = await params;
   const machine = await getMachineDetail(machineId);
 
@@ -18,7 +17,6 @@ export default async function Page({
     <AppShell
       companies={companies}
       selectedCompany={selectedCompany}
-      userId={session.user.id}
       currentArea="machines"
     >
       <MachineDetailPage
