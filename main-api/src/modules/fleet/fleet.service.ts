@@ -21,6 +21,7 @@ import {
   createMachineHandler,
   createMachineModelHandler,
   addMachineModelUnitsHandler,
+  allocateNewMachineUnitHandler,
   findMachineModelDetailHandler,
   findActiveJobRoleHandler,
   listMachineModelsHandler,
@@ -30,6 +31,9 @@ import {
   allocateMachineHandler,
   listMachinesHandler,
   updateMachineLoadSpecificationHandler,
+  findDeletedMachineMatchesHandler,
+  restoreMachineHandler,
+  softDeleteMachineHandler,
   type MachineRecord,
 } from "./handlers/fleet.handler";
 import {
@@ -112,6 +116,9 @@ function ownershipDto(record: MachineRecord) {
   return ownership
     ? {
         companyId: ownership.companyId,
+        kind: ownership.ownershipKind,
+        lessorName: ownership.externalOwnerName,
+        suggestedHourlyRate: ownership.suggestedHourlyRate?.toFixed(2) ?? null,
         effectiveFrom: ownership.effectiveFrom.toISOString(),
         effectiveTo: ownership.effectiveTo?.toISOString() ?? null,
       }
@@ -119,13 +126,14 @@ function ownershipDto(record: MachineRecord) {
 }
 
 function availabilityDto(record: MachineRecord, hasOpenAllocation = false) {
+  const ownership = record.ownershipPeriods[0] ?? null;
   return {
     state:
-      record.isActive &&
-      record.ownershipPeriods.length === 1 &&
-      !hasOpenAllocation
-        ? ("available" as const)
-        : ("unavailable" as const),
+      !record.isActive || hasOpenAllocation
+        ? ("unavailable" as const)
+        : ownership
+          ? ("available" as const)
+          : ("without_rental" as const),
     hasOpenAllocation,
   };
 }
@@ -143,6 +151,7 @@ function toMachineDto(
     type: record.type,
     manufacturer: record.manufacturer,
     model: record.model,
+    version: record.version,
     meterType: record.meterType,
     loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
     maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
@@ -178,7 +187,7 @@ function toMachineModelDto(
     type: record.type,
     manufacturer: record.manufacturer,
     model: record.model,
-    meterType: record.meterType,
+    version: record.version,
     loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
     maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
     requiresOperator: record.requiresOperator,
@@ -235,10 +244,7 @@ function identifiersFromInput(input: CreateMachineInput) {
   return identifiers;
 }
 
-function identifiersFromUnit(input: {
-  plate?: string;
-  companyTag?: string;
-}) {
+function identifiersFromUnit(input: { plate?: string; companyTag?: string }) {
   return identifiersFromInput({
     plate: input.plate,
     companyTag: input.companyTag,
@@ -301,7 +307,8 @@ export class FleetService {
     if (!role)
       throw new AppError({
         code: "MACHINE_MODEL_JOB_ROLE_INVALID",
-        message: "Machine model operator job role is not available in this Company",
+        message:
+          "Machine model operator job role is not available in this Company",
         statusCode: 422,
       });
     return role.id;
@@ -323,11 +330,6 @@ export class FleetService {
         maxSupportedWeightT: input.maxSupportedWeightT
           ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
           : undefined,
-        units: input.units.map((unit) => ({
-          name: unit.name,
-          identifiers: identifiersFromUnit(unit),
-          initialMeterReading: normalizeDecimal(unit.initialMeterReading),
-        })),
       });
       return toMachineModelDto(record);
     });
@@ -366,15 +368,24 @@ export class FleetService {
       sortDirection: query.sortDirection,
       getLast: (item) => ({
         id: item.id,
-        value: query.sortBy === "createdAt" ? item.createdAt.toISOString() : item.model,
+        value:
+          query.sortBy === "createdAt"
+            ? item.createdAt.toISOString()
+            : item.model,
       }),
     });
-    return { data: page.data.map((record) => toMachineModelDto(record)), pageInfo: page.pageInfo };
+    return {
+      data: page.data.map((record) => toMachineModelDto(record)),
+      pageInfo: page.pageInfo,
+    };
   }
 
   async modelDetail(scope: AuthenticatedCompanyScope, machineModelId: string) {
     return toMachineModelDto(
-      await findMachineModelDetailHandler(this.context, { ...scope, machineModelId }),
+      await findMachineModelDetailHandler(this.context, {
+        ...scope,
+        machineModelId,
+      }),
     );
   }
 
@@ -383,19 +394,112 @@ export class FleetService {
     machineModelId: string,
     input: AddMachineModelUnitsInput,
   ) {
-    return this.context.transaction(async (transactionContext) =>
-      toMachineModelDto(
-        await addMachineModelUnitsHandler(transactionContext, {
+    return this.context.transaction(async (transactionContext) => {
+      const identifiers = identifiersFromUnit(input);
+      const matches = await findDeletedMachineMatchesHandler(
+        transactionContext,
+        {
           ...scope,
           machineModelId,
-          units: input.units.map((unit) => ({
-            name: unit.name,
-            identifiers: identifiersFromUnit(unit),
-            initialMeterReading: normalizeDecimal(unit.initialMeterReading),
-          })),
+          identifiers,
+        },
+      );
+      if (matches.length && !input.deletedMatchResolution)
+        throw new AppError({
+          code: "MACHINE_DELETED_IDENTIFIER_MATCH",
+          message: "A deleted Machine has matching identifiers",
+          statusCode: 409,
+          data: {
+            matches: matches.map((match) => ({
+              machineId: match.id,
+              deletedAt: match.deletedAt?.toISOString() ?? null,
+              matchedIdentifiers: match.identifiers
+                .filter((identifier) =>
+                  identifiers.some(
+                    (submitted) =>
+                      submitted.kind === identifier.kind &&
+                      submitted.normalizedValue === identifier.normalizedValue,
+                  ),
+                )
+                .map((identifier) => ({
+                  kind: identifier.kind,
+                  value: identifier.value,
+                })),
+            })),
+          },
+        });
+      const unit =
+        input.deletedMatchResolution?.action === "RESTORE"
+          ? await restoreMachineHandler(transactionContext, {
+              ...scope,
+              machineModelId,
+              machineId: input.deletedMatchResolution.machineId!,
+              name: input.name,
+              identifiers,
+              initialMeterReading: normalizeDecimal(input.initialMeterReading),
+              ownershipKind: input.ownership.kind,
+              externalOwnerName:
+                input.ownership.kind === "RENTED"
+                  ? input.ownership.lessorName
+                  : undefined,
+              suggestedHourlyRate:
+                input.ownership.kind === "RENTED"
+                  ? normalizeDecimal(input.ownership.suggestedHourlyRate)
+                  : undefined,
+            })
+          : await addMachineModelUnitsHandler(transactionContext, {
+              ...scope,
+              machineModelId,
+              unit: {
+                name: input.name,
+                meterType: input.meterType,
+                ownershipKind: input.ownership.kind,
+                externalOwnerName:
+                  input.ownership.kind === "RENTED"
+                    ? input.ownership.lessorName
+                    : undefined,
+                suggestedHourlyRate:
+                  input.ownership.kind === "RENTED"
+                    ? input.ownership.suggestedHourlyRate
+                    : undefined,
+                identifiers,
+                initialMeterReading: normalizeDecimal(
+                  input.initialMeterReading,
+                ),
+              },
+            });
+      if (input.allocation)
+        await allocateNewMachineUnitHandler(transactionContext, {
+          ...scope,
+          machine: unit,
+          allocation: input.allocation,
+        });
+      return toMachineModelDto(
+        await findMachineModelDetailHandler(transactionContext, {
+          ...scope,
+          machineModelId,
         }),
-      ),
-    );
+      );
+    });
+  }
+
+  async softDelete(scope: AuthenticatedCompanyScope, machineId: string) {
+    return this.context.transaction(async (transactionContext) => {
+      const status = await this.operationalStatus.getStatus({
+        ...scope,
+        machineId,
+      });
+      if (status.hasOpenShift || status.hasPendingFinalReading)
+        throw new AppError({
+          code: "MACHINE_DELETE_BLOCKED",
+          message: "Machine has an operational blocker",
+          statusCode: 409,
+        });
+      return softDeleteMachineHandler(transactionContext, {
+        ...scope,
+        machineId,
+      });
+    });
   }
 
   async updateModel(

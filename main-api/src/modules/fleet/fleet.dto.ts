@@ -29,6 +29,12 @@ const positiveSpecificationDecimalSchema = z
   .regex(/^(?:0|[1-9]\d{0,6})(?:\.\d{1,3})?$/)
   .refine((value) => Number(value) > 0, "Value must be greater than zero");
 
+const positiveHourlyRateSchema = z
+  .string()
+  .trim()
+  .regex(/^(?:0|[1-9]\d{0,13})(?:\.\d{1,2})?$/)
+  .refine((value) => Number(value) > 0, "Value must be greater than zero");
+
 export const createMachineSchema = z
   .object({
     name: z.string().trim().min(1).max(160),
@@ -41,6 +47,7 @@ export const createMachineSchema = z
     type: z.enum(["YELLOW_LINE", "WHITE_LINE"]),
     manufacturer: z.string().trim().min(1).max(120),
     model: z.string().trim().min(1).max(120),
+    version: z.string().trim().max(120).optional(),
     meterType: z.enum(["HOUR_METER", "ODOMETER"]),
     loadVolumeM3: positiveSpecificationDecimalSchema.optional(),
     maxSupportedWeightT: positiveSpecificationDecimalSchema.optional(),
@@ -56,17 +63,90 @@ export const createMachineSchema = z
 
 export type CreateMachineInput = z.infer<typeof createMachineSchema>;
 
-const machineUnitSchema = z
+export const machineUnitSchema = z
   .object({
-    name: z.string().trim().min(1).max(160),
+    name: z
+      .string()
+      .trim()
+      .max(160)
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
     plate: optionalIdentifier,
     companyTag: optionalIdentifier,
+    meterType: z.enum(["HOUR_METER", "ODOMETER"]),
     initialMeterReading: decimalStringSchema,
+    ownership: z.discriminatedUnion("kind", [
+      z.object({ kind: z.literal("OWNED") }).strict(),
+      z
+        .object({
+          kind: z.literal("RENTED"),
+          lessorName: z.string().trim().min(1).max(180),
+          suggestedHourlyRate: positiveHourlyRateSchema,
+        })
+        .strict(),
+    ]),
+    allocation: z
+      .object({
+        projectId: z.string().uuid(),
+        confirmedHourlyRate: positiveHourlyRateSchema.optional(),
+        monthlyHours: z.number().int().min(1).max(744).optional(),
+        operatorAssignments: z
+          .array(
+            z.object({
+              shift: z.enum(["day", "night"]),
+              operatorEmploymentId: z.string().uuid(),
+            }),
+          )
+          .max(2),
+      })
+      .strict()
+      .optional(),
+    deletedMatchResolution: z
+      .object({
+        action: z.enum(["RESTORE", "CREATE_NEW"]),
+        machineId: z.string().uuid().optional(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
-  .refine((value) => Boolean(value.plate || value.companyTag), {
-    message: "At least one identifier is required",
-    path: ["plate"],
+  .superRefine((value, context) => {
+    if (!value.plate && !value.companyTag)
+      context.addIssue({
+        code: "custom",
+        message: "At least one identifier is required",
+        path: ["plate"],
+      });
+    if (
+      value.ownership.kind === "OWNED" &&
+      value.allocation &&
+      (value.allocation.confirmedHourlyRate || value.allocation.monthlyHours)
+    )
+      context.addIssue({
+        code: "custom",
+        message: "Owned units cannot define rental allocation terms",
+        path: ["allocation"],
+      });
+    if (
+      value.ownership.kind === "RENTED" &&
+      value.allocation &&
+      (!value.allocation.confirmedHourlyRate || !value.allocation.monthlyHours)
+    )
+      context.addIssue({
+        code: "custom",
+        message:
+          "Rented unit allocation requires confirmed rate and monthly hours",
+        path: ["allocation"],
+      });
+    if (
+      value.deletedMatchResolution?.action === "RESTORE" &&
+      !value.deletedMatchResolution.machineId
+    )
+      context.addIssue({
+        code: "custom",
+        message: "A deleted Machine is required for restore",
+        path: ["deletedMatchResolution", "machineId"],
+      });
   });
 
 const machineModelFieldsSchema = z
@@ -80,7 +160,12 @@ const machineModelFieldsSchema = z
     type: z.enum(["YELLOW_LINE", "WHITE_LINE"]),
     manufacturer: z.string().trim().min(1).max(120),
     model: z.string().trim().min(1).max(120),
-    meterType: z.enum(["HOUR_METER", "ODOMETER"]),
+    version: z
+      .string()
+      .trim()
+      .max(120)
+      .optional()
+      .transform((value) => (value && value.length > 0 ? value : undefined)),
     loadVolumeM3: positiveSpecificationDecimalSchema.optional(),
     maxSupportedWeightT: positiveSpecificationDecimalSchema.optional(),
     requiresOperator: z.boolean(),
@@ -88,7 +173,10 @@ const machineModelFieldsSchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.type !== "WHITE_LINE" && (value.loadVolumeM3 || value.maxSupportedWeightT))
+    if (
+      value.type !== "WHITE_LINE" &&
+      (value.loadVolumeM3 || value.maxSupportedWeightT)
+    )
       context.addIssue({
         code: "custom",
         path: ["loadVolumeM3"],
@@ -104,19 +192,18 @@ const machineModelFieldsSchema = z
       context.addIssue({
         code: "custom",
         path: ["requiredJobRoleId"],
-        message: "A machine model without operator requirement cannot define a job role",
+        message:
+          "A machine model without operator requirement cannot define a job role",
       });
   });
 
-export const createMachineModelSchema = machineModelFieldsSchema.extend({
-  units: z.array(machineUnitSchema).min(1).max(100),
-});
+export const createMachineModelSchema = machineModelFieldsSchema;
 export type CreateMachineModelInput = z.infer<typeof createMachineModelSchema>;
 
-export const addMachineModelUnitsSchema = z
-  .object({ units: z.array(machineUnitSchema).min(1).max(100) })
-  .strict();
-export type AddMachineModelUnitsInput = z.infer<typeof addMachineModelUnitsSchema>;
+export const addMachineModelUnitsSchema = machineUnitSchema;
+export type AddMachineModelUnitsInput = z.infer<
+  typeof addMachineModelUnitsSchema
+>;
 
 export const updateMachineModelSchema = machineModelFieldsSchema;
 export type UpdateMachineModelInput = z.infer<typeof updateMachineModelSchema>;
@@ -135,7 +222,9 @@ export const listMachineModelsQuerySchema = z
     sortDirection: z.enum(["asc", "desc"]).default("desc"),
   })
   .strict();
-export type ListMachineModelsQuery = z.infer<typeof listMachineModelsQuerySchema>;
+export type ListMachineModelsQuery = z.infer<
+  typeof listMachineModelsQuerySchema
+>;
 
 export const updateMachineLoadSpecificationSchema = z
   .object({

@@ -18,6 +18,7 @@ export interface MachineRecord {
   type: "YELLOW_LINE" | "WHITE_LINE";
   manufacturer: string;
   model: string;
+  version: string | null;
   meterType: "HOUR_METER" | "ODOMETER";
   loadVolumeM3: Prisma.Decimal | null;
   maxSupportedWeightT: Prisma.Decimal | null;
@@ -31,7 +32,7 @@ export interface MachineRecord {
     type: "YELLOW_LINE" | "WHITE_LINE";
     manufacturer: string;
     model: string;
-    meterType: "HOUR_METER" | "ODOMETER";
+    version: string | null;
     loadVolumeM3: Prisma.Decimal | null;
     maxSupportedWeightT: Prisma.Decimal | null;
     requiresOperator: boolean;
@@ -45,6 +46,9 @@ export interface MachineRecord {
     machineId: string;
     effectiveFrom: Date;
     effectiveTo: Date | null;
+    ownershipKind: "OWNED" | "RENTED" | "THIRD_PARTY";
+    externalOwnerName: string | null;
+    suggestedHourlyRate: Prisma.Decimal | null;
     createdAt: Date;
     updatedAt: Date;
   }[];
@@ -60,7 +64,7 @@ export interface MachineRecord {
     readingSequence: number;
     value: Prisma.Decimal;
     status: "CONFIRMED";
-    purpose: "INITIAL" | "OWNERSHIP_TRANSFER" | "ORDINARY";
+    purpose: "INITIAL" | "RESTORATION" | "OWNERSHIP_TRANSFER" | "ORDINARY";
     actorUserId: string;
     recordedAt: Date;
     createdAt: Date;
@@ -77,6 +81,7 @@ function machineSelect(companyId: string) {
     type: true,
     manufacturer: true,
     model: true,
+    version: true,
     meterType: true,
     loadVolumeM3: true,
     maxSupportedWeightT: true,
@@ -91,7 +96,7 @@ function machineSelect(companyId: string) {
         type: true,
         manufacturer: true,
         model: true,
-        meterType: true,
+        version: true,
         loadVolumeM3: true,
         maxSupportedWeightT: true,
         requiresOperator: true,
@@ -110,6 +115,9 @@ function machineSelect(companyId: string) {
         machineId: true,
         effectiveFrom: true,
         effectiveTo: true,
+        ownershipKind: true,
+        externalOwnerName: true,
+        suggestedHourlyRate: true,
         createdAt: true,
         updatedAt: true,
       },
@@ -323,11 +331,12 @@ export async function createMachineHandler(
     companyId: string;
     actorUserId: string;
     machineModelId?: string;
-    name: string;
+    name?: string;
     description?: string;
     type: "YELLOW_LINE" | "WHITE_LINE";
     manufacturer: string;
     model: string;
+    version?: string;
     meterType: "HOUR_METER" | "ODOMETER";
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
@@ -337,6 +346,9 @@ export async function createMachineHandler(
       normalizedValue: string;
     }[];
     initialMeterReading: string;
+    ownershipKind?: "OWNED" | "RENTED";
+    externalOwnerName?: string;
+    suggestedHourlyRate?: string;
   },
 ): Promise<MachineRecord> {
   try {
@@ -356,11 +368,15 @@ export async function createMachineHandler(
       data: {
         corporationId: input.corporationId,
         machineModelId: machineModel.id,
-        name: input.name,
+        name:
+          input.name ??
+          input.identifiers[0]?.value ??
+          "Unidade sem identificação",
         description: input.description,
         type: input.type,
         manufacturer: input.manufacturer,
         model: input.model,
+        version: input.version,
         meterType: input.meterType,
         loadVolumeM3: input.loadVolumeM3,
         maxSupportedWeightT: input.maxSupportedWeightT,
@@ -382,6 +398,9 @@ export async function createMachineHandler(
         corporationId: input.corporationId,
         companyId: input.companyId,
         machineId: machine.id,
+        ownershipKind: input.ownershipKind ?? "OWNED",
+        externalOwnerName: input.externalOwnerName,
+        suggestedHourlyRate: input.suggestedHourlyRate,
       },
       select: { id: true },
     });
@@ -427,7 +446,7 @@ async function createLegacyMachineModel(
     type: "YELLOW_LINE" | "WHITE_LINE";
     manufacturer: string;
     model: string;
-    meterType: "HOUR_METER" | "ODOMETER";
+    version?: string;
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
   },
@@ -457,7 +476,12 @@ async function createLegacyMachineModel(
       type: input.type,
       manufacturer: input.manufacturer,
       model: input.model,
-      meterType: input.meterType,
+      version: input.version,
+      normalizedManufacturer: input.manufacturer
+        .trim()
+        .toLocaleLowerCase("pt-BR"),
+      normalizedModel: input.model.trim().toLocaleLowerCase("pt-BR"),
+      normalizedVersion: input.version?.trim().toLocaleLowerCase("pt-BR") ?? "",
       loadVolumeM3: input.loadVolumeM3,
       maxSupportedWeightT: input.maxSupportedWeightT,
       requiresOperator: true,
@@ -476,7 +500,7 @@ function machineModelSelect(companyId: string) {
     type: true,
     manufacturer: true,
     model: true,
-    meterType: true,
+    version: true,
     loadVolumeM3: true,
     maxSupportedWeightT: true,
     requiresOperator: true,
@@ -503,55 +527,47 @@ export async function createMachineModelHandler(
     type: "YELLOW_LINE" | "WHITE_LINE";
     manufacturer: string;
     model: string;
-    meterType: "HOUR_METER" | "ODOMETER";
+    version?: string;
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
     requiresOperator: boolean;
     requiredJobRoleId: string | null;
-    units: {
-      name: string;
-      identifiers: {
-        kind: "PLATE" | "COMPANY_TAG";
-        value: string;
-        normalizedValue: string;
-      }[];
-      initialMeterReading: string;
-    }[];
   },
 ) {
-  const machineModel = await context.prisma.machineModel.create({
-    data: {
-      corporationId: input.corporationId,
-      companyId: input.companyId,
-      description: input.description,
-      type: input.type,
-      manufacturer: input.manufacturer,
-      model: input.model,
-      meterType: input.meterType,
-      loadVolumeM3: input.loadVolumeM3,
-      maxSupportedWeightT: input.maxSupportedWeightT,
-      requiresOperator: input.requiresOperator,
-      requiredJobRoleId: input.requiredJobRoleId,
-    },
-    select: { id: true },
-  });
-  for (const unit of input.units)
-    await createMachineHandler(context, {
-      corporationId: input.corporationId,
-      companyId: input.companyId,
-      actorUserId: input.actorUserId,
-      machineModelId: machineModel.id,
-      name: unit.name,
-      description: input.description,
-      type: input.type,
-      manufacturer: input.manufacturer,
-      model: input.model,
-      meterType: input.meterType,
-      loadVolumeM3: input.loadVolumeM3,
-      maxSupportedWeightT: input.maxSupportedWeightT,
-      identifiers: unit.identifiers,
-      initialMeterReading: unit.initialMeterReading,
+  let machineModel: { id: string };
+  try {
+    machineModel = await context.prisma.machineModel.create({
+      data: {
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        description: input.description,
+        type: input.type,
+        manufacturer: input.manufacturer,
+        model: input.model,
+        version: input.version,
+        normalizedManufacturer: input.manufacturer
+          .trim()
+          .toLocaleLowerCase("pt-BR"),
+        normalizedModel: input.model.trim().toLocaleLowerCase("pt-BR"),
+        normalizedVersion:
+          input.version?.trim().toLocaleLowerCase("pt-BR") ?? "",
+        loadVolumeM3: input.loadVolumeM3,
+        maxSupportedWeightT: input.maxSupportedWeightT,
+        requiresOperator: input.requiresOperator,
+        requiredJobRoleId: input.requiredJobRoleId,
+      },
+      select: { id: true },
     });
+  } catch (error) {
+    if (isUniqueError(error))
+      throw new AppError({
+        code: "MACHINE_MODEL_ALREADY_EXISTS",
+        message:
+          "A Machine Model with this manufacturer, model and version already exists",
+        statusCode: 409,
+      });
+    throw error;
+  }
   return findMachineModelDetailHandler(context, {
     corporationId: input.corporationId,
     companyId: input.companyId,
@@ -575,11 +591,43 @@ export async function listMachineModelsHandler(
   const boundaryClause = input.boundary
     ? input.sortBy === "createdAt"
       ? input.sortDirection === "asc"
-        ? { OR: [{ createdAt: { gt: new Date(String(input.boundary.value)) } }, { createdAt: new Date(String(input.boundary.value)), id: { gt: input.boundary.id } }] }
-        : { OR: [{ createdAt: { lt: new Date(String(input.boundary.value)) } }, { createdAt: new Date(String(input.boundary.value)), id: { lt: input.boundary.id } }] }
+        ? {
+            OR: [
+              { createdAt: { gt: new Date(String(input.boundary.value)) } },
+              {
+                createdAt: new Date(String(input.boundary.value)),
+                id: { gt: input.boundary.id },
+              },
+            ],
+          }
+        : {
+            OR: [
+              { createdAt: { lt: new Date(String(input.boundary.value)) } },
+              {
+                createdAt: new Date(String(input.boundary.value)),
+                id: { lt: input.boundary.id },
+              },
+            ],
+          }
       : input.sortDirection === "asc"
-        ? { OR: [{ model: { gt: String(input.boundary.value) } }, { model: String(input.boundary.value), id: { gt: input.boundary.id } }] }
-        : { OR: [{ model: { lt: String(input.boundary.value) } }, { model: String(input.boundary.value), id: { lt: input.boundary.id } }] }
+        ? {
+            OR: [
+              { model: { gt: String(input.boundary.value) } },
+              {
+                model: String(input.boundary.value),
+                id: { gt: input.boundary.id },
+              },
+            ],
+          }
+        : {
+            OR: [
+              { model: { lt: String(input.boundary.value) } },
+              {
+                model: String(input.boundary.value),
+                id: { lt: input.boundary.id },
+              },
+            ],
+          }
     : {};
   return context.prisma.machineModel.findMany({
     where: {
@@ -592,7 +640,13 @@ export async function listMachineModelsHandler(
             OR: [
               { manufacturer: { contains: input.search, mode: "insensitive" } },
               { model: { contains: input.search, mode: "insensitive" } },
-              { machines: { some: { name: { contains: input.search, mode: "insensitive" } } } },
+              {
+                machines: {
+                  some: {
+                    name: { contains: input.search, mode: "insensitive" },
+                  },
+                },
+              },
             ],
           }
         : {}),
@@ -631,29 +685,187 @@ export async function addMachineModelUnitsHandler(
     companyId: string;
     actorUserId: string;
     machineModelId: string;
-    units: {
-      name: string;
-      identifiers: { kind: "PLATE" | "COMPANY_TAG"; value: string; normalizedValue: string }[];
+    unit: {
+      name?: string;
+      meterType: "HOUR_METER" | "ODOMETER";
+      ownershipKind: "OWNED" | "RENTED";
+      externalOwnerName?: string;
+      suggestedHourlyRate?: string;
+      identifiers: {
+        kind: "PLATE" | "COMPANY_TAG";
+        value: string;
+        normalizedValue: string;
+      }[];
       initialMeterReading: string;
-    }[];
+    };
   },
 ) {
   const model = await findMachineModelDetailHandler(context, input);
-  for (const unit of input.units)
-    await createMachineHandler(context, {
-      ...input,
-      name: unit.name,
-      description: model.description ?? undefined,
-      type: model.type,
-      manufacturer: model.manufacturer,
-      model: model.model,
-      meterType: model.meterType,
-      loadVolumeM3: model.loadVolumeM3?.toFixed(3) ?? undefined,
-      maxSupportedWeightT: model.maxSupportedWeightT?.toFixed(3) ?? undefined,
-      identifiers: unit.identifiers,
-      initialMeterReading: unit.initialMeterReading,
+  return createMachineHandler(context, {
+    ...input,
+    name: input.unit.name,
+    description: model.description ?? undefined,
+    type: model.type,
+    manufacturer: model.manufacturer,
+    model: model.model,
+    version: model.version ?? undefined,
+    meterType: input.unit.meterType,
+    loadVolumeM3: model.loadVolumeM3?.toFixed(3) ?? undefined,
+    maxSupportedWeightT: model.maxSupportedWeightT?.toFixed(3) ?? undefined,
+    ownershipKind: input.unit.ownershipKind,
+    externalOwnerName: input.unit.externalOwnerName,
+    suggestedHourlyRate: input.unit.suggestedHourlyRate,
+    identifiers: input.unit.identifiers,
+    initialMeterReading: input.unit.initialMeterReading,
+  });
+}
+
+export async function allocateNewMachineUnitHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    actorUserId: string;
+    machine: MachineRecord;
+    allocation: {
+      projectId: string;
+      confirmedHourlyRate?: string;
+      monthlyHours?: number;
+      operatorAssignments: {
+        shift: "day" | "night";
+        operatorEmploymentId: string;
+      }[];
+    };
+  },
+) {
+  const project = await context.prisma.project.findFirst({
+    where: {
+      id: input.allocation.projectId,
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      status: { in: ["PLANNED", "ACTIVE"] },
+    },
+    select: { id: true },
+  });
+  if (!project)
+    throw new AppError({
+      code: "NOT_FOUND",
+      message: "Eligible Project not found",
+      statusCode: 404,
     });
-  return findMachineModelDetailHandler(context, input);
+  const latestReading = input.machine.meterReadings[0];
+  if (!latestReading)
+    throw new AppError({
+      code: "VALIDATION_ERROR",
+      message: "Machine requires a confirmed meter reading",
+      statusCode: 422,
+    });
+  const ownership = input.machine.ownershipPeriods[0];
+  if (
+    ownership?.ownershipKind === "RENTED" &&
+    (!input.allocation.confirmedHourlyRate || !input.allocation.monthlyHours)
+  )
+    throw new AppError({
+      code: "VALIDATION_ERROR",
+      message:
+        "Rented Machine allocation requires confirmed rate and monthly hours",
+      statusCode: 422,
+    });
+  if (
+    ownership?.ownershipKind === "OWNED" &&
+    (input.allocation.confirmedHourlyRate || input.allocation.monthlyHours)
+  )
+    throw new AppError({
+      code: "VALIDATION_ERROR",
+      message: "Owned Machine allocation cannot include rental terms",
+      statusCode: 422,
+    });
+  if (
+    input.machine.machineModel.requiresOperator &&
+    !input.allocation.operatorAssignments.length
+  )
+    throw new AppError({
+      code: "MACHINE_OPERATOR_REQUIRED",
+      message: "Machine requires an operator",
+      statusCode: 409,
+    });
+  if (
+    !input.machine.machineModel.requiresOperator &&
+    input.allocation.operatorAssignments.length
+  )
+    throw new AppError({
+      code: "MACHINE_OPERATOR_NOT_ALLOWED",
+      message: "Machine does not accept operators",
+      statusCode: 409,
+    });
+  for (const assignment of input.allocation.operatorAssignments) {
+    const employment = await context.prisma.projectEmployeeAllocation.findFirst(
+      {
+        where: {
+          corporationId: input.corporationId,
+          companyId: input.companyId,
+          projectId: project.id,
+          employmentId: assignment.operatorEmploymentId,
+          shift: assignment.shift === "day" ? "DAY" : "NIGHT",
+          effectiveTo: null,
+        },
+        select: { id: true, confirmedJobRoleId: true },
+      },
+    );
+    if (
+      !employment ||
+      (input.machine.machineModel.requiredJobRoleId &&
+        employment.confirmedJobRoleId !==
+          input.machine.machineModel.requiredJobRoleId)
+    )
+      throw new AppError({
+        code: "MACHINE_OPERATOR_INVALID",
+        message: "Machine operator is not compatible with this Project shift",
+        statusCode: 409,
+      });
+  }
+  const now = new Date();
+  const row = await context.prisma.projectMachineAllocation.create({
+    data: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      projectId: project.id,
+      machineId: input.machine.id,
+      startMeterReadingId: latestReading.id,
+      operatorEmploymentId:
+        input.allocation.operatorAssignments[0]?.operatorEmploymentId ?? null,
+      lessorNameSnapshot: ownership?.externalOwnerName,
+      hourlyRateSnapshot: input.allocation.confirmedHourlyRate,
+      monthlyHours: input.allocation.monthlyHours,
+      effectiveFrom: now,
+      createdByUserId: input.actorUserId,
+    },
+    select: { id: true },
+  });
+  if (input.allocation.operatorAssignments.length)
+    await context.prisma.projectMachineShiftAssignment.createMany({
+      data: input.allocation.operatorAssignments.map((assignment) => ({
+        corporationId: input.corporationId,
+        companyId: input.companyId,
+        projectId: project.id,
+        projectMachineAllocationId: row.id,
+        machineId: input.machine.id,
+        shift: assignment.shift === "day" ? "DAY" : "NIGHT",
+        operatorEmploymentId: assignment.operatorEmploymentId,
+        effectiveFrom: now,
+        createdByUserId: input.actorUserId,
+      })),
+    });
+  await context.prisma.machineMeterReadingReference.create({
+    data: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      machineId: input.machine.id,
+      readingId: latestReading.id,
+      sourceType: "PROJECT_ALLOCATION",
+      sourceId: row.id,
+    },
+  });
 }
 
 export async function updateMachineModelHandler(
@@ -666,7 +878,7 @@ export async function updateMachineModelHandler(
     type: "YELLOW_LINE" | "WHITE_LINE";
     manufacturer: string;
     model: string;
-    meterType: "HOUR_METER" | "ODOMETER";
+    version?: string;
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
     requiresOperator: boolean;
@@ -690,7 +902,8 @@ export async function updateMachineModelHandler(
     if (assigned)
       throw new AppError({
         code: "CONFLICT",
-        message: "Machine model operator rule cannot change while units are mobilized",
+        message:
+          "Machine model operator rule cannot change while units are mobilized",
         statusCode: 409,
       });
   }
@@ -701,7 +914,12 @@ export async function updateMachineModelHandler(
       type: input.type,
       manufacturer: input.manufacturer,
       model: input.model,
-      meterType: input.meterType,
+      version: input.version,
+      normalizedManufacturer: input.manufacturer
+        .trim()
+        .toLocaleLowerCase("pt-BR"),
+      normalizedModel: input.model.trim().toLocaleLowerCase("pt-BR"),
+      normalizedVersion: input.version?.trim().toLocaleLowerCase("pt-BR") ?? "",
       loadVolumeM3: input.loadVolumeM3,
       maxSupportedWeightT: input.maxSupportedWeightT,
       requiresOperator: input.requiresOperator,
@@ -715,12 +933,224 @@ export async function updateMachineModelHandler(
       type: input.type,
       manufacturer: input.manufacturer,
       model: input.model,
-      meterType: input.meterType,
+      version: input.version,
       loadVolumeM3: input.loadVolumeM3,
       maxSupportedWeightT: input.maxSupportedWeightT,
     },
   });
   return findMachineModelDetailHandler(context, input);
+}
+
+export async function findDeletedMachineMatchesHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    machineModelId: string;
+    identifiers: { kind: "PLATE" | "COMPANY_TAG"; normalizedValue: string }[];
+  },
+) {
+  if (!input.identifiers.length) return [];
+  return context.prisma.machine.findMany({
+    where: {
+      corporationId: input.corporationId,
+      machineModelId: input.machineModelId,
+      isActive: false,
+      identifiers: {
+        some: {
+          companyId: input.companyId,
+          OR: input.identifiers.map((identifier) => ({
+            kind: identifier.kind,
+            normalizedValue: identifier.normalizedValue,
+          })),
+        },
+      },
+    },
+    select: {
+      id: true,
+      deletedAt: true,
+      identifiers: {
+        where: { companyId: input.companyId },
+        select: { kind: true, value: true, normalizedValue: true },
+      },
+    },
+    orderBy: { deletedAt: "desc" },
+  });
+}
+
+export async function restoreMachineHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    actorUserId: string;
+    machineModelId: string;
+    machineId: string;
+    name?: string;
+    identifiers: {
+      kind: "PLATE" | "COMPANY_TAG";
+      value: string;
+      normalizedValue: string;
+    }[];
+    initialMeterReading: string;
+    ownershipKind: "OWNED" | "RENTED";
+    externalOwnerName?: string;
+    suggestedHourlyRate?: string;
+  },
+) {
+  const machine = await context.prisma.machine.findFirst({
+    where: {
+      id: input.machineId,
+      corporationId: input.corporationId,
+      machineModelId: input.machineModelId,
+      isActive: false,
+    },
+    select: { id: true },
+  });
+  if (!machine) throw notFoundError();
+  const latest = await latestMachineReading(context, input);
+  const decimal = (value: string) => {
+    const [whole, fraction = ""] = value.split(".");
+    return BigInt(whole) * 100n + BigInt(fraction.padEnd(2, "0").slice(0, 2));
+  };
+  if (
+    latest &&
+    decimal(String(latest.value)) > decimal(input.initialMeterReading)
+  )
+    throw readingDecreaseError();
+  const now = new Date();
+  await context.prisma.machine.update({
+    where: {
+      corporationId_id: {
+        corporationId: input.corporationId,
+        id: input.machineId,
+      },
+    },
+    data: {
+      isActive: true,
+      deletedAt: null,
+      deletedByUserId: null,
+      name:
+        input.name ??
+        input.identifiers[0]?.value ??
+        "Unidade sem identificação",
+    },
+  });
+  await context.prisma.machineOwnershipPeriod.create({
+    data: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      machineId: input.machineId,
+      ownershipKind: input.ownershipKind,
+      externalOwnerName: input.externalOwnerName,
+      suggestedHourlyRate: input.suggestedHourlyRate,
+      effectiveFrom: now,
+    },
+  });
+  await context.prisma.machineIdentifier.createMany({
+    data: input.identifiers.map((identifier) => ({
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      machineId: input.machineId,
+      kind: identifier.kind,
+      value: identifier.value,
+      normalizedValue: identifier.normalizedValue,
+    })),
+  });
+  await context.prisma.machineMeterReading.create({
+    data: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      machineId: input.machineId,
+      readingSequence: (latest?.readingSequence ?? 0) + 1,
+      value: input.initialMeterReading,
+      purpose: "RESTORATION",
+      actorUserId: input.actorUserId,
+      recordedAt: now,
+    },
+  });
+  return findMachineDetailHandler(context, input);
+}
+
+export async function softDeleteMachineHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    actorUserId: string;
+    machineId: string;
+  },
+) {
+  const machine = await context.prisma.machine.findFirst({
+    where: {
+      id: input.machineId,
+      corporationId: input.corporationId,
+      isActive: true,
+    },
+    select: {
+      id: true,
+      ownershipPeriods: {
+        where: { companyId: input.companyId, effectiveTo: null },
+        select: { id: true, ownershipKind: true },
+        take: 1,
+      },
+    },
+  });
+  if (!machine) throw notFoundError();
+  const allocation = await context.prisma.projectMachineAllocation.findFirst({
+    where: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      machineId: input.machineId,
+      effectiveTo: null,
+    },
+    select: { id: true },
+  });
+  if (allocation)
+    throw new AppError({
+      code: "MACHINE_DELETE_BLOCKED",
+      message: "Machine has an open allocation",
+      statusCode: 409,
+    });
+  const ownership = machine.ownershipPeriods[0] ?? null;
+  if (
+    ownership?.ownershipKind === "RENTED" ||
+    ownership?.ownershipKind === "THIRD_PARTY"
+  )
+    throw new AppError({
+      code: "MACHINE_RENTAL_ACTIVE",
+      message: "Rented Machine must be without rental before deletion",
+      statusCode: 409,
+    });
+  const now = new Date();
+  if (ownership)
+    await context.prisma.machineOwnershipPeriod.update({
+      where: { id: ownership.id },
+      data: { effectiveTo: now },
+    });
+  await context.prisma.machineIdentifier.updateMany({
+    where: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      machineId: input.machineId,
+      releasedAt: null,
+    },
+    data: { releasedAt: now },
+  });
+  await context.prisma.machine.update({
+    where: {
+      corporationId_id: {
+        corporationId: input.corporationId,
+        id: input.machineId,
+      },
+    },
+    data: {
+      isActive: false,
+      deletedAt: now,
+      deletedByUserId: input.actorUserId,
+    },
+  });
+  return { id: input.machineId, deletedAt: now.toISOString() };
 }
 
 export async function findActiveJobRoleHandler(
@@ -755,13 +1185,6 @@ export async function listMachinesHandler(
     where: {
       corporationId: input.corporationId,
       isActive: true,
-      ownershipPeriods: {
-        some: {
-          corporationId: input.corporationId,
-          companyId: input.companyId,
-          effectiveTo: null,
-        },
-      },
       ...(input.type ? { type: input.type } : {}),
       ...searchWhere({ companyId: input.companyId, search: input.search }),
       ...boundaryWhere(input),
@@ -781,13 +1204,6 @@ export async function findMachineDetailHandler(
       id: input.machineId,
       corporationId: input.corporationId,
       isActive: true,
-      ownershipPeriods: {
-        some: {
-          corporationId: input.corporationId,
-          companyId: input.companyId,
-          effectiveTo: null,
-        },
-      },
     },
     select: machineSelect(input.companyId),
   })) as MachineRecord | null;

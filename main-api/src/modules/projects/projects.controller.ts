@@ -299,6 +299,19 @@ const projectCommandOpenApiSchema = {
               },
             },
           },
+          rental: {
+            type: "object",
+            additionalProperties: false,
+            required: ["lessorName", "hourlyRate", "monthlyHours"],
+            properties: {
+              lessorName: { type: "string", minLength: 1, maxLength: 180 },
+              hourlyRate: {
+                type: "string",
+                pattern: "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$",
+              },
+              monthlyHours: { type: "integer", minimum: 1, maximum: 744 },
+            },
+          },
         },
       },
     },

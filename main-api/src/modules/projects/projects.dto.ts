@@ -275,6 +275,14 @@ const projectMachineAllocationSchema = z
       .array(machineOperatorAssignmentSchema)
       .max(2)
       .optional(),
+    rental: z
+      .object({
+        lessorName: z.string().trim().min(1).max(180),
+        hourlyRate: decimal(2, 16).refine((value) => Number(value) > 0),
+        monthlyHours: z.number().int().min(1).max(744),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
   .superRefine((allocation, context) => {
@@ -302,9 +310,15 @@ const projectMachineAllocationSchema = z
       null,
     operatorAssignments: allocation.operatorAssignments ?? [
       ...(allocation.operatorEmploymentId
-        ? [{ shift: "day" as const, operatorEmploymentId: allocation.operatorEmploymentId }]
+        ? [
+            {
+              shift: "day" as const,
+              operatorEmploymentId: allocation.operatorEmploymentId,
+            },
+          ]
         : []),
     ],
+    ...(allocation.rental ? { rental: allocation.rental } : {}),
   }));
 
 export const projectCommandSchema = z

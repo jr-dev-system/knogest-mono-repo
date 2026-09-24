@@ -57,6 +57,7 @@ enum MachineMeterType {
 
 enum MachineMeterReadingPurpose {
   INITIAL
+  RESTORATION
   OWNERSHIP_TRANSFER
   ORDINARY
 
@@ -393,6 +394,7 @@ model User {
   endedProjectMachineAllocations        ProjectMachineAllocation[]           @relation("ProjectMachineAllocationEndedBy")
   createdProjectMachineShiftAssignments ProjectMachineShiftAssignment[]      @relation("ProjectMachineShiftAssignmentCreatedBy")
   endedProjectMachineShiftAssignments   ProjectMachineShiftAssignment[]      @relation("ProjectMachineShiftAssignmentEndedBy")
+  deletedMachines                        Machine[]                            @relation("MachineDeletedBy")
   createdWorkFrontEmployeeAssignments   ProjectWorkFrontEmployeeAssignment[] @relation("WorkFrontEmployeeAssignmentCreatedBy")
   endedWorkFrontEmployeeAssignments     ProjectWorkFrontEmployeeAssignment[] @relation("WorkFrontEmployeeAssignmentEndedBy")
   createdWorkFrontMachineAssignments    ProjectWorkFrontMachineAssignment[]  @relation("WorkFrontMachineAssignmentCreatedBy")
@@ -724,7 +726,12 @@ model MachineModel {
   type                MachineType
   manufacturer        String           @db.VarChar(120)
   model               String           @db.VarChar(120)
-  meterType           MachineMeterType @map("meter_type")
+  version             String?          @db.VarChar(120)
+  normalizedManufacturer String         @map("normalized_manufacturer") @db.VarChar(120)
+  normalizedModel        String         @map("normalized_model") @db.VarChar(120)
+  normalizedVersion      String         @default("") @map("normalized_version") @db.VarChar(120)
+  /// Legacy migration value. The public catalog and all new writes use the unit meter type.
+  meterType           MachineMeterType? @map("meter_type")
   loadVolumeM3        Decimal?         @map("load_volume_m3") @db.Decimal(10, 3)
   maxSupportedWeightT Decimal?         @map("max_supported_weight_t") @db.Decimal(10, 3)
   requiresOperator    Boolean          @default(true) @map("requires_operator")
@@ -737,7 +744,7 @@ model MachineModel {
   requiredJobRole     JobRole?         @relation("MachineModelRequiredJobRole", fields: [requiredJobRoleId], references: [id], onDelete: Restrict)
   machines            Machine[]
 
-  @@index([corporationId, companyId, manufacturer, model, id])
+  @@index([corporationId, companyId, manufacturer, model, version, id])
   @@index([corporationId, companyId, requiredJobRoleId])
   @@map("machine_models")
 }
@@ -793,14 +800,18 @@ model Machine {
   type                   MachineType
   manufacturer           String                              @db.VarChar(120)
   model                  String                              @db.VarChar(120)
+  version                String?                             @db.VarChar(120)
   meterType              MachineMeterType                    @map("meter_type")
   loadVolumeM3           Decimal?                            @map("load_volume_m3") @db.Decimal(10, 3)
   maxSupportedWeightT    Decimal?                            @map("max_supported_weight_t") @db.Decimal(10, 3)
   isActive               Boolean                             @default(true) @map("is_active")
+  deletedAt              DateTime?                           @map("deleted_at") @db.Timestamptz(3)
+  deletedByUserId        String?                             @map("deleted_by_user_id") @db.Uuid
   createdAt              DateTime                            @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt              DateTime                            @updatedAt @map("updated_at") @db.Timestamptz(3)
   corporation            Corporation                         @relation(fields: [corporationId], references: [id], onDelete: Restrict)
   machineModel           MachineModel                        @relation(fields: [machineModelId], references: [id], onDelete: Restrict)
+  deletedBy              User?                               @relation("MachineDeletedBy", fields: [corporationId, deletedByUserId], references: [corporationId, id], onDelete: Restrict)
   ownershipPeriods       MachineOwnershipPeriod[]
   identifiers            MachineIdentifier[]
   meterReadings          MachineMeterReading[]
@@ -824,6 +835,7 @@ model MachineOwnershipPeriod {
   effectiveTo       DateTime?            @map("effective_to") @db.Timestamptz(3)
   ownershipKind     MachineOwnershipKind @default(OWNED) @map("ownership_kind")
   externalOwnerName String?              @map("external_owner_name") @db.VarChar(180)
+  suggestedHourlyRate Decimal?           @map("suggested_hourly_rate") @db.Decimal(18, 2)
   createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
   corporation       Corporation          @relation(fields: [corporationId], references: [id], onDelete: Restrict)
@@ -1108,6 +1120,9 @@ model ProjectMachineAllocation {
   machineId            String                          @map("machine_id") @db.Uuid
   startMeterReadingId  String                          @map("start_meter_reading_id") @db.Uuid
   operatorEmploymentId String?                         @map("operator_employment_id") @db.Uuid
+  lessorNameSnapshot   String?                         @map("lessor_name_snapshot") @db.VarChar(180)
+  hourlyRateSnapshot   Decimal?                        @map("hourly_rate_snapshot") @db.Decimal(18, 2)
+  monthlyHours         Int?                            @map("monthly_hours")
   effectiveFrom        DateTime                        @map("effective_from") @db.Timestamptz(3)
   effectiveTo          DateTime?                       @map("effective_to") @db.Timestamptz(3)
   createdByUserId      String?                         @map("created_by_user_id") @db.Uuid

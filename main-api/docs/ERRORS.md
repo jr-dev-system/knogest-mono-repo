@@ -119,6 +119,13 @@ categorias seguras.
 - Machine identifier, reading, and allocation conflicts return stable
   `MACHINE_*` codes with `409`; these include unavailable operational state and
   attempts to break the monotonic reading chain.
+- `MACHINE_MODEL_ALREADY_EXISTS` identifies the normalized
+  manufacturer/model/version uniqueness conflict. `MACHINE_DELETED_IDENTIFIER_MATCH`
+  returns safe matching identifiers and deleted candidates so the caller can
+  choose restore or a new unit. `MACHINE_DELETE_BLOCKED` and
+  `MACHINE_RENTAL_ACTIVE` protect history and active rental terms. Operator
+  compatibility during unit creation uses `MACHINE_OPERATOR_REQUIRED`,
+  `MACHINE_OPERATOR_NOT_ALLOWED`, or `MACHINE_OPERATOR_INVALID`.
 
 Quantitative limits may appear in safe `blockers` or resource data, but errors
 must not expose request payloads, SQL, Prisma metadata, credentials, or

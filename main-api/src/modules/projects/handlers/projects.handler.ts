@@ -316,6 +316,15 @@ async function validateResources(
           take: 1,
           select: { id: true },
         },
+        ownershipPeriods: {
+          where: { companyId: scope.companyId, effectiveTo: null },
+          select: {
+            ownershipKind: true,
+            externalOwnerName: true,
+            suggestedHourlyRate: true,
+          },
+          take: 1,
+        },
       },
     }),
     context.prisma.jobRole.findMany({
@@ -1639,9 +1648,6 @@ async function replaceMachineAllocations(
         id: { in: [...new Set(machineIds)] },
         corporationId: scope.corporationId,
         isActive: true,
-        ownershipPeriods: {
-          some: { companyId: scope.companyId, effectiveTo: null },
-        },
       },
       select: {
         id: true,
@@ -1657,6 +1663,15 @@ async function replaceMachineAllocations(
           orderBy: { readingSequence: "desc" },
           take: 1,
           select: { id: true },
+        },
+        ownershipPeriods: {
+          where: { companyId: scope.companyId, effectiveTo: null },
+          select: {
+            ownershipKind: true,
+            externalOwnerName: true,
+            suggestedHourlyRate: true,
+          },
+          take: 1,
         },
       },
     }),
@@ -1685,6 +1700,25 @@ async function replaceMachineAllocations(
     const machine = machineMap.get(allocation.machineId);
     if (!machine)
       throw conflict([resource("machine", allocation.machineId, "machines")]);
+    const ownership = machine.ownershipPeriods[0] ?? null;
+    if (ownership?.ownershipKind === "RENTED" && !allocation.rental)
+      validationError(
+        "machineAllocations",
+        "rental-terms-required",
+        "Rented Machine allocation requires rental terms",
+      );
+    if (ownership?.ownershipKind === "OWNED" && allocation.rental)
+      validationError(
+        "machineAllocations",
+        "rental-terms-not-applicable",
+        "Owned Machine allocation cannot include rental terms",
+      );
+    if (!ownership && !allocation.rental)
+      validationError(
+        "machineAllocations",
+        "rental-terms-required",
+        "A Machine without rental requires new rental terms",
+      );
     if (machine.meterReadings[0]?.id !== allocation.startMeterReadingId)
       throw conflict([
         resource(
@@ -1748,6 +1782,9 @@ async function replaceMachineAllocations(
       machineId: true,
       startMeterReadingId: true,
       operatorEmploymentId: true,
+      lessorNameSnapshot: true,
+      hourlyRateSnapshot: true,
+      monthlyHours: true,
       shiftAssignments: {
         where: { effectiveTo: null },
         select: { shift: true, operatorEmploymentId: true },
@@ -1764,6 +1801,10 @@ async function replaceMachineAllocations(
         !desired ||
         desired.startMeterReadingId !== item.startMeterReadingId ||
         desired.operatorEmploymentId !== item.operatorEmploymentId ||
+        (desired.rental?.lessorName ?? null) !== item.lessorNameSnapshot ||
+        (desired.rental?.hourlyRate ?? null) !==
+          (item.hourlyRateSnapshot?.toFixed(2) ?? null) ||
+        (desired.rental?.monthlyHours ?? null) !== item.monthlyHours ||
         JSON.stringify(
           desired.operatorAssignments
             .map((assignment) => ({
@@ -1783,6 +1824,9 @@ async function replaceMachineAllocations(
       );
     })
     .map((item) => item.machineId);
+  const currentByMachine = new Map(
+    current.map((item) => [item.machineId, item]),
+  );
   if (changedMachineIds.length) {
     const assigned =
       await tx.prisma.projectWorkFrontMachineAssignment.findFirst({
@@ -1798,23 +1842,80 @@ async function replaceMachineAllocations(
         resource("machine", assigned.machineId, "fronts", "assigned-to-front"),
       ]);
   }
-  await tx.prisma.projectMachineAllocation.updateMany({
-    where: { ...scopeWhere, effectiveTo: null },
-    data: {
-      effectiveTo: now,
-      endedByUserId: scope.userId,
-      endedReason: reason,
-    },
-  });
-  await tx.prisma.projectMachineShiftAssignment.updateMany({
-    where: { ...scopeWhere, effectiveTo: null },
-    data: {
-      effectiveTo: now,
-      endedByUserId: scope.userId,
-      endedReason: reason,
-    },
-  });
-  for (const allocation of allocations) {
+  const allocationIdsToClose = current
+    .filter((item) => changedMachineIds.includes(item.machineId))
+    .map((item) => item.id);
+  if (allocationIdsToClose.length) {
+    await tx.prisma.projectMachineAllocation.updateMany({
+      where: { id: { in: allocationIdsToClose }, effectiveTo: null },
+      data: {
+        effectiveTo: now,
+        endedByUserId: scope.userId,
+        endedReason: reason,
+      },
+    });
+    await tx.prisma.projectMachineShiftAssignment.updateMany({
+      where: {
+        projectMachineAllocationId: { in: allocationIdsToClose },
+        effectiveTo: null,
+      },
+      data: {
+        effectiveTo: now,
+        endedByUserId: scope.userId,
+        endedReason: reason,
+      },
+    });
+  }
+  const removedMachineIds = current
+    .filter((item) => !desiredByMachine.has(item.machineId))
+    .map((item) => item.machineId);
+  if (removedMachineIds.length)
+    await tx.prisma.machineOwnershipPeriod.updateMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        machineId: { in: removedMachineIds },
+        ownershipKind: "RENTED",
+        effectiveTo: null,
+      },
+      data: { effectiveTo: now },
+    });
+
+  for (const allocation of allocations.filter(
+    (allocation) =>
+      !currentByMachine.has(allocation.machineId) ||
+      changedMachineIds.includes(allocation.machineId),
+  )) {
+    const machine = machineMap.get(allocation.machineId)!;
+    const currentOwnership = machine.ownershipPeriods[0] ?? null;
+    const rentalTermsChanged =
+      currentOwnership?.ownershipKind === "RENTED" &&
+      allocation.rental &&
+      (currentOwnership.externalOwnerName !== allocation.rental.lessorName ||
+        currentOwnership.suggestedHourlyRate?.toFixed(2) !==
+          allocation.rental.hourlyRate);
+    if (rentalTermsChanged)
+      await tx.prisma.machineOwnershipPeriod.updateMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          machineId: allocation.machineId,
+          effectiveTo: null,
+        },
+        data: { effectiveTo: now },
+      });
+    if ((!currentOwnership || rentalTermsChanged) && allocation.rental)
+      await tx.prisma.machineOwnershipPeriod.create({
+        data: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          machineId: allocation.machineId,
+          ownershipKind: "RENTED",
+          externalOwnerName: allocation.rental.lessorName,
+          suggestedHourlyRate: allocation.rental.hourlyRate,
+          effectiveFrom: now,
+        },
+      });
     const row = await tx.prisma.projectMachineAllocation.create({
       data: {
         ...scopeWhere,
@@ -1823,6 +1924,9 @@ async function replaceMachineAllocations(
         machineId: allocation.machineId,
         startMeterReadingId: allocation.startMeterReadingId,
         operatorEmploymentId: allocation.operatorEmploymentId,
+        lessorNameSnapshot: allocation.rental?.lessorName,
+        hourlyRateSnapshot: allocation.rental?.hourlyRate,
+        monthlyHours: allocation.rental?.monthlyHours,
       },
       select: { id: true },
     });
@@ -1976,20 +2080,18 @@ async function buildProjectReadinessOptions(
       where: {
         corporationId: scope.corporationId,
         isActive: true,
-        ownershipPeriods: {
-          some: { companyId: scope.companyId, effectiveTo: null },
-        },
       },
       orderBy: { name: "asc" },
       take: 300,
       select: {
         id: true,
         name: true,
+        meterType: true,
         machineModel: {
           select: {
             manufacturer: true,
             model: true,
-            meterType: true,
+            version: true,
             requiresOperator: true,
             requiredJobRoleId: true,
             requiredJobRole: { select: { name: true, normalizedName: true } },
@@ -2000,6 +2102,15 @@ async function buildProjectReadinessOptions(
           orderBy: { readingSequence: "desc" },
           take: 1,
           select: { id: true, value: true },
+        },
+        ownershipPeriods: {
+          where: { companyId: scope.companyId, effectiveTo: null },
+          select: {
+            ownershipKind: true,
+            externalOwnerName: true,
+            suggestedHourlyRate: true,
+          },
+          take: 1,
         },
       },
     }),
@@ -2245,7 +2356,8 @@ async function buildProjectReadinessOptions(
         label: machine.name,
         manufacturer: machine.machineModel.manufacturer,
         model: machine.machineModel.model,
-        meterType: machine.machineModel.meterType,
+        version: machine.machineModel.version,
+        meterType: machine.meterType,
         detail: machine.meterReadings[0]
           ? decimalString(machine.meterReadings[0].value, 2)
           : null,
@@ -2259,6 +2371,14 @@ async function buildProjectReadinessOptions(
         available:
           !unavailableMachineIds.has(machine.id) ||
           currentMachineIds.has(machine.id),
+        availabilityState: machine.ownershipPeriods[0]
+          ? "available"
+          : "without_rental",
+        ownershipKind: machine.ownershipPeriods[0]?.ownershipKind ?? null,
+        lessorName: machine.ownershipPeriods[0]?.externalOwnerName ?? null,
+        suggestedHourlyRate: machine.ownershipPeriods[0]?.suggestedHourlyRate
+          ? decimalString(machine.ownershipPeriods[0].suggestedHourlyRate, 2)
+          : null,
       })),
     jobRoles: jobRoles.map((role) => ({ id: role.id, label: role.name })),
     suppliers: suppliers.map((supplier) => ({
@@ -4997,9 +5117,8 @@ export class ProjectsHandler {
     const nameByEmployment = new Map(
       employments.map((item) => [item.id, item.person.displayName]),
     );
-    const normalizedSearchForComparison = normalizedSearch?.toLocaleLowerCase(
-      "pt-BR",
-    );
+    const normalizedSearchForComparison =
+      normalizedSearch?.toLocaleLowerCase("pt-BR");
     const ordered = allocations
       .map((allocation) => ({
         allocation,
