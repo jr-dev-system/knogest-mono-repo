@@ -57,6 +57,7 @@ export function ProjectTeamView({
   canEdit,
   counts,
   initialShift = "day",
+  nightEnabled = true,
   onAddShift,
   onActiveShiftChange,
   onEditMember,
@@ -68,6 +69,7 @@ export function ProjectTeamView({
   canEdit: boolean;
   counts: Record<Shift, number>;
   initialShift?: Shift;
+  nightEnabled?: boolean;
   onAddShift: (shift: Shift) => void;
   onActiveShiftChange?: (shift: Shift) => void;
   onEditMember: (member: ProjectTeamMember) => void;
@@ -76,7 +78,9 @@ export function ProjectTeamView({
   projectId: string;
   reloadKey?: number;
 }) {
-  const [activeShift, setActiveShift] = React.useState<Shift>(initialShift);
+  const [activeShift, setActiveShift] = React.useState<Shift>(
+    initialShift === "night" && !nightEnabled ? "day" : initialShift,
+  );
   const [pages, setPages] =
     React.useState<Record<Shift, ProjectTeamMembersPage[]>>(emptyPages);
   const [pageIndexes, setPageIndexes] = React.useState<Record<Shift, number>>({
@@ -97,6 +101,7 @@ export function ProjectTeamView({
 
   const loadPage = React.useCallback(
     async (cursor?: string | null, append = false) => {
+      if (activeShift === "night" && !nightEnabled) return false;
       const currentRequestId = requestId.current + 1;
       requestId.current = currentRequestId;
       setLoadingShift(activeShift);
@@ -133,7 +138,7 @@ export function ProjectTeamView({
           );
       }
     },
-    [activeShift, debouncedSearch, jobRole, projectId],
+    [activeShift, debouncedSearch, jobRole, nightEnabled, projectId],
   );
 
   React.useEffect(() => {
@@ -159,6 +164,7 @@ export function ProjectTeamView({
   const jobRoles = jobRolesByShift[activeShift];
 
   const selectShift = (shift: Shift) => {
+    if (shift === "night" && !nightEnabled) return;
     setActiveShift(shift);
     setJobRole("");
     onActiveShiftChange?.(shift);
@@ -192,7 +198,11 @@ export function ProjectTeamView({
           onValueChange={selectShift}
           tabs={[
             { value: "day", label: `Diurno (${counts.day})` },
-            { value: "night", label: `Noturno (${counts.night})` },
+            {
+              value: "night",
+              label: `Noturno (${counts.night})${nightEnabled ? "" : " · desativado"}`,
+              disabled: !nightEnabled,
+            },
           ]}
         />
         {canEdit && (
@@ -214,6 +224,17 @@ export function ProjectTeamView({
               <Plus className="size-4" />
               Adicionar funcionários
             </Button>
+            {!nightEnabled && (
+              <Button
+                type="button"
+                variant="outline"
+                className="min-h-10"
+                onClick={() => onEditShift("night")}
+              >
+                <Pencil className="size-4" />
+                Editar turno noturno
+              </Button>
+            )}
           </div>
         )}
       </div>

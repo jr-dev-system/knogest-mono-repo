@@ -365,6 +365,7 @@ export const projectCommandSchema = z
       .array(z.string().uuid())
       .min(1, "Selecione pelo menos um responsável técnico.")
       .max(20, "Selecione no máximo 20 responsáveis técnicos."),
+    nightShiftEnabled: z.boolean(),
     weeklySchedule: z.array(scheduleDaySchema).min(7).max(14),
     breakTemplates: z.array(breakTemplateSchema).max(20),
     initialEmployeeAllocations: z.array(employeeAllocationSchema).max(200),
@@ -510,6 +511,7 @@ export const emptyProjectCommand: ProjectCommand = {
   clientId: "",
   managerEmploymentId: "",
   technicalResponsibilityEmploymentIds: [],
+  nightShiftEnabled: false,
   weeklySchedule: weekDays.map((dayOfWeek) => ({
     shift: "day",
     dayOfWeek,

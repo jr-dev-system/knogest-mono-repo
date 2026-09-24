@@ -29,6 +29,7 @@ import {
   ProjectWizardIdentity,
   ProjectWizardReview,
   ProjectWizardSubmissionNotice,
+  Schedule,
   type EmployeeMobilizationHandle,
   type ProjectWizardOptions,
 } from "./project-wizard";
@@ -316,7 +317,43 @@ function EmployeeModalHarness({ onSave }: { onSave: () => void }) {
   );
 }
 
+function ScheduleHarness({ fixedShift }: { fixedShift: "day" | "night" }) {
+  const form = useForm<ProjectCommand>({
+    defaultValues: structuredClone(emptyProjectCommand),
+  });
+  const nightShiftEnabled = useWatch({
+    control: form.control,
+    name: "nightShiftEnabled",
+  });
+  const weeklySchedule = useWatch({
+    control: form.control,
+    name: "weeklySchedule",
+  });
+
+  return (
+    <>
+      <Schedule fixedShift={fixedShift} form={form} />
+      <output>{`${nightShiftEnabled}:${weeklySchedule.filter((day) => day.shift === "night").length}`}</output>
+    </>
+  );
+}
+
 describe("Project wizard polish", () => {
+  it("places the night activation switch in the night schedule editor", async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(<ScheduleHarness fixedShift="day" />);
+
+    expect(screen.queryByText("Ativar turno noturno")).toBeNull();
+
+    rerender(<ScheduleHarness fixedShift="night" />);
+    const toggle = screen.getByRole("checkbox", {
+      name: /Ativar turno noturno/u,
+    });
+    await user.click(toggle);
+
+    expect(screen.getByText("true:7")).toBeTruthy();
+  });
+
   it.each([
     ["monthly", "2200,00", "220", 5, "10,00"],
     ["weekly", "550,00", "220", 5, "10,83"],
@@ -557,10 +594,16 @@ describe("Project wizard polish", () => {
       screen.queryByRole("option", { name: "Ana Silva — Engenheira" }),
     ).toBeNull();
     expect(
-      screen.getByText(
-        "Nenhum integrante deste turno tem a função confirmada exigida. Atualize a equipe para continuar.",
-      ),
-    ).toBeTruthy();
+      screen.getByRole("alert").textContent,
+    ).toContain("Não há operador elegível no turno Diurno");
+    expect(
+      (screen.getByRole("button", {
+        name: "Confirmar máquina",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(
+      screen.queryByRole("option", { name: "Não mobilizar neste turno" }),
+    ).toBeNull();
   });
 
   it("mobilizes a machine without an operator without requiring a team", async () => {

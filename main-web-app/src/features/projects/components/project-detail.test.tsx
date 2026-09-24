@@ -1354,9 +1354,11 @@ describe("Project active work-front mobilization", () => {
     renderProjectDetail(activeProject);
     await user.click(screen.getByRole("button", { name: "Configurações" }));
     await user.click(screen.getByRole("button", { name: /^Máquinas/u }));
-    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar nova máquina" }),
+    );
     const modal = screen.getByRole("dialog", {
-      name: "Editar máquinas e operadores",
+      name: "Adicionar máquina e operador",
     });
     await user.click(
       within(modal).getByRole("button", { name: "Salvar máquinas" }),
@@ -1369,7 +1371,7 @@ describe("Project active work-front mobilization", () => {
       ),
     );
     expect(
-      screen.queryByRole("dialog", { name: "Editar máquinas e operadores" }),
+      screen.queryByRole("dialog", { name: "Adicionar máquina e operador" }),
     ).toBeNull();
     expect(screen.queryByText("Máquinas mobilizadas atualizadas.")).toBeNull();
   });
@@ -1382,9 +1384,11 @@ describe("Project active work-front mobilization", () => {
     renderProjectDetail(activeProject);
     await user.click(screen.getByRole("button", { name: "Configurações" }));
     await user.click(screen.getByRole("button", { name: /^Máquinas/u }));
-    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar nova máquina" }),
+    );
     const modal = screen.getByRole("dialog", {
-      name: "Editar máquinas e operadores",
+      name: "Adicionar máquina e operador",
     });
     await user.click(
       within(modal).getByRole("button", { name: "Salvar máquinas" }),
@@ -1399,7 +1403,7 @@ describe("Project active work-front mobilization", () => {
       ),
     );
     expect(
-      screen.getByRole("dialog", { name: "Editar máquinas e operadores" }),
+      screen.getByRole("dialog", { name: "Adicionar máquina e operador" }),
     ).toBeTruthy();
     expect(within(modal).getByRole("alert").textContent).toContain(
       "A comunicação com o servidor falhou. Tente novamente.",
@@ -1431,9 +1435,11 @@ describe("Project active work-front mobilization", () => {
     renderProjectDetail(activeProject);
     await user.click(screen.getByRole("button", { name: "Configurações" }));
     await user.click(screen.getByRole("button", { name: /^Máquinas/u }));
-    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar nova máquina" }),
+    );
     const modal = screen.getByRole("dialog", {
-      name: "Editar máquinas e operadores",
+      name: "Adicionar máquina e operador",
     });
     await user.click(
       within(modal).getByRole("button", { name: "Salvar máquinas" }),
@@ -1466,9 +1472,11 @@ describe("Project active work-front mobilization", () => {
     renderProjectDetail(projectSnapshot);
     await user.click(screen.getByRole("button", { name: "Configurações" }));
     await user.click(screen.getByRole("button", { name: /^Máquinas/u }));
-    await user.click(screen.getByRole("button", { name: "Editar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar nova máquina" }),
+    );
     const modal = screen.getByRole("dialog", {
-      name: "Editar máquinas e operadores",
+      name: "Adicionar máquina e operador",
     });
     await user.click(
       within(modal).getByRole("button", { name: "Salvar máquinas" }),

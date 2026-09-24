@@ -5,6 +5,7 @@ import * as React from "react";
 import { cn } from "@/lib/utils";
 
 export type OperationTabOption<TValue extends string> = {
+  disabled?: boolean;
   value: TValue;
   label: React.ReactNode;
 };
@@ -27,7 +28,7 @@ export function OperationTabs<TValue extends string>({
   const buttons = React.useRef<Array<HTMLButtonElement | null>>([]);
   const selectAt = (index: number) => {
     const tab = tabs[index];
-    if (!tab) return;
+    if (!tab || tab.disabled) return;
     onValueChange(tab.value);
     buttons.current[index]?.focus();
   };
@@ -52,6 +53,8 @@ export function OperationTabs<TValue extends string>({
               idPrefix ? `${idPrefix}-panel-${tab.value}` : undefined
             }
             aria-selected={selected}
+            aria-disabled={tab.disabled || undefined}
+            disabled={tab.disabled}
             tabIndex={selected ? 0 : -1}
             ref={(node) => {
               buttons.current[index] = node;
@@ -60,8 +63,9 @@ export function OperationTabs<TValue extends string>({
               "min-h-9 rounded-[min(var(--radius-md),8px)] px-3 text-sm font-semibold text-muted-foreground transition-colors outline-none",
               "focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30",
               selected && "bg-background text-foreground ring-1 ring-border",
+              tab.disabled && "cursor-not-allowed opacity-50",
             )}
-            onClick={() => onValueChange(tab.value)}
+            onClick={() => !tab.disabled && onValueChange(tab.value)}
             onKeyDown={(event) => {
               if (event.key === "ArrowRight" || event.key === "ArrowLeft") {
                 event.preventDefault();

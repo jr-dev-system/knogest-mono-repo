@@ -64,7 +64,7 @@ export function OperationsModal({
           className,
         )}
       >
-        <DialogHeader className="shrink-0 border-b border-border bg-secondary/70 px-5 py-4">
+        <DialogHeader className="relative z-30 shrink-0 border-b border-border bg-secondary/70 px-5 py-4">
           <div className="flex items-start gap-3 pr-8">
             {Icon && (
               <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground">
@@ -93,7 +93,7 @@ export function OperationsModal({
           {children}
         </div>
         {footer && (
-          <footer className="flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-popover px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
+          <footer className="relative z-30 flex shrink-0 flex-col-reverse gap-2 border-t border-border bg-popover px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
             {footer}
           </footer>
         )}

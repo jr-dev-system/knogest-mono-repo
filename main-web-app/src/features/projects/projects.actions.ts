@@ -5,6 +5,7 @@ import { z } from "zod";
 import { postApiV1Projects } from "@/generated/clients/postApiV1Projects";
 import { getApiV1ProjectsProjectidTeamCandidates } from "@/generated/clients/getApiV1ProjectsProjectidTeamCandidates";
 import { getApiV1ProjectsProjectidTeamMembers } from "@/generated/clients/getApiV1ProjectsProjectidTeamMembers";
+import { getApiV1ProjectsProjectidMobilizationMachineOptions } from "@/generated/clients/getApiV1ProjectsProjectidMobilizationMachineOptions";
 import { getApiV1ProjectsProjectidFrontsFrontidMobilizationOptions } from "@/generated/clients/getApiV1ProjectsProjectidFrontsFrontidMobilizationOptions";
 import client, { ApiClientError } from "@/lib/api/server-client";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
@@ -14,6 +15,7 @@ import type {
   FuelSupplierOption,
   ProjectDetailSnapshot,
   ProjectMobilizationHistoryPage,
+  ProjectMachineMobilizationOptionsPage,
   ProjectSuppliedItemOffersPage,
   ProjectTeamCandidatesPage,
   ProjectTeamMembersPage,
@@ -674,7 +676,10 @@ export async function activateProjectAction(
 export async function saveProjectEmployeeMobilizationAction(
   projectId: string,
   allocations: NonNullable<ProjectReadinessActionInput["employeeAllocations"]>,
-  schedule?: Pick<ProjectCommand, "weeklySchedule" | "breakTemplates">,
+  schedule?: Pick<
+    ProjectCommand,
+    "nightShiftEnabled" | "weeklySchedule" | "breakTemplates"
+  >,
   shift?: "day" | "night",
 ): Promise<ProjectReadinessMutationResult> {
   const id = z.string().uuid().parse(projectId);
@@ -692,8 +697,9 @@ export async function saveProjectEmployeeMobilizationAction(
         allocations: parsed,
         ...(schedule
           ? {
-              weeklySchedule: schedule.weeklySchedule,
-              breakTemplates: schedule.breakTemplates,
+            weeklySchedule: schedule.weeklySchedule,
+            breakTemplates: schedule.breakTemplates,
+            nightShiftEnabled: schedule.nightShiftEnabled,
             }
           : {}),
       },
@@ -725,6 +731,39 @@ export async function getProjectTeamCandidatesAction({
       limit: 15,
       search: search?.trim() || undefined,
       cursor: cursor || undefined,
+    },
+  });
+  return response.data;
+}
+
+export async function getProjectMachineMobilizationOptionsAction({
+  cursor,
+  manufacturer,
+  model,
+  projectId,
+  search,
+  type,
+  version,
+}: {
+  cursor?: string | null;
+  manufacturer?: string;
+  model?: string;
+  projectId: string;
+  search?: string;
+  type?: "YELLOW_LINE" | "WHITE_LINE";
+  version?: string;
+}): Promise<ProjectMachineMobilizationOptionsPage> {
+  const id = z.string().uuid().parse(projectId);
+  const response = await getApiV1ProjectsProjectidMobilizationMachineOptions({
+    projectId: id,
+    params: {
+      limit: 15,
+      cursor: cursor || undefined,
+      manufacturer: manufacturer?.trim() || undefined,
+      model: model?.trim() || undefined,
+      search: search?.trim() || undefined,
+      type,
+      version: version?.trim() || undefined,
     },
   });
   return response.data;

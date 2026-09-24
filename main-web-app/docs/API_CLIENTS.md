@@ -108,11 +108,22 @@ cargo; o filtro exato de cargo é aplicado imediatamente. A resposta devolve os
 cargos disponíveis no turno atual. Alterar turno, busca, cargo ou a mobilização
 invalida as páginas e cursores anteriores; respostas de consultas antigas não
 substituem o resultado mais recente.
-As opções de mobilização da obra retornadas por
-`GET /projects/:projectId/readiness-options` incluem, para cada máquina,
-fabricante, modelo, `meterType` e regra de operador. O modal identifica a
-unidade por esses dados, apresenta a leitura decimal com máscara brasileira e
-unidade, e filtra a equipe do turno por `requiredJobRoleId` comparado a
+O editor de mobilização de máquinas da página da obra consulta
+`GET /projects/:projectId/mobilization/machine-options` por uma Server Action.
+A consulta é paginada em até 15 unidades e aceita `type`, `manufacturer`,
+`model`, `version`, `search` (nome, placa ou patrimônio) e cursor. A busca tem
+debounce de 300 ms; mudança de qualquer filtro reinicia a paginação e não
+reutiliza o cursor anterior. A resposta inclui os filtros facetados e as
+máquinas atualmente mobilizadas. Elas permanecem no comando, mas o wizard de
+inclusão não as exibe nem permite alterá-las: sua lista e resumo cobrem apenas
+máquinas confirmadas na abertura atual. A seleção usa uma ordem visual local,
+sem mudar a ordem persistida. Na primeira consulta, skeletons mantêm a área dos
+resultados estável.
+
+Cada máquina retornada inclui fabricante, modelo, versão, identificadores,
+`meterType`, leitura e regra de operador. O modal identifica a unidade por
+esses dados, apresenta a leitura decimal com máscara brasileira e unidade, e
+filtra a equipe do turno por `requiredJobRoleId` comparado a
 `confirmedJobRoleId` da alocação da obra devolvida no snapshot. A função atual
 do cadastro do funcionário não é usada nessa decisão. Operadores já vinculados
 a outra máquina da mesma obra não são exibidos; o operador da máquina em edição
@@ -120,12 +131,14 @@ permanece selecionável para correção. Alocações legadas sem
 `confirmedJobRoleId` não são inferidas pelo nome exibido e precisam ter a
 equipe atualizada antes de operar modelos com função específica. O indicador
 `acceptsAnyJobRole` preserva o comportamento legado da função “Qualquer um”. As Server Actions de
-mobilização convertem validações locais em resultados de domínio e o modal
+mobilização convertem validações locais em resultados de domínio e o wizard
 mantém a edição aberta, com feedback persistente dentro do próprio modal,
 quando uma gravação falha. Conflitos seguros em `details.resources` são
 preservados no resultado da action para que o editor explique, por exemplo,
 leitura desatualizada, operador obrigatório, função incompatível ou recurso já
-alocado; o `requestId`, quando presente, pode ser usado no atendimento. Um
+alocado. Modelos que exigem operador precisam de uma escolha válida em cada
+turno habilitado, e a confirmação fica indisponível quando não houver
+candidato. O `requestId`, quando presente, pode ser usado no atendimento. Um
 sucesso usa o toast global transitório e fecha o modal após atualizar o
 snapshot.
 O modal de mobilização de uma frente consulta

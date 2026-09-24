@@ -100,11 +100,11 @@ import type {
 } from "../projects.types";
 import {
   EmployeeMobilization,
-  MachineMobilization,
   Schedule,
   type EmployeeMobilizationHandle,
   type ProjectWizardOptions,
 } from "./project-wizard";
+import { ProjectMachineMobilizationWizard } from "./project-machine-mobilization-wizard";
 import {
   buildMaterialAddCommands,
   buildMaterialEditCommands,
@@ -495,6 +495,7 @@ function projectToCommand(project: ProjectDetailSnapshot): ProjectCommand {
     technicalResponsibilityEmploymentIds: project.technicalResponsibilities.map(
       (person) => person.id,
     ),
+    nightShiftEnabled: project.schedule.shifts.includes("night"),
     weeklySchedule:
       project.schedule.days.length === 7 || project.schedule.days.length === 14
         ? project.schedule.days
@@ -2087,14 +2088,9 @@ export function ProjectDetail({
   const [project, setProject] = React.useState(serverProject);
   const [isPending, startTransition] = React.useTransition();
   const [isActivating, setIsActivating] = React.useState(false);
-  const [isSavingMachines, setIsSavingMachines] = React.useState(false);
-  const [machineSaveError, setMachineSaveError] = React.useState<string | null>(
-    null,
-  );
   const [isActivationConfirmationOpen, setIsActivationConfirmationOpen] =
     React.useState(false);
   const activationInFlightRef = React.useRef(false);
-  const machineSaveInFlightRef = React.useRef(false);
   const [plannedStartDate, setPlannedStartDate] = React.useState(
     project.baseline?.plannedStartDate ?? "",
   );
@@ -2327,7 +2323,6 @@ export function ProjectDetail({
     | "accountability"
     | "team"
     | "teamMember"
-    | "machines"
     | "fuelAdd"
     | "fuelEdit"
     | "materials"
@@ -3143,6 +3138,7 @@ export function ProjectDetail({
         project.id,
         shiftAllocations,
         {
+          nightShiftEnabled: values.nightShiftEnabled,
           weeklySchedule: values.weeklySchedule.filter(
             (day) => day.shift === teamShift,
           ),
@@ -3189,6 +3185,7 @@ export function ProjectDetail({
           (allocation) => allocation.shift === member.shift,
         ),
         {
+          nightShiftEnabled: command.nightShiftEnabled,
           weeklySchedule: command.weeklySchedule.filter(
             (day) => day.shift === member.shift,
           ),
@@ -3211,55 +3208,6 @@ export function ProjectDetail({
       toast.error("Não foi possível remover este funcionário.", {
         description: result.message,
       });
-    });
-  };
-
-  const saveMachines = () => {
-    const values = readinessForm.getValues();
-    if (machineSaveInFlightRef.current) return;
-    machineSaveInFlightRef.current = true;
-    setMachineSaveError(null);
-    setIsSavingMachines(true);
-    startTransition(async () => {
-      try {
-        const result =
-          project.status === "active"
-            ? await saveProjectMachineMobilizationAction(
-                project.id,
-                values.initialMachineAllocations,
-              )
-            : await saveProjectReadinessAction(project.id, {
-                machineAllocations: values.initialMachineAllocations,
-              });
-        if (result.kind === "success") {
-          const successMessage =
-            project.status === "active"
-              ? "Máquinas mobilizadas atualizadas."
-              : "Máquinas e operadores salvos.";
-          toast.success(successMessage);
-          setProject(result.project);
-          readinessForm.reset(projectToCommand(result.project));
-          setOpenModal(null);
-          router.refresh();
-          return;
-        }
-        const message = machineSaveFailureMessage(result);
-        const title =
-          project.status === "active"
-            ? "Não foi possível atualizar as máquinas mobilizadas."
-            : "Não foi possível salvar máquinas e operadores.";
-        setMachineSaveError(message);
-        toast.error(title, { description: message });
-      } catch {
-        const message = "A comunicação com o servidor falhou. Tente novamente.";
-        setMachineSaveError(message);
-        toast.error("Não foi possível salvar máquinas e operadores.", {
-          description: message,
-        });
-      } finally {
-        machineSaveInFlightRef.current = false;
-        setIsSavingMachines(false);
-      }
     });
   };
 
@@ -3664,14 +3612,8 @@ export function ProjectDetail({
 
   const closeTeamOrMachineModal = () => {
     readinessForm.reset(projectToCommand(project));
-    if (openModal === "machines") setMachineSaveError(null);
     if (openModal === "teamMember") setEditingTeamMember(null);
     setOpenModal(null);
-  };
-
-  const openMachinesModal = () => {
-    setMachineSaveError(null);
-    setOpenModal("machines");
   };
 
   const openTeamModal = (
@@ -3679,27 +3621,10 @@ export function ProjectDetail({
     mode: "schedule" | "add" = "schedule",
   ) => {
     const command = projectToCommand(project);
-    if (
-      shift === "night" &&
-      !command.weeklySchedule.some((day) => day.shift === "night")
-    ) {
-      command.weeklySchedule.push(
-        ...command.weeklySchedule
-          .filter((day) => day.shift === "day")
-          .map((day) => ({
-            ...day,
-            shift: "night" as const,
-            startTime: day.isWorking ? "18:00" : null,
-            endTime: day.isWorking ? "06:00" : null,
-            endDayOffset: day.isWorking ? 1 : 0,
-          })),
-      );
-      command.breakTemplates.push(
-        ...command.breakTemplates
-          .filter((item) => item.shift === "day")
-          .map((item) => ({ ...item, shift: "night" as const })),
-      );
-    }
+    // O turno noturno inativo não aceita operações, mas a sua jornada precisa
+    // poder ser aberta para que o próprio switch possa reativá-lo.
+    if (shift === "night" && !command.nightShiftEnabled && mode !== "schedule")
+      return;
     readinessForm.reset(command);
     setSelectedTeamShift(shift);
     setTeamShift(shift);
@@ -4751,6 +4676,7 @@ export function ProjectDetail({
                   }}
                   canEdit={canManageMobilization}
                   initialShift={selectedTeamShift}
+                  nightEnabled={project.schedule.shifts.includes("night")}
                   onAddShift={(shift) => openTeamModal(shift, "add")}
                   onActiveShiftChange={(shift) => {
                     setSelectedTeamShift(shift);
@@ -4768,7 +4694,7 @@ export function ProjectDetail({
               <Section
                 icon={Truck}
                 title="Máquinas e operadores"
-                description="Cada máquina precisa de operador presente na equipe."
+                description=""
                 status={machinesStatus}
                 action={
                   <div className="flex flex-wrap gap-2">
@@ -4781,15 +4707,57 @@ export function ProjectDetail({
                       Histórico
                     </Button>
                     {canManageMobilization && (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="min-h-10"
-                        onClick={openMachinesModal}
-                      >
-                        <Pencil className="size-4" />
-                        Editar
-                      </Button>
+                      <ProjectMachineMobilizationWizard
+                        defaultValues={projectToCommand(project)}
+                        operatorOptions={modalOptions.employees}
+                        projectId={project.id}
+                        onSubmit={async (values) => {
+                          try {
+                            const result =
+                              project.status === "active"
+                                ? await saveProjectMachineMobilizationAction(
+                                    project.id,
+                                    values.initialMachineAllocations,
+                                  )
+                                : await saveProjectReadinessAction(project.id, {
+                                    machineAllocations:
+                                      values.initialMachineAllocations,
+                                  });
+                            if (result.kind === "success") {
+                              toast.success(
+                                project.status === "active"
+                                  ? "Máquinas mobilizadas atualizadas."
+                                  : "Máquinas e operadores salvos.",
+                              );
+                              setProject(result.project);
+                              readinessForm.reset(
+                                projectToCommand(result.project),
+                              );
+                              router.refresh();
+                              return;
+                            }
+                            const message = machineSaveFailureMessage(result);
+                            toast.error(
+                              project.status === "active"
+                                ? "Não foi possível atualizar as máquinas mobilizadas."
+                                : "Não foi possível salvar máquinas e operadores.",
+                              { description: message },
+                            );
+                            throw new Error(message);
+                          } catch (error) {
+                            if (error instanceof Error) throw error;
+                            const message =
+                              "A comunicação com o servidor falhou. Tente novamente.";
+                            toast.error(
+                              "Não foi possível salvar máquinas e operadores.",
+                              {
+                                description: message,
+                              },
+                            );
+                            throw new Error(message);
+                          }
+                        }}
+                      />
                     )}
                   </div>
                 }
@@ -6144,50 +6112,6 @@ export function ProjectDetail({
               )}
             </>
           )}
-        </div>
-      </OperationsModal>
-
-      <OperationsModal
-        icon={Truck}
-        open={openModal === "machines"}
-        onOpenChange={(open) => {
-          if (!open && !isPending && !isSavingMachines)
-            closeTeamOrMachineModal();
-        }}
-        size="xl"
-        title="Editar máquinas e operadores"
-        description="Adicione, remova ou remaneje operadores das máquinas confirmadas."
-        footer={
-          <>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={isPending || isSavingMachines}
-              onClick={closeTeamOrMachineModal}
-            >
-              Cancelar
-            </Button>
-            <Button
-              type="button"
-              disabled={isPending || isSavingMachines}
-              onClick={saveMachines}
-            >
-              <Check className="size-4" />
-              {isSavingMachines ? "Salvando máquinas..." : "Salvar máquinas"}
-            </Button>
-          </>
-        }
-      >
-        <div className="grid gap-4">
-          {machineSaveError && (
-            <div
-              role="alert"
-              className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm font-semibold text-destructive"
-            >
-              {machineSaveError}
-            </div>
-          )}
-          <MachineMobilization form={readinessForm} options={modalOptions} />
         </div>
       </OperationsModal>
 

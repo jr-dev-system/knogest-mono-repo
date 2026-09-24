@@ -325,6 +325,11 @@ export type ProjectTeamCandidatesPage =
   GetApiV1ProjectsProjectidTeamCandidatesQueryResponse["data"];
 export type ProjectTeamCandidate = ProjectTeamCandidatesPage["data"][number];
 
+export type ProjectMachineMobilizationOptionsPage =
+  GetApiV1ProjectsProjectidMobilizationMachineOptionsQueryResponse["data"];
+export type ProjectMachineMobilizationOption =
+  ProjectMachineMobilizationOptionsPage["data"][number];
+
 export type ProjectTeamMembersPage =
   GetApiV1ProjectsProjectidTeamMembersQueryResponse["data"];
 export type ProjectTeamMember = ProjectTeamMembersPage["data"][number];
@@ -348,3 +353,4 @@ export type ProjectRegistryPage = {
 import type { GetApiV1ProjectsProjectidTeamCandidatesQueryResponse } from "@/generated/models/GetApiV1ProjectsProjectidTeamCandidates";
 import type { GetApiV1ProjectsProjectidTeamMembersQueryResponse } from "@/generated/models/GetApiV1ProjectsProjectidTeamMembers";
 import type { GetApiV1ProjectsProjectidFrontsFrontidMobilizationOptionsQueryResponse } from "@/generated/models/GetApiV1ProjectsProjectidFrontsFrontidMobilizationOptions";
+import type { GetApiV1ProjectsProjectidMobilizationMachineOptionsQueryResponse } from "@/generated/models/GetApiV1ProjectsProjectidMobilizationMachineOptions";

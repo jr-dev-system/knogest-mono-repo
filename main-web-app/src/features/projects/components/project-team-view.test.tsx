@@ -134,6 +134,41 @@ describe("ProjectTeamView", () => {
     expect(onAddShift).toHaveBeenCalledWith("night");
   });
 
+  it("keeps the inactive night tab operationally unavailable but opens its own editor", async () => {
+    getProjectTeamMembersAction.mockResolvedValue({
+      data: [],
+      pageInfo: { hasNextPage: false, nextCursor: null },
+    });
+    const onEditShift = vi.fn();
+    const onAddShift = vi.fn();
+    const user = userEvent.setup();
+
+    render(
+      <ProjectTeamView
+        projectId="00000000-0000-4000-8000-000000000901"
+        counts={{ day: 0, night: 3 }}
+        canEdit
+        nightEnabled={false}
+        onAddShift={onAddShift}
+        onEditMember={vi.fn()}
+        onEditShift={onEditShift}
+        onRemoveMember={vi.fn()}
+      />,
+    );
+
+    await screen.findByText("Nenhum funcionário neste turno");
+    const nightTab = screen.getByRole("tab", {
+      name: "Noturno (3) · desativado",
+    });
+    expect(nightTab.hasAttribute("disabled")).toBe(true);
+    await user.click(
+      screen.getByRole("button", { name: "Editar turno noturno" }),
+    );
+    expect(onEditShift).toHaveBeenCalledWith("night");
+    expect(onAddShift).not.toHaveBeenCalled();
+    expect(getProjectTeamMembersAction).toHaveBeenCalledTimes(1);
+  });
+
   it("restores the requested shift and reports later changes", async () => {
     getProjectTeamMembersAction.mockResolvedValue({
       data: [],
