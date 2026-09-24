@@ -1672,6 +1672,57 @@ describe("Project active work-front mobilization", () => {
 });
 
 describe("Project detail navigation", () => {
+  it("explains the blockers in the pending checklist", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail(projectSnapshot);
+
+    await user.click(
+      screen.getByRole("button", { name: "Ajuda sobre Checklist pendente" }),
+    );
+
+    expect(
+      await screen.findByRole("heading", { name: "Checklist pendente" }),
+    ).toBeTruthy();
+    expect(screen.getByText("Informe combustível.")).toBeTruthy();
+  });
+
+  it("summarizes pending items in a closed navigation group", async () => {
+    const user = userEvent.setup();
+    renderProjectDetail(projectSnapshot);
+
+    const navigation = screen.getByRole("navigation", {
+      name: "Navegação da obra",
+    });
+    await user.click(
+      within(navigation).getByRole("button", {
+        name: "Ver pendências em Configurações",
+      }),
+    );
+
+    expect(await screen.findByText("Pendências em Configurações")).toBeTruthy();
+    const pendingItems = screen.getByRole("list", {
+      name: "Itens pendentes",
+    });
+    expect(within(pendingItems).getByText("Responsáveis")).toBeTruthy();
+    expect(within(pendingItems).getByText("Máquinas")).toBeTruthy();
+    expect(within(pendingItems).getByText("Equipe")).toBeTruthy();
+
+    await user.click(
+      within(navigation).getByRole("button", { name: "Configurações" }),
+    );
+
+    expect(
+      within(navigation).queryByRole("button", {
+        name: "Ver pendências em Configurações",
+      }),
+    ).toBeNull();
+    expect(
+      within(navigation).getByRole("status", {
+        name: "Responsáveis: Pendente",
+      }),
+    ).toBeTruthy();
+  });
+
   it("restores the selected section with its sidebar group and team shift", async () => {
     renderProjectDetail(
       {

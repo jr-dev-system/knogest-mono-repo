@@ -31,6 +31,13 @@ Orçamento e Ciclos de pagamento. Os Ciclos de pagamento concentram os prazos
 antes exibidos junto da equipe. Essa organização não altera as permissões de
 edição de cada recurso após o início da obra.
 
+Quando um grupo está fechado, seu indicador resume a prontidão dos itens
+internos: fica verde somente se todos estão prontos e fica âmbar se houver
+pendências. O indicador âmbar abre uma lista dos itens pendentes; ao abrir o
+grupo, o resumo desaparece para que os indicadores de cada item assumam essa
+leitura. Enquanto a obra não puder iniciar, o rótulo **Checklist pendente** no
+cabeçalho também oferece um popover com todos os bloqueadores de prontidão.
+
 Ao editar a distribuição de uma frente, cada serviço possui limites inclusivos:
 
 - mínimo: soma de `officialQuantity` de todas as produções em rascunho e

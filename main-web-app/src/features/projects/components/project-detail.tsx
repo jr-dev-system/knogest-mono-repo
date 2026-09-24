@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { Popover } from "@base-ui/react/popover";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -48,6 +49,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { OperationsModal } from "@/components/ui/operations-modal";
 import { Button } from "@/components/ui/button";
+import { FieldHelpPopover } from "@/components/ui/field-help-popover";
 import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import { useDebouncer } from "@/hooks/useDebouncer";
@@ -372,6 +374,16 @@ function projectNavigationGroupForTab(
 
 type ReadinessTone = "ready" | "pending" | "dirty" | "neutral";
 
+type ProjectNavigationStatus = {
+  label: string;
+  tone: ReadinessTone;
+};
+
+type ProjectNavigationGroupItem = {
+  label: string;
+  status: ProjectNavigationStatus;
+};
+
 const controlClass =
   "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-xs outline-none transition-colors placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:cursor-not-allowed disabled:opacity-50";
 
@@ -664,7 +676,7 @@ function ProjectNavigationItem({
   label: string;
   nested?: boolean;
   onClick: () => void;
-  status: { label: string; tone: ReadinessTone };
+  status: ProjectNavigationStatus;
 }) {
   return (
     <button
@@ -707,11 +719,105 @@ function ProjectNavigationItem({
   );
 }
 
+function projectNavigationGroupSummary(
+  items: readonly ProjectNavigationGroupItem[],
+) {
+  const pendingItems = items.filter((item) => item.status.tone === "pending");
+
+  if (pendingItems.length) return { pendingItems, tone: "pending" as const };
+  if (items.every((item) => item.status.tone === "ready"))
+    return { pendingItems, tone: "ready" as const };
+  if (items.some((item) => item.status.tone === "dirty"))
+    return { pendingItems, tone: "dirty" as const };
+  return { pendingItems, tone: "neutral" as const };
+}
+
+function ProjectNavigationGroupIndicator({
+  groupLabel,
+  pendingItems,
+  tone,
+}: {
+  groupLabel: string;
+  pendingItems: readonly ProjectNavigationGroupItem[];
+  tone: ReadinessTone;
+}) {
+  const indicatorClass = cn(
+    "size-2 shrink-0 rounded-full",
+    tone === "ready" && "bg-emerald-500",
+    tone === "pending" && "bg-amber-500",
+    tone === "dirty" && "bg-primary",
+    tone === "neutral" && "bg-muted-foreground",
+  );
+
+  if (tone !== "pending") {
+    return (
+      <span
+        role="status"
+        aria-label={`${groupLabel}: ${
+          tone === "ready" ? "OK" : "Atenção necessária"
+        }`}
+        className={indicatorClass}
+      />
+    );
+  }
+
+  return (
+    <Popover.Root>
+      <Popover.Trigger
+        type="button"
+        openOnHover
+        delay={150}
+        closeDelay={120}
+        aria-label={`Ver pendências em ${groupLabel}`}
+        className="inline-flex size-8 shrink-0 items-center justify-center rounded-md outline-none transition-colors hover:bg-amber-100 focus-visible:bg-amber-100 focus-visible:ring-3 focus-visible:ring-ring/30 data-popup-open:bg-amber-100 dark:hover:bg-amber-950/40 dark:focus-visible:bg-amber-950/40 dark:data-popup-open:bg-amber-950/40"
+      >
+        <span aria-hidden="true" className={indicatorClass} />
+      </Popover.Trigger>
+      <Popover.Portal>
+        <Popover.Positioner
+          side="top"
+          align="end"
+          sideOffset={8}
+          collisionPadding={12}
+          className="z-50 outline-none"
+        >
+          <Popover.Popup
+            initialFocus={false}
+            className="origin-[var(--transform-origin)] w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-border bg-popover p-4 text-popover-foreground shadow-md outline-none transition-[opacity,transform] duration-150 ease-out data-ending-style:scale-95 data-ending-style:opacity-0 data-starting-style:scale-95 data-starting-style:opacity-0 motion-reduce:transition-none"
+          >
+            <Popover.Title className="text-sm font-bold leading-5">
+              Pendências em {groupLabel}
+            </Popover.Title>
+            <Popover.Description className="mt-1 text-sm leading-5 text-muted-foreground">
+              Estes itens precisam ser concluídos.
+            </Popover.Description>
+            <ul className="mt-3 space-y-2" aria-label="Itens pendentes">
+              {pendingItems.map((item) => (
+                <li
+                  key={item.label}
+                  className="flex items-start gap-2 text-sm leading-5"
+                >
+                  <span
+                    aria-hidden="true"
+                    className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500"
+                  />
+                  <span>{item.label}</span>
+                </li>
+              ))}
+            </ul>
+          </Popover.Popup>
+        </Popover.Positioner>
+      </Popover.Portal>
+    </Popover.Root>
+  );
+}
+
 function ProjectNavigationGroup({
   children,
   collapsed,
   expanded,
   icon: Icon,
+  items,
   label,
   onClick,
 }: {
@@ -719,37 +825,56 @@ function ProjectNavigationGroup({
   collapsed: boolean;
   expanded: boolean;
   icon: typeof HardHat;
+  items: readonly ProjectNavigationGroupItem[];
   label: string;
   onClick: () => void;
 }) {
+  const summary = projectNavigationGroupSummary(items);
+
   return (
-    <div>
-      <button
-        type="button"
-        aria-expanded={expanded}
-        aria-label={collapsed ? label : undefined}
-        title={collapsed ? label : undefined}
+    <div className="group/project-navigation-group">
+      <div
         className={cn(
-          "flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30",
-          collapsed && "justify-center px-0",
+          "flex min-h-10 w-full items-center rounded-md text-sm font-semibold text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground focus-within:bg-secondary focus-within:text-foreground focus-within:ring-3 focus-within:ring-ring/30",
+          collapsed && "justify-center",
           expanded && !collapsed && "bg-secondary/75 text-foreground",
         )}
-        onClick={onClick}
       >
-        <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm">
-          <Icon aria-hidden="true" className="size-4" />
-        </span>
-        {!collapsed && (
-          <>
-            <span className="min-w-0 flex-1 truncate">{label}</span>
-            {expanded ? (
-              <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
-            ) : (
-              <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
-            )}
-          </>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={collapsed ? label : undefined}
+          title={collapsed ? label : undefined}
+          className={cn(
+            "flex min-h-10 min-w-0 flex-1 items-center gap-2.5 px-2.5 py-2 text-left outline-none",
+            collapsed && "justify-center px-0",
+          )}
+          onClick={onClick}
+        >
+          <span className="inline-flex size-7 shrink-0 items-center justify-center rounded-sm">
+            <Icon aria-hidden="true" className="size-4" />
+          </span>
+          {!collapsed && (
+            <>
+              <span className="min-w-0 flex-1 truncate">{label}</span>
+              {expanded ? (
+                <ChevronDown aria-hidden="true" className="size-4 shrink-0" />
+              ) : (
+                <ChevronRight aria-hidden="true" className="size-4 shrink-0" />
+              )}
+            </>
+          )}
+        </button>
+        {!collapsed && !expanded && (
+          <div className="mr-1 flex size-8 shrink-0 items-center justify-center">
+            <ProjectNavigationGroupIndicator
+              groupLabel={label}
+              pendingItems={summary.pendingItems}
+              tone={summary.tone}
+            />
+          </div>
         )}
-      </button>
+      </div>
       {expanded && !collapsed && (
         <div className="mt-1 space-y-1">{children}</div>
       )}
@@ -2225,8 +2350,7 @@ export function ProjectDetail({
   );
   const [editingTeamMember, setEditingTeamMember] =
     React.useState<ProjectTeamMember | null>(null);
-  const teamMemberEditorRef =
-    React.useRef<EmployeeMobilizationHandle>(null);
+  const teamMemberEditorRef = React.useRef<EmployeeMobilizationHandle>(null);
   const [removingTeamMember, setRemovingTeamMember] =
     React.useState<ProjectTeamMember | null>(null);
   const [teamReloadKey, setTeamReloadKey] = React.useState(0);
@@ -2557,6 +2681,13 @@ export function ProjectDetail({
     : materialOffers.length
       ? ({ label: "Configurado", tone: "neutral" } as const)
       : ({ label: "Opcional", tone: "neutral" } as const);
+  const reportsStatus = initialDailyReports?.data.length
+    ? ({
+        label: String(initialDailyReports.data.length),
+        tone: "ready",
+      } as const)
+    : ({ label: "Novo", tone: "neutral" } as const);
+  const financialStatus = { label: "Consulta", tone: "neutral" } as const;
   const mainNavigationExpanded =
     appShellNavigation?.mainNavigationExpanded ?? false;
 
@@ -3626,18 +3757,30 @@ export function ProjectDetail({
                 </span>
               )}
               {isEditable && (
-                <span
+                <div
                   className={cn(
-                    "inline-flex min-h-8 items-center rounded-md px-2.5 text-xs font-bold",
+                    "inline-flex min-h-8 items-center gap-1.5 rounded-md px-2.5 text-xs font-bold",
                     project.readiness.canActivate
                       ? "bg-emerald-100 text-emerald-900"
                       : "bg-amber-100 text-amber-950",
                   )}
                 >
-                  {project.readiness.canActivate
-                    ? "Pronta para iniciar"
-                    : "Checklist pendente"}
-                </span>
+                  <span>
+                    {project.readiness.canActivate
+                      ? "Pronta para iniciar"
+                      : "Checklist pendente"}
+                  </span>
+                  {!project.readiness.canActivate && (
+                    <FieldHelpPopover
+                      compact
+                      title="Checklist pendente"
+                      description="Conclua estes itens antes de iniciar a obra."
+                      items={project.readiness.blockers.map(
+                        (blocker) => blocker.message,
+                      )}
+                    />
+                  )}
+                </div>
               )}
             </div>
             <h1 className="mt-3 text-2xl font-bold tracking-normal">
@@ -3848,6 +3991,7 @@ export function ProjectDetail({
                     collapsed={!isProjectNavigationExpanded}
                     expanded={isNavigationGroupOpen("reports")}
                     icon={FileText}
+                    items={[{ label: "RDO", status: reportsStatus }]}
                     label="Relatórios"
                     onClick={() => toggleNavigationGroup("reports")}
                   >
@@ -3856,14 +4000,7 @@ export function ProjectDetail({
                       icon={PackageCheck}
                       label="RDO"
                       nested
-                      status={
-                        initialDailyReports?.data.length
-                          ? {
-                              label: String(initialDailyReports.data.length),
-                              tone: "ready",
-                            }
-                          : { label: "Novo", tone: "neutral" }
-                      }
+                      status={reportsStatus}
                       onClick={() => selectProjectTab("reports")}
                     />
                   </ProjectNavigationGroup>
@@ -3876,6 +4013,11 @@ export function ProjectDetail({
                 collapsed={!isProjectNavigationExpanded}
                 expanded={isNavigationGroupOpen("settings")}
                 icon={Settings2}
+                items={[
+                  { label: "Responsáveis", status: accountabilityStatus },
+                  { label: "Máquinas", status: machinesStatus },
+                  { label: "Equipe", status: teamStatus },
+                ]}
                 label="Configurações"
                 onClick={() => toggleNavigationGroup("settings")}
               >
@@ -3909,6 +4051,10 @@ export function ProjectDetail({
                 collapsed={!isProjectNavigationExpanded}
                 expanded={isNavigationGroupOpen("suppliers")}
                 icon={Fuel}
+                items={[
+                  { label: "Combustível", status: fuelStatus },
+                  { label: "Itens fornecidos", status: materialsStatus },
+                ]}
                 label="Fornecedores"
                 onClick={() => toggleNavigationGroup("suppliers")}
               >
@@ -3934,6 +4080,10 @@ export function ProjectDetail({
                 collapsed={!isProjectNavigationExpanded}
                 expanded={isNavigationGroupOpen("financial")}
                 icon={WalletCards}
+                items={[
+                  { label: "Orçamento", status: financialStatus },
+                  { label: "Ciclos de pagamento", status: paymentsStatus },
+                ]}
                 label="Financeiro"
                 onClick={() => toggleNavigationGroup("financial")}
               >
@@ -3942,7 +4092,7 @@ export function ProjectDetail({
                   icon={WalletCards}
                   label="Orçamento"
                   nested
-                  status={{ label: "Consulta", tone: "neutral" }}
+                  status={financialStatus}
                   onClick={() => selectProjectTab("financial")}
                 />
                 <ProjectNavigationItem

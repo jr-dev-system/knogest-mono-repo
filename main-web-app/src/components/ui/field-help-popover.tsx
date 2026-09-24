@@ -10,6 +10,7 @@ export function FieldHelpPopover({
   example,
   footer,
   formula,
+  items,
   title,
 }: {
   compact?: boolean;
@@ -17,6 +18,7 @@ export function FieldHelpPopover({
   example?: string;
   footer?: string;
   formula?: string;
+  items?: readonly string[];
   title: string;
 }) {
   const [open, setOpen] = React.useState(false);
@@ -45,7 +47,9 @@ export function FieldHelpPopover({
         aria-label={`Ajuda sobre ${title}`}
         className={cn(
           "inline-flex shrink-0 items-center justify-center rounded-full border border-input bg-background text-muted-foreground outline-none transition-colors duration-150 hover:border-ring hover:bg-muted hover:text-foreground focus-visible:border-ring focus-visible:text-foreground focus-visible:ring-3 focus-visible:ring-ring/30 data-popup-open:border-ring data-popup-open:bg-muted data-popup-open:text-foreground",
-          compact ? "size-5 text-[0.625rem] font-bold" : "size-8 text-sm font-black",
+          compact
+            ? "size-5 text-[0.625rem] font-bold"
+            : "size-8 text-sm font-black",
         )}
         onFocus={() => {
           focusTimerRef.current = window.setTimeout(() => setOpen(true), 0);
@@ -78,6 +82,22 @@ export function FieldHelpPopover({
             <Popover.Description className="mt-1 text-sm leading-5 text-muted-foreground">
               {description}
             </Popover.Description>
+            {items?.length ? (
+              <ul className="mt-3 space-y-2" aria-label="Itens relacionados">
+                {items.map((item) => (
+                  <li
+                    key={item}
+                    className="flex items-start gap-2 text-sm leading-5"
+                  >
+                    <span
+                      aria-hidden="true"
+                      className="mt-1.5 size-1.5 shrink-0 rounded-full bg-amber-500"
+                    />
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
             {formula ? (
               <p className="mt-3 rounded-md bg-secondary px-3 py-2 text-sm font-bold leading-5">
                 {formula}
