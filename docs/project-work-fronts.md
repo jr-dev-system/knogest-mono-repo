@@ -22,9 +22,15 @@ desktop. A navegação global inicia compacta, com atalhos por ícone, e o selet
 de empresa permanece no cabeçalho fixo. Expandir uma sidebar recolhe a outra,
 mantendo espaço útil para o conteúdo e preservando os atalhos de navegação.
 
-**Planejamento**, Calendário, Frentes, Visão geral e Produção são itens diretos
-da obra. O Calendário é um placeholder para a agenda operacional futura. Os
-demais recursos ficam agrupados: **Relatórios** abre RDO e reserva espaço para
+**Planejamento**, Frentes, Visão geral e Produção são itens diretos da obra. O
+**Calendário** também é um item direto, mas só é exibido depois do início real
+da obra; ele não aparece para uma obra planejada e a URL da aba volta ao
+planejamento nesse estado. Nesta primeira etapa, ele ocupa o painel de conteúdo
+com uma grade mensal sem eventos: abre no mês corrente de `America/Sao_Paulo`,
+permite selecionar somente meses entre o início real e hoje, e libera o novo
+dia à meia-noite de Brasília. Dias disponíveis oferecem a afordância de clique,
+mas ainda não persistem nem abrem uma ação. Os demais recursos ficam agrupados:
+**Relatórios** abre RDO e reserva espaço para
 novos relatórios; **Configurações** abre Responsáveis, Máquinas e Equipe;
 **Fornecedores** abre Combustível e Itens fornecidos; e **Financeiro** abre
 Orçamento e Ciclos de pagamento. Os Ciclos de pagamento concentram os prazos

@@ -1680,6 +1680,20 @@ describe("Project active work-front mobilization", () => {
 });
 
 describe("Project detail navigation", () => {
+  it("hides the calendar before the project starts and rejects its direct section", () => {
+    renderProjectDetail(projectSnapshot, { initialSection: "calendar" });
+
+    const navigation = screen.getByRole("navigation", {
+      name: "Navegação da obra",
+    });
+    expect(
+      within(navigation).queryByRole("button", { name: "Calendário" }),
+    ).toBeNull();
+    expect(
+      screen.getByRole("heading", { name: "Datas planejadas" }),
+    ).toBeTruthy();
+  });
+
   it("explains the blockers in the pending checklist", async () => {
     const user = userEvent.setup();
     renderProjectDetail(projectSnapshot);

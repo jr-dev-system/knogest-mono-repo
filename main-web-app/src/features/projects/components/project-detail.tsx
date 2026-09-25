@@ -112,6 +112,7 @@ import {
   ProjectMachineMobilizationWizard,
 } from "./project-machine-mobilization-wizard";
 import { ProjectMachineView } from "./project-machine-view";
+import { ProjectOperationalCalendar } from "./project-operational-calendar";
 import {
   buildMaterialAddCommands,
   buildMaterialEditCommands,
@@ -348,15 +349,16 @@ const projectTabs = new Set<ProjectTab>([
 ]);
 
 function resolveInitialProjectTab(
-  status: ProjectDetailSnapshot["status"],
+  project: Pick<ProjectDetailSnapshot, "actualStartedAt" | "status">,
   requestedSection?: string,
 ): ProjectTab {
-  const fallback = status === "active" ? "overview" : "planning";
+  const fallback = project.status === "active" ? "overview" : "planning";
   if (!requestedSection || !projectTabs.has(requestedSection as ProjectTab))
     return fallback;
   if (
-    status !== "active" &&
-    ["overview", "production", "reports"].includes(requestedSection)
+    (project.status !== "active" &&
+      ["overview", "production", "reports"].includes(requestedSection)) ||
+    (requestedSection === "calendar" && !project.actualStartedAt)
   )
     return fallback;
   return requestedSection as ProjectTab;
@@ -2155,7 +2157,7 @@ export function ProjectDetail({
   const [fuelDirty, setFuelDirty] = React.useState(false);
   const [paymentDirty, setPaymentDirty] = React.useState(false);
   const [activeTab, setActiveTab] = React.useState<ProjectTab>(() =>
-    resolveInitialProjectTab(serverProject.status, initialSection),
+    resolveInitialProjectTab(serverProject, initialSection),
   );
   const [isProjectNavigationExpanded, setProjectNavigationExpanded] =
     React.useState(true);
@@ -2163,7 +2165,7 @@ export function ProjectDetail({
     ProjectNavigationGroup[]
   >(() => {
     const group = projectNavigationGroupForTab(
-      resolveInitialProjectTab(serverProject.status, initialSection),
+      resolveInitialProjectTab(serverProject, initialSection),
     );
     return group ? [group] : [];
   });
@@ -4080,14 +4082,16 @@ export function ProjectDetail({
                 status={planningStatus}
                 onClick={() => selectProjectTab("planning")}
               />
-              <ProjectNavigationItem
-                active={activeTab === "calendar"}
-                collapsed={!isProjectNavigationExpanded}
-                icon={CalendarRange}
-                label="Calendário"
-                status={{ label: "Em breve", tone: "neutral" }}
-                onClick={() => selectProjectTab("calendar")}
-              />
+              {project.actualStartedAt && (
+                <ProjectNavigationItem
+                  active={activeTab === "calendar"}
+                  collapsed={!isProjectNavigationExpanded}
+                  icon={CalendarRange}
+                  label="Calendário"
+                  status={{ label: "Disponível", tone: "ready" }}
+                  onClick={() => selectProjectTab("calendar")}
+                />
+              )}
               <ProjectNavigationItem
                 active={activeTab === "fronts"}
                 collapsed={!isProjectNavigationExpanded}
@@ -4361,17 +4365,11 @@ export function ProjectDetail({
             )}
 
             {activeTab === "calendar" && (
-              <Section
-                icon={CalendarRange}
-                title="Calendário"
-                description="A agenda operacional da obra ficará disponível aqui."
-                status={{ label: "Em breve", tone: "neutral" }}
-              >
-                <EmptyBlock>
-                  Este espaço será usado para acompanhar marcos, atividades e
-                  compromissos da obra.
-                </EmptyBlock>
-              </Section>
+              project.actualStartedAt && (
+                <ProjectOperationalCalendar
+                  startedAt={project.actualStartedAt}
+                />
+              )
             )}
 
             {activeTab === "planning" && (
