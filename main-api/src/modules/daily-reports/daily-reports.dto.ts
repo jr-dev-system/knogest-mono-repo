@@ -31,6 +31,16 @@ export const dailyReportParamsSchema = z
   })
   .strict();
 
+export const operationalDayParamsSchema = z
+  .object({
+    projectId: uuid,
+    reportDate: z.iso.date(),
+    shift: dailyReportShiftSchema.optional(),
+    reportId: uuid.optional(),
+    interferenceId: uuid.optional(),
+  })
+  .strict();
+
 export const dailyReportOptionsQuerySchema = z
   .object({
     reportDate: z.iso.date(),
@@ -100,6 +110,194 @@ const employeeEntrySchema = z
 
 const machineEntrySchema = z
   .object({ machineId: uuid, endMeterReadingValue: decimal })
+  .strict();
+
+const operationalInstant = z.iso.datetime({ offset: true });
+
+export const operationalShiftStartSchema = z
+  .object({
+    startedAt: operationalInstant,
+    employees: z
+      .array(
+        z
+          .object({
+            employmentId: uuid,
+            status: z.enum(["present", "absent"]),
+            absenceReason: optionalText(500),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200),
+    machines: z
+      .array(
+        z
+          .object({
+            machineId: uuid,
+            condition: z.enum(["fit", "unfit"]),
+            conditionNote: optionalText(500),
+          })
+          .strict(),
+      )
+      .max(100),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    uniqueValues(
+      command.employees.map((item) => item.employmentId),
+      context,
+      "employees",
+      "Duplicate employee",
+    );
+    uniqueValues(
+      command.machines.map((item) => item.machineId),
+      context,
+      "machines",
+      "Duplicate machine",
+    );
+    command.employees.forEach((item, index) => {
+      if (item.status === "present" && item.absenceReason)
+        context.addIssue({
+          code: "custom",
+          path: ["employees", index, "absenceReason"],
+          message: "Present employees cannot have an absence reason",
+        });
+    });
+    command.machines.forEach((item, index) => {
+      if (item.condition === "unfit" && !item.conditionNote)
+        context.addIssue({
+          code: "custom",
+          path: ["machines", index, "conditionNote"],
+          message: "Unfit machines require a note",
+        });
+    });
+  });
+
+export const operationalRdoCommandSchema = z
+  .object({
+    schedulePeriods: z.array(schedulePeriodSchema).min(1).max(6),
+    activityStartTime: time,
+    activityEndTime: time,
+    activityEndDayOffset: z.number().int().min(0).max(1),
+    activityTypes: z.array(dailyReportActivityTypeSchema).min(1).max(3),
+    climateConditions: z
+      .array(dailyReportClimateConditionSchema)
+      .min(1)
+      .max(3),
+    dailyRainfallMm: decimal,
+    monthlyRainfallMm: decimal,
+    supervisorEmploymentId: uuid,
+    technicalResponsibilityEmploymentIds: z.array(uuid).min(1).max(20),
+    executedActivities: z.string().trim().min(1).max(10_000),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    uniqueValues(
+      command.activityTypes,
+      context,
+      "activityTypes",
+      "Duplicate activity type",
+    );
+    uniqueValues(
+      command.climateConditions,
+      context,
+      "climateConditions",
+      "Duplicate climate condition",
+    );
+    uniqueValues(
+      command.technicalResponsibilityEmploymentIds,
+      context,
+      "technicalResponsibilityEmploymentIds",
+      "Duplicate technical responsibility",
+    );
+  });
+
+export const operationalInterferenceCommandSchema = z
+  .object({
+    category: z.enum([
+      "weather",
+      "crew",
+      "equipment",
+      "material_logistics",
+      "external",
+      "safety",
+      "other",
+    ]),
+    description: z.string().trim().min(3).max(2_000),
+    impact: z.string().trim().min(3).max(2_000),
+    startedAt: operationalInstant,
+    endedAt: operationalInstant.nullable().optional(),
+  })
+  .strict()
+  .refine(
+    (command) =>
+      !command.endedAt ||
+      new Date(command.endedAt).getTime() >=
+        new Date(command.startedAt).getTime(),
+    { path: ["endedAt"], message: "End must be after start" },
+  );
+
+const operationalBreakSchema = z
+  .object({ startAt: operationalInstant, endAt: operationalInstant })
+  .strict()
+  .refine(
+    (item) => new Date(item.endAt).getTime() > new Date(item.startAt).getTime(),
+    { path: ["endAt"], message: "Break must have a positive duration" },
+  );
+
+export const operationalShiftCloseSchema = z
+  .object({
+    endedAt: operationalInstant,
+    earlyClosureReason: optionalText(500),
+    employees: z
+      .array(
+        z
+          .object({
+            employmentId: uuid,
+            checkInAt: operationalInstant.nullable(),
+            checkOutAt: operationalInstant.nullable(),
+            breaks: z.array(operationalBreakSchema).max(6),
+            overtimeConfirmed: z.boolean(),
+          })
+          .strict(),
+      )
+      .min(1)
+      .max(200),
+    machines: z
+      .array(
+        z
+          .object({
+            machineId: uuid,
+            endMeterReadingValue: decimal.nullable(),
+          })
+          .strict(),
+      )
+      .max(100),
+  })
+  .strict()
+  .superRefine((command, context) => {
+    uniqueValues(
+      command.employees.map((item) => item.employmentId),
+      context,
+      "employees",
+      "Duplicate employee",
+    );
+    uniqueValues(
+      command.machines.map((item) => item.machineId),
+      context,
+      "machines",
+      "Duplicate machine",
+    );
+  });
+
+export const frequencyListQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    cursor: z.string().trim().min(1).max(2048).optional(),
+    shift: dailyReportShiftSchema.optional(),
+    sortBy: z.literal("reportDate").default("reportDate"),
+    sortDirection: z.enum(["asc", "desc"]).default("desc"),
+  })
   .strict();
 
 export const dailyReportCommandSchema = z
@@ -224,3 +422,16 @@ export type DailyReportListQuery = z.infer<typeof dailyReportListQuerySchema>;
 export type DailyReportOptionsQuery = z.infer<
   typeof dailyReportOptionsQuerySchema
 >;
+export type OperationalShiftStartCommand = z.infer<
+  typeof operationalShiftStartSchema
+>;
+export type OperationalRdoCommand = z.infer<
+  typeof operationalRdoCommandSchema
+>;
+export type OperationalInterferenceCommand = z.infer<
+  typeof operationalInterferenceCommandSchema
+>;
+export type OperationalShiftCloseCommand = z.infer<
+  typeof operationalShiftCloseSchema
+>;
+export type FrequencyListQuery = z.infer<typeof frequencyListQuerySchema>;

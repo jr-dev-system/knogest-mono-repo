@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 
-import { dailyReportCommandSchema } from "./daily-reports.dto";
+import {
+  dailyReportCommandSchema,
+  operationalShiftCloseSchema,
+  operationalShiftStartSchema,
+} from "./daily-reports.dto";
 
 const id = (suffix: string) =>
   `00000000-0000-4000-8000-${suffix.padStart(12, "0")}`;
@@ -159,5 +163,69 @@ describe("dailyReportCommandSchema", () => {
       activityEndDayOffset: 1,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("operational shift commands", () => {
+  it("accepts complete start checklists", () => {
+    expect(
+      operationalShiftStartSchema.safeParse({
+        startedAt: "2026-09-24T11:00:00.000Z",
+        employees: [
+          { employmentId: id("1"), status: "present", absenceReason: null },
+          {
+            employmentId: id("2"),
+            status: "absent",
+            absenceReason: "Atestado",
+          },
+        ],
+        machines: [
+          { machineId: id("3"), condition: "fit", conditionNote: null },
+          {
+            machineId: id("4"),
+            condition: "unfit",
+            conditionNote: "Em manutenção",
+          },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects an unfit machine without its condition note", () => {
+    const result = operationalShiftStartSchema.safeParse({
+      startedAt: "2026-09-24T11:00:00.000Z",
+      employees: [
+        { employmentId: id("1"), status: "present", absenceReason: null },
+      ],
+      machines: [
+        { machineId: id("3"), condition: "unfit", conditionNote: null },
+      ],
+    });
+
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts employee hours, intervals and machine readings at close", () => {
+    expect(
+      operationalShiftCloseSchema.safeParse({
+        endedAt: "2026-09-24T20:00:00.000Z",
+        earlyClosureReason: null,
+        employees: [
+          {
+            employmentId: id("1"),
+            checkInAt: "2026-09-24T11:00:00.000Z",
+            checkOutAt: "2026-09-24T20:00:00.000Z",
+            breaks: [
+              {
+                startAt: "2026-09-24T15:00:00.000Z",
+                endAt: "2026-09-24T16:00:00.000Z",
+              },
+            ],
+            overtimeConfirmed: true,
+          },
+        ],
+        machines: [{ machineId: id("3"), endMeterReadingValue: "2190.25" }],
+      }).success,
+    ).toBe(true);
   });
 });

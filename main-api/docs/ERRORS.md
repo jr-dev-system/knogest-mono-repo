@@ -48,6 +48,9 @@ RDO usa `409` para conflitos esperados e mantém códigos públicos estáveis:
 - `DAILY_REPORT_METER_READING_CONFLICT`: a cadeia oficial de uma máquina mudou
   ou impede finalização retroativa.
 - `PROJECT_SHIFT_NOT_ENABLED`: o turno solicitado não está habilitado na obra.
+- `OPERATIONAL_SHIFT_NOT_STARTED`: uma ação operacional exige um turno aberto;
+- `OPERATIONAL_SHIFT_INCOMPLETE`: o início ou fechamento ainda possui um grupo
+  obrigatório pendente, identificado em `details.resource`.
 
 Detalhes podem expor somente identificadores, nomes e categorias seguras do
 recurso. Não inclua leitura interna não solicitada, body, SQL ou metadados

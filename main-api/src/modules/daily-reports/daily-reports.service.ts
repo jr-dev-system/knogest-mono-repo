@@ -8,18 +8,31 @@ import type {
   DailyReportCommand,
   DailyReportListQuery,
   DailyReportOptionsQuery,
+  FrequencyListQuery,
+  OperationalInterferenceCommand,
+  OperationalRdoCommand,
+  OperationalShiftCloseCommand,
+  OperationalShiftStartCommand,
 } from "./daily-reports.dto";
 import {
+  confirmOperationalInterferenceHandler,
+  createOperationalInterferenceHandler,
   createProjectDailyReportHandler,
   finalizeDailyReportMachineHandler,
   finalizeProjectDailyReportHandler,
+  findOperationalShiftByDateHandler,
   findProjectDailyReportContextHandler,
   findProjectDailyReportHandler,
   findProjectDailyReportStateHandler,
   latestMachineReadingHandler,
+  listProjectFrequencyHandler,
   listProjectDailyReportsHandler,
   lockDailyReportMachineHandler,
   lockProjectDailyReportHandler,
+  replaceOperationalEmployeeCloseHandler,
+  updateOperationalClosureHandler,
+  updateOperationalMachineCloseHandler,
+  updateOperationalRdoHandler,
   updateProjectDailyReportHandler,
   type DailyReportScope,
   type DailyReportWriteData,
@@ -43,14 +56,555 @@ const climateFromApi = {
   dry: "DRY",
   waterlogged_soil: "WATERLOGGED_SOIL",
 } as const;
+const interferenceCategoryFromApi = {
+  weather: "WEATHER",
+  crew: "CREW",
+  equipment: "EQUIPMENT",
+  material_logistics: "MATERIAL_LOGISTICS",
+  external: "EXTERNAL",
+  safety: "SAFETY",
+  other: "OTHER",
+} as const;
 
 export class DailyReportsService {
   constructor(private readonly context: HandlerContext) {}
+
+  async operationalDay(
+    scope: DailyReportScope,
+    projectId: string,
+    reportDate: string,
+  ) {
+    const reports = await Promise.all(
+      (["day", "night"] as const).map(async (shift) => {
+        try {
+          const referenceAt = operationalReferenceAt(reportDate);
+          const options = await this.options(
+            scope,
+            projectId,
+            { reportDate, shift },
+            referenceAt,
+          );
+          const record = await findOperationalShiftByDateHandler(
+            this.context,
+            scope,
+            projectId,
+            new Date(`${reportDate}T00:00:00.000Z`),
+            shiftToDb(shift),
+          );
+          return {
+            shift,
+            enabled: true,
+            suggestedStartedAt: referenceAt.toISOString(),
+            options,
+            report: record ? toDetailDto(record) : null,
+          };
+        } catch (error) {
+          if (
+            error instanceof AppError &&
+            error.code === "PROJECT_SHIFT_NOT_ENABLED"
+          )
+            return {
+              shift,
+              enabled: false,
+              suggestedStartedAt: null,
+              options: null,
+              report: null,
+            };
+          throw error;
+        }
+      }),
+    );
+    return { reportDate, shifts: reports };
+  }
+
+  async startOperationalShift(
+    scope: DailyReportScope,
+    projectId: string,
+    reportDate: string,
+    shift: "day" | "night",
+    command: OperationalShiftStartCommand,
+  ) {
+    const startedAt = new Date(command.startedAt);
+    const allowedStartDates = new Set([reportDate]);
+    if (shift === "night") {
+      const followingDate = new Date(`${reportDate}T12:00:00.000Z`);
+      followingDate.setUTCDate(followingDate.getUTCDate() + 1);
+      allowedStartDates.add(civilDate(followingDate));
+    }
+    if (
+      !allowedStartDates.has(dateInTimeZone(startedAt)) ||
+      startedAt.getTime() > Date.now()
+    )
+      throw incomplete("shift-start");
+    const options = await this.options(
+      scope,
+      projectId,
+      { reportDate, shift },
+      startedAt,
+    );
+    const employeeMap = new Map(
+      options.employeeOptions.map((item) => [item.id, item]),
+    );
+    const machineMap = new Map(
+      options.machineOptions.map((item) => [item.id, item]),
+    );
+    if (
+      command.employees.length !== options.employeeOptions.length ||
+      command.employees.some((item) => !employeeMap.has(item.employmentId))
+    )
+      throw resourceUnavailable("employee-checklist");
+    if (
+      command.machines.length !== options.machineOptions.length ||
+      command.machines.some((item) => !machineMap.has(item.machineId))
+    )
+      throw resourceUnavailable("machine-checklist");
+    const supervisorId =
+      options.defaults.supervisorEmploymentId ??
+      options.responsibleOptions[0]?.id;
+    const technicalIds = options.defaults.technicalResponsibilityEmploymentIds
+      .length
+      ? options.defaults.technicalResponsibilityEmploymentIds
+      : supervisorId
+        ? [supervisorId]
+        : [];
+    if (!supervisorId || !technicalIds.length)
+      throw resourceUnavailable("responsible");
+    const data: DailyReportWriteData = {
+      reportDate: new Date(`${reportDate}T00:00:00.000Z`),
+      shift: shiftToDb(shift),
+      shiftOrder: shift === "day" ? 0 : 1,
+      projectNameSnapshot: options.project.name,
+      municipalitySnapshot: options.project.municipality,
+      stateSnapshot: options.project.state,
+      contractSnapshot: options.project.contract,
+      scheduleScaleSnapshot: options.defaults.scheduleScale,
+      supervisorEmploymentId: supervisorId,
+      supervisorNameSnapshot: options.responsibleOptions.find(
+        (item) => item.id === supervisorId,
+      )!.name,
+      activityStartTime: options.defaults.activityStartTime,
+      activityEndTime: options.defaults.activityEndTime,
+      activityEndDayOffset: options.defaults.activityEndDayOffset,
+      activityTypes: [],
+      climateConditions: [],
+      dailyRainfallMm: "0.00",
+      monthlyRainfallMm: "0.00",
+      executedActivities: "",
+      interferences: null,
+      startedAt,
+      schedulePeriods: options.defaults.schedulePeriods,
+      technicalResponsibilities: technicalIds.map((employmentId) => ({
+        employmentId,
+        nameSnapshot: options.responsibleOptions.find(
+          (item) => item.id === employmentId,
+        )!.name,
+      })),
+      employees: command.employees.map((item) => {
+        const employee = employeeMap.get(item.employmentId)!;
+        return {
+          employmentId: item.employmentId,
+          employeeNameSnapshot: employee.name,
+          jobRoleSnapshot: employee.jobRole,
+          completedFullShift: false,
+          regularWorkedMinutes: 0,
+          overtimeMinutes: 0,
+          attendanceStatus: item.status === "present" ? "PRESENT" : "ABSENT",
+          absenceReason: item.absenceReason,
+          checkInAt: item.status === "present" ? startedAt : null,
+          overtimeConfirmed: false,
+        };
+      }),
+      machines: command.machines.map((item) => {
+        const machine = machineMap.get(item.machineId)!;
+        return {
+          machineId: machine.id,
+          machineNameSnapshot: machine.name,
+          manufacturerSnapshot: machine.manufacturer,
+          modelSnapshot: machine.model,
+          meterTypeSnapshot:
+            machine.meterType === "hour_meter" ? "HOUR_METER" : "ODOMETER",
+          identifierKindSnapshot: machine.identifier
+            ? machine.identifier.kind === "plate"
+              ? "PLATE"
+              : "COMPANY_TAG"
+            : null,
+          identifierValueSnapshot: machine.identifier?.value ?? null,
+          startMeterReadingId: machine.startMeterReading.id,
+          startMeterReadingValue: machine.startMeterReading.value,
+          endMeterReadingValue: machine.startMeterReading.value,
+          operationalCondition: item.condition === "fit" ? "FIT" : "UNFIT",
+          conditionNote: item.conditionNote,
+        };
+      }),
+    };
+    try {
+      const record = await createProjectDailyReportHandler(
+        this.context,
+        scope,
+        projectId,
+        data,
+      );
+      return toDetailDto(record);
+    } catch (error) {
+      throw mapUniqueConflict(error);
+    }
+  }
+
+  async saveOperationalRdo(
+    scope: DailyReportScope,
+    projectId: string,
+    reportId: string,
+    command: OperationalRdoCommand,
+  ) {
+    const record = await findProjectDailyReportHandler(
+      this.context,
+      scope,
+      projectId,
+      reportId,
+    );
+    if (!record) throw notFound();
+    if (record.status !== "DRAFT" || !record.startedAt) throw immutable();
+    const options = await this.options(
+      scope,
+      projectId,
+      {
+        reportDate: civilDate(record.reportDate),
+        shift: record.shift.toLowerCase() as "day" | "night",
+      },
+      record.startedAt,
+    );
+    const responsible = new Map(
+      options.responsibleOptions.map((item) => [item.id, item.name]),
+    );
+    if (
+      !responsible.has(command.supervisorEmploymentId) ||
+      command.technicalResponsibilityEmploymentIds.some(
+        (id) => !responsible.has(id),
+      )
+    )
+      throw resourceUnavailable("responsible");
+    const updated = await updateOperationalRdoHandler(
+      this.context,
+      scope,
+      projectId,
+      reportId,
+      {
+        ...command,
+        supervisorNameSnapshot: responsible.get(
+          command.supervisorEmploymentId,
+        )!,
+        scheduleScaleSnapshot: options.defaults.scheduleScale,
+        activityTypes: command.activityTypes.map(
+          (item) => activityFromApi[item],
+        ),
+        climateConditions: command.climateConditions.map(
+          (item) => climateFromApi[item],
+        ),
+        dailyRainfallMm: normalizeDecimal(command.dailyRainfallMm),
+        monthlyRainfallMm: normalizeDecimal(command.monthlyRainfallMm),
+        technicalResponsibilities:
+          command.technicalResponsibilityEmploymentIds.map((employmentId) => ({
+            employmentId,
+            nameSnapshot: responsible.get(employmentId)!,
+          })),
+      },
+    );
+    return toDetailDto(updated);
+  }
+
+  async addInterference(
+    scope: DailyReportScope,
+    projectId: string,
+    reportId: string,
+    command: OperationalInterferenceCommand,
+  ) {
+    await this.assertOpen(scope, projectId, reportId);
+    await createOperationalInterferenceHandler(
+      this.context,
+      scope,
+      projectId,
+      reportId,
+      {
+        category: interferenceCategoryFromApi[command.category],
+        description: command.description,
+        impact: command.impact,
+        startedAt: new Date(command.startedAt),
+        endedAt: command.endedAt ? new Date(command.endedAt) : null,
+      },
+    );
+    return this.detail(scope, projectId, reportId);
+  }
+
+  async confirmInterference(
+    scope: DailyReportScope,
+    projectId: string,
+    reportId: string,
+    interferenceId: string,
+  ) {
+    await this.assertOpen(scope, projectId, reportId);
+    const count = await confirmOperationalInterferenceHandler(
+      this.context,
+      scope,
+      projectId,
+      reportId,
+      interferenceId,
+      new Date(),
+    );
+    if (!count) throw notFound();
+    return this.detail(scope, projectId, reportId);
+  }
+
+  async closeOperationalShift(
+    scope: DailyReportScope,
+    projectId: string,
+    reportId: string,
+    command: OperationalShiftCloseCommand,
+  ) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(
+        async (transactionContext) => {
+          const service = new DailyReportsService(transactionContext);
+          const record = await findProjectDailyReportHandler(
+            transactionContext,
+            scope,
+            projectId,
+            reportId,
+          );
+          if (!record) throw notFound();
+          if (record.status !== "DRAFT" || !record.startedAt) throw immutable();
+          if (
+            !record.activityTypes.length ||
+            !record.climateConditions.length ||
+            !record.executedActivities.trim()
+          )
+            throw incomplete("rdo");
+          if (record.interferenceEntries.some((item) => !item.confirmedAt))
+            throw incomplete("interferences");
+          const employeeCommands = new Map(
+            command.employees.map((item) => [item.employmentId, item]),
+          );
+          const endedAt = new Date(command.endedAt);
+          if (
+            endedAt < record.startedAt ||
+            endedAt.getTime() > Date.now() + 60_000
+          )
+            throw incomplete("shift-end");
+          for (const entry of record.employeeEntries) {
+            const item = employeeCommands.get(entry.employmentId);
+            if (!item) throw incomplete("employees");
+            if (
+              entry.attendanceStatus === "PRESENT" &&
+              (!item.checkInAt || !item.checkOutAt || !item.overtimeConfirmed)
+            )
+              throw incomplete("employee-hours");
+            const start = item.checkInAt ? new Date(item.checkInAt) : null;
+            const end = item.checkOutAt ? new Date(item.checkOutAt) : null;
+            if (
+              (start && end && end <= start) ||
+              (start && start < record.startedAt) ||
+              (end && end > endedAt)
+            )
+              throw incomplete("employee-hours");
+            const orderedBreaks = [...item.breaks].sort(
+              (left, right) =>
+                new Date(left.startAt).getTime() -
+                new Date(right.startAt).getTime(),
+            );
+            for (const [index, current] of orderedBreaks.entries()) {
+              const breakStart = new Date(current.startAt);
+              const breakEnd = new Date(current.endAt);
+              const previousEnd = index
+                ? new Date(orderedBreaks[index - 1].endAt)
+                : null;
+              if (
+                !start ||
+                !end ||
+                breakStart < start ||
+                breakEnd > end ||
+                (previousEnd && breakStart < previousEnd)
+              )
+                throw incomplete("employee-breaks");
+            }
+            const breakMinutes = item.breaks.reduce(
+              (total, current) =>
+                total +
+                Math.round(
+                  (new Date(current.endAt).getTime() -
+                    new Date(current.startAt).getTime()) /
+                    60000,
+                ),
+              0,
+            );
+            const worked =
+              start && end
+                ? Math.max(
+                    0,
+                    Math.round((end.getTime() - start.getTime()) / 60000) -
+                      breakMinutes,
+                  )
+                : 0;
+            const planned = Math.max(
+              0,
+              activityWindowMinutes({
+                activityStartTime: record.activityStartTime,
+                activityEndTime: record.activityEndTime,
+                activityEndDayOffset: record.activityEndDayOffset,
+              }),
+            );
+            await replaceOperationalEmployeeCloseHandler(
+              transactionContext,
+              scope,
+              projectId,
+              reportId,
+              {
+                entryId: entry.id,
+                checkInAt: start,
+                checkOutAt: end,
+                regularWorkedMinutes: Math.min(worked, planned),
+                overtimeMinutes: Math.max(0, worked - planned),
+                completedFullShift: worked >= planned,
+                overtimeConfirmed: item.overtimeConfirmed,
+                breaks: item.breaks.map((value) => ({
+                  startAt: new Date(value.startAt),
+                  endAt: new Date(value.endAt),
+                })),
+              },
+            );
+          }
+          const machines = new Map(
+            command.machines.map((item) => [item.machineId, item]),
+          );
+          for (const entry of record.machineEntries) {
+            if (entry.operationalCondition === "FIT") {
+              const value = machines.get(entry.machineId)?.endMeterReadingValue;
+              if (!value) throw incomplete("machine-readings");
+              await updateOperationalMachineCloseHandler(
+                transactionContext,
+                entry.id,
+                normalizeDecimal(value),
+              );
+            }
+          }
+          const plannedEnd = intervalFromLocal(
+            civilDate(record.reportDate),
+            record.activityStartTime,
+            record.activityEndTime,
+            record.activityEndDayOffset,
+          ).endAt;
+          if (endedAt < plannedEnd && !command.earlyClosureReason)
+            throw incomplete("early-closure-reason");
+          await updateOperationalClosureHandler(transactionContext, reportId, {
+            activityEndTime: localClock(endedAt),
+            activityEndDayOffset:
+              civilDate(endedAt) === civilDate(record.reportDate) ? 0 : 1,
+            earlyClosureReason: command.earlyClosureReason,
+            interferences: record.interferenceEntries.length
+              ? record.interferenceEntries
+                  .map((item) => `${item.description} — ${item.impact}`)
+                  .join("\n")
+              : null,
+          });
+          return service.finalize(scope, projectId, reportId);
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
+  }
+
+  async frequency(
+    scope: DailyReportScope,
+    projectId: string,
+    query: FrequencyListQuery,
+  ) {
+    const normalizedQuery = {
+      shift: query.shift ?? null,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+    };
+    const cursorScope = {
+      corporationId: scope.corporationId,
+      companyId: scope.companyId,
+      projectId,
+    };
+    const boundary = parseBoundCursor({
+      cursor: query.cursor,
+      query: normalizedQuery,
+      resource: "project-frequency",
+      scope: cursorScope,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+    });
+    const records = await listProjectFrequencyHandler(
+      this.context,
+      scope,
+      projectId,
+      {
+        boundary,
+        limit: query.limit,
+        shift: query.shift ? shiftToDb(query.shift) : undefined,
+        sortDirection: query.sortDirection,
+      },
+    );
+    const page = buildCursorPage({
+      items: records,
+      limit: query.limit,
+      query: normalizedQuery,
+      resource: "project-frequency",
+      scope: cursorScope,
+      sortBy: query.sortBy,
+      sortDirection: query.sortDirection,
+      getLast: (item) => ({
+        id: item.id,
+        value: `${civilDate(item.reportDate)}|${item.shiftOrder}`,
+      }),
+    });
+    return {
+      data: page.data.map((record) => ({
+        reportId: record.id,
+        reportDate: civilDate(record.reportDate),
+        shift: record.shift.toLowerCase(),
+        startedAt: record.startedAt?.toISOString() ?? null,
+        finalizedAt: record.finalizedAt?.toISOString() ?? null,
+        employees: record.employeeEntries.map((item) => ({
+          employmentId: item.employmentId,
+          name: item.employeeNameSnapshot,
+          jobRole: item.jobRoleSnapshot,
+          status: item.attendanceStatus.toLowerCase(),
+          absenceReason: item.absenceReason,
+          checkInAt: item.checkInAt?.toISOString() ?? null,
+          checkOutAt: item.checkOutAt?.toISOString() ?? null,
+          regularWorkedMinutes: item.regularWorkedMinutes,
+          overtimeMinutes: item.overtimeMinutes,
+          breaks: item.breaks.map((value) => ({
+            startAt: value.startAt.toISOString(),
+            endAt: value.endAt.toISOString(),
+          })),
+        })),
+      })),
+      pageInfo: page.pageInfo,
+    };
+  }
+
+  private async assertOpen(
+    scope: DailyReportScope,
+    projectId: string,
+    reportId: string,
+  ) {
+    const state = await findProjectDailyReportStateHandler(
+      this.context,
+      scope,
+      projectId,
+      reportId,
+    );
+    if (!state) throw notFound();
+    if (state.status !== "DRAFT" || !state.startedAt) throw immutable();
+  }
 
   async options(
     scope: DailyReportScope,
     projectId: string,
     query: DailyReportOptionsQuery,
+    referenceAt?: Date,
   ) {
     const broadInterval = intervalForOptions(query.reportDate, query.shift);
     const broadContext = await findProjectDailyReportContextHandler(
@@ -75,16 +629,19 @@ export class DailyReportsService {
       endTime: day?.endTime ?? (query.shift === "day" ? "18:00" : "06:00"),
       endDayOffset: day?.endDayOffset ?? (query.shift === "day" ? 0 : 1),
     };
+    const exactInterval = referenceAt
+      ? { startAt: referenceAt, endAt: referenceAt }
+      : intervalFromLocal(
+          query.reportDate,
+          defaultWindow.startTime,
+          defaultWindow.endTime,
+          defaultWindow.endDayOffset,
+        );
     const exactContext = await findProjectDailyReportContextHandler(
       this.context,
       scope,
       projectId,
-      intervalFromLocal(
-        query.reportDate,
-        defaultWindow.startTime,
-        defaultWindow.endTime,
-        defaultWindow.endDayOffset,
-      ),
+      exactInterval,
       shiftToDb(query.shift),
     );
     assertProjectAvailable(exactContext?.project, query.reportDate);
@@ -402,6 +959,7 @@ export class DailyReportsService {
             left.machineId.localeCompare(right.machineId),
           );
           for (const entry of entries) {
+            if (entry.operationalCondition === "UNFIT") continue;
             await lockDailyReportMachineHandler(
               transactionContext,
               scope,
@@ -415,7 +973,8 @@ export class DailyReportsService {
             if (
               !latest ||
               latest.id !== entry.startMeterReadingId ||
-              latest.recordedAt.getTime() > interval.startAt.getTime() ||
+              latest.recordedAt.getTime() >
+                (record.startedAt ?? interval.startAt).getTime() ||
               entry.endMeterReadingValue.lt(latest.value)
             )
               throw meterConflict(entry.machineId, entry.machineNameSnapshot);
@@ -642,6 +1201,15 @@ function toDetailDto(record: DailyReportRecord) {
       completedFullShift: item.completedFullShift,
       regularWorkedMinutes: item.regularWorkedMinutes,
       overtimeMinutes: item.overtimeMinutes,
+      attendanceStatus: item.attendanceStatus.toLowerCase(),
+      absenceReason: item.absenceReason,
+      checkInAt: item.checkInAt?.toISOString() ?? null,
+      checkOutAt: item.checkOutAt?.toISOString() ?? null,
+      overtimeConfirmed: item.overtimeConfirmed,
+      breaks: item.breaks.map((value) => ({
+        startAt: value.startAt.toISOString(),
+        endAt: value.endAt.toISOString(),
+      })),
     })),
     machines: record.machineEntries.map((item) => ({
       machineId: item.machineId,
@@ -663,9 +1231,22 @@ function toDetailDto(record: DailyReportRecord) {
         id: item.endMeterReadingId,
         value: item.endMeterReadingValue.toFixed(2),
       },
+      operationalCondition: item.operationalCondition.toLowerCase(),
+      conditionNote: item.conditionNote,
     })),
     executedActivities: record.executedActivities,
     interferences: record.interferences,
+    startedAt: record.startedAt?.toISOString() ?? null,
+    earlyClosureReason: record.earlyClosureReason,
+    interferenceEntries: record.interferenceEntries.map((item) => ({
+      id: item.id,
+      category: item.category.toLowerCase(),
+      description: item.description,
+      impact: item.impact,
+      startedAt: item.startedAt.toISOString(),
+      endedAt: item.endedAt?.toISOString() ?? null,
+      confirmedAt: item.confirmedAt?.toISOString() ?? null,
+    })),
     createdBy: record.createdBy,
     finalizedBy: record.finalizedBy,
     finalizedAt: record.finalizedAt?.toISOString() ?? null,
@@ -789,6 +1370,13 @@ function dateInTimeZone(date: Date) {
   return `${values.year}-${values.month}-${values.day}`;
 }
 
+function operationalReferenceAt(reportDate: string) {
+  const now = new Date();
+  return dateInTimeZone(now) === reportDate
+    ? now
+    : zonedCivilDateTime(reportDate, "23:59", 0);
+}
+
 function mondayBasedDay(reportDate: string) {
   const day = new Date(`${reportDate}T00:00:00.000Z`).getUTCDay();
   return day === 0 ? 7 : day;
@@ -819,6 +1407,15 @@ function decimalHundredths(value: string) {
 
 function civilDate(value: Date) {
   return value.toISOString().slice(0, 10);
+}
+
+function localClock(value: Date) {
+  return new Intl.DateTimeFormat("pt-BR", {
+    timeZone: BUSINESS_TIME_ZONE,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).format(value);
 }
 
 function shiftToDb(shift: "day" | "night") {
@@ -860,6 +1457,15 @@ function meterConflict(machineId: string, machineName: string) {
     message: "Machine meter history changed",
     statusCode: 409,
     data: { machineId, machineName },
+  });
+}
+
+function incomplete(resource: string) {
+  return new AppError({
+    code: "OPERATIONAL_SHIFT_INCOMPLETE",
+    message: "Complete os itens obrigatórios antes de finalizar o turno",
+    statusCode: 409,
+    data: { resource },
   });
 }
 
