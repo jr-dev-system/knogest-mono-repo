@@ -128,6 +128,7 @@ const controlClass =
   "h-11 w-full rounded-md border border-input bg-background px-3 text-sm font-semibold outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-60";
 
 export function ProjectProductionWizard({
+  contextLocked = false,
   detail,
   onContextChange,
   onOpenChange,
@@ -137,6 +138,7 @@ export function ProjectProductionWizard({
   projectId,
   workflowActions,
 }: {
+  contextLocked?: boolean;
   detail: ProjectProductionDetail | null;
   onContextChange: (
     productionDate: string,
@@ -417,6 +419,7 @@ export function ProjectProductionWizard({
         />
         {currentStep === 0 && (
           <ContextStep
+            contextLocked={contextLocked}
             values={values}
             editable={editable}
             options={options}
@@ -517,6 +520,7 @@ export function ProjectProductionWizard({
 type FormApi = ReturnType<typeof useForm<WizardValues>>;
 
 function ContextStep({
+  contextLocked,
   values,
   editable,
   options,
@@ -524,6 +528,7 @@ function ContextStep({
   changeContext,
   changeKind,
 }: {
+  contextLocked: boolean;
   values: WizardValues;
   editable: boolean;
   options: ProjectProductionOptions;
@@ -570,7 +575,7 @@ function ContextStep({
             min={options.dateLimits.minimum}
             max={options.dateLimits.maximum}
             value={values.productionDate}
-            disabled={!editable}
+            disabled={!editable || contextLocked}
             onChange={(event) =>
               void changeContext(event.target.value, values.shift)
             }
@@ -580,7 +585,7 @@ function ContextStep({
           <select
             className={controlClass}
             value={values.shift}
-            disabled={!editable}
+            disabled={!editable || contextLocked}
             onChange={(event) =>
               void changeContext(
                 values.productionDate,

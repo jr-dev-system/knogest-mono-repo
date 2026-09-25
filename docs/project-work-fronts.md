@@ -26,11 +26,11 @@ mantendo espaço útil para o conteúdo e preservando os atalhos de navegação.
 **Calendário** também é um item direto, mas só é exibido depois do início real
 da obra; ele não aparece para uma obra planejada e a URL da aba volta ao
 planejamento nesse estado. Nesta primeira etapa, ele ocupa o painel de conteúdo
-com uma grade mensal sem eventos: abre no mês corrente de `America/Sao_Paulo`,
+com uma grade mensal: abre no mês corrente de `America/Sao_Paulo`,
 permite selecionar somente meses entre o início real e hoje, e libera o novo
-dia à meia-noite de Brasília. Dias disponíveis oferecem a afordância de clique,
-mas ainda não persistem nem abrem uma ação. Os demais recursos ficam agrupados:
-**Relatórios** abre RDO e reserva espaço para
+dia à meia-noite de Brasília. Dias disponíveis abrem a Central operacional do
+dia, sem criar registros até a confirmação de início de um turno. Os demais
+recursos ficam agrupados: **Relatórios** abre RDO e Frequência e reserva espaço para
 novos relatórios; **Configurações** abre Responsáveis, Máquinas e Equipe;
 **Fornecedores** abre Combustível e Itens fornecidos; e **Financeiro** abre
 Orçamento e Ciclos de pagamento. Os Ciclos de pagamento concentram os prazos
@@ -79,6 +79,9 @@ Troca de solo não é um único volume: a remoção do material impróprio e o a
 6. Depois da mobilização geral da obra, prepare cada frente destinando recursos do pool do projeto conforme as classes exigidas pela frente.
 7. Inicie a frente em uma ação separada, somente quando o projeto estiver ativo e a mobilização mínima da frente estiver atendida.
 8. O RDO manual é consolidado por obra e turno, conforme `project-daily-reports.md`; a produção é vinculada explicitamente à frente e ao serviço, enquanto o RDO continua sem frente própria.
+9. Cada data disponível do calendário abre a Central operacional do dia. Nela,
+   os turnos habilitados podem ser iniciados, acompanhados e finalizados; o
+   fechamento alimenta automaticamente o RDO e a frequência.
 
 Ao acionar **Iniciar obra**, a interface abre um alert modal de confirmação e não chama a API até o usuário escolher **Sim, iniciar obra**. Escolher **Não, cancelar** ou fechar o alert encerra o modal e mantém a obra planejada, sem disparar a ativação. Depois da confirmação, a interface bloqueia novos cliques e informa que a ativação está em andamento. O sucesso aplica imediatamente o snapshot ativo devolvido pela API e libera os itens operacionais da navegação; a atualização da rota apenas reconcilia esse estado. Conflitos de prontidão e falhas de comunicação mantêm o projeto planejado, apresentam um toast acionável e permitem nova tentativa. A API continua sendo a autoridade final da prontidão.
 

@@ -3,6 +3,7 @@
 import * as React from "react";
 import { CalendarRange } from "lucide-react";
 import { fromZonedTime } from "date-fns-tz";
+import { useRouter } from "next/navigation";
 
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -109,7 +110,8 @@ function validMonthsForYear(
     });
 }
 
-export function ProjectOperationalCalendar({ startedAt }: { startedAt: string }) {
+export function ProjectOperationalCalendar({ projectId, startedAt }: { projectId: string; startedAt: string }) {
+  const router = useRouter();
   const firstAvailableDay = React.useMemo(
     () => toCalendarDateFromIso(startedAt),
     [startedAt],
@@ -252,6 +254,7 @@ export function ProjectOperationalCalendar({ startedAt }: { startedAt: string })
               key={`${day.year}-${day.month}-${day.day}`}
               type="button"
               disabled={!isAvailable}
+              onClick={() => isAvailable && router.push(`/home/obras/${projectId}/operacao/${day.year}-${String(day.month + 1).padStart(2, "0")}-${String(day.day).padStart(2, "0")}`)}
               aria-label={`${dateLabel(day)}${isToday ? ", hoje" : ""}${!isAvailable ? ", indisponível" : ""}`}
               className={cn(
                 "min-h-11 bg-card p-2 text-left text-sm font-semibold text-foreground transition-colors outline-none sm:min-h-16",

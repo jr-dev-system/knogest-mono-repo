@@ -2073,6 +2073,7 @@ export function ProjectDetail({
   initialDailyReports,
   initialSection,
   initialTeamShift = "day",
+  initialProductionContext,
   initialProductions,
   lookupSuppliedItemOfferSuppliersAction,
   lookupSuppliedItemOffersAction,
@@ -2084,6 +2085,7 @@ export function ProjectDetail({
   initialDailyReports?: ProjectDailyReportsPage;
   initialSection?: string;
   initialTeamShift?: "day" | "night";
+  initialProductionContext?: { date: string; shift: "day" | "night" };
   initialProductions?: ProjectProductionsPage;
   lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
   lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
@@ -4127,7 +4129,13 @@ export function ProjectDetail({
                     collapsed={!isProjectNavigationExpanded}
                     expanded={isNavigationGroupOpen("reports")}
                     icon={FileText}
-                    items={[{ label: "RDO", status: reportsStatus }]}
+                    items={[
+                      { label: "RDO", status: reportsStatus },
+                      {
+                        label: "Frequência",
+                        status: { label: "Disponível", tone: "ready" },
+                      },
+                    ]}
                     label="Relatórios"
                     onClick={() => toggleNavigationGroup("reports")}
                   >
@@ -4138,6 +4146,16 @@ export function ProjectDetail({
                       nested
                       status={reportsStatus}
                       onClick={() => selectProjectTab("reports")}
+                    />
+                    <ProjectNavigationItem
+                      active={false}
+                      icon={UsersRound}
+                      label="Frequência"
+                      nested
+                      status={{ label: "Disponível", tone: "ready" }}
+                      onClick={() =>
+                        router.push(`/home/obras/${project.id}/frequencia`)
+                      }
                     />
                   </ProjectNavigationGroup>
                 </>
@@ -4364,12 +4382,11 @@ export function ProjectDetail({
               </Section>
             )}
 
-            {activeTab === "calendar" && (
-              project.actualStartedAt && (
-                <ProjectOperationalCalendar
-                  startedAt={project.actualStartedAt}
-                />
-              )
+            {activeTab === "calendar" && project.actualStartedAt && (
+              <ProjectOperationalCalendar
+                projectId={project.id}
+                startedAt={project.actualStartedAt}
+              />
             )}
 
             {activeTab === "planning" && (
@@ -4502,6 +4519,7 @@ export function ProjectDetail({
               >
                 <ProjectProductions
                   projectId={project.id}
+                  initialContext={initialProductionContext}
                   initialPage={
                     initialProductions ?? {
                       data: [],

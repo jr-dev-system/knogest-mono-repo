@@ -3,6 +3,51 @@
 Este documento é a fonte canônica da primeira versão do RDO manual. O RDO é
 um registro consolidado da obra, não de uma frente específica.
 
+O calendário da obra também oferece a **Central operacional do dia**, que usa
+o mesmo RDO como registro oficial e conduz seu preenchimento ao longo do turno.
+O fluxo manual permanece disponível para consulta dos registros existentes.
+
+## Central operacional do dia
+
+Ao selecionar uma data disponível no calendário, a interface abre uma central
+com uma faixa para cada turno habilitado. A abertura de um turno exige:
+
+- checklist de todos os funcionários alocados, como presente ou ausente, com
+  motivo de ausência opcional;
+- checklist de todas as máquinas alocadas, como apta ou não apta; máquina não
+  apta exige justificativa e não gera leitura final;
+- ao menos um funcionário e uma máquina alocados no contexto operacional.
+
+As opções refletem o contexto vigente no instante real de início. Antes de o
+turno ser iniciado, a data atual usa o instante corrente e uma abertura
+retroativa usa o último contexto vigente naquele dia. Isso permite incluir uma
+mobilização efetivada depois do horário planejado sem misturar recursos de
+outro dia. Ao confirmar, a API cria o RDO em rascunho e registra a entrada dos
+presentes e a leitura inicial das máquinas de forma automática.
+
+Com o turno aberto, a central atualiza a cada 30 segundos e ao retomar foco.
+Ela permite completar as perguntas obrigatórias do RDO, abrir o lançamento de
+produção já preso à data e ao turno, registrar e confirmar interferências e
+revisar o encerramento. Manutenção e abastecimento aparecem como ações táteis,
+mas ainda não persistem dados nesta versão.
+
+Interferências registram categoria, descrição, impacto, início e fim opcional.
+Cada registro precisa ser confirmado individualmente antes do fechamento.
+
+O encerramento revisa, em uma única operação atômica:
+
+- entrada, saída, até seis intervalos e confirmação de horas extras de cada
+  funcionário presente;
+- leitura final de toda máquina apta;
+- confirmação de todas as interferências;
+- respostas obrigatórias do RDO e, quando aplicável, o motivo do encerramento
+  anterior ao fim planejado.
+
+Se qualquer item estiver incompleto, o turno continua em andamento. Quando a
+operação é confirmada, o RDO, as jornadas e os medidores são finalizados juntos
+e tornam-se imutáveis. A frequência é derivada dessas entradas e saídas e fica
+disponível em **Relatórios → Frequência**.
+
 ## Identidade e ciclo de vida
 
 - A chave funcional é `obra + data + turno`; nem dois rascunhos podem ocupar a
@@ -94,6 +139,18 @@ gravada quando uma máquina entra em conflito.
 
 ## API
 
+As operações da central usam:
+
+- `GET /projects/:projectId/operational-days/:reportDate`;
+- `POST /projects/:projectId/operational-days/:reportDate/shifts/:shift/start`;
+- `PUT /projects/:projectId/operational-shifts/:reportId/rdo`;
+- `POST /projects/:projectId/operational-shifts/:reportId/interferences`;
+- `POST /projects/:projectId/operational-shifts/:reportId/interferences/:interferenceId/confirm`;
+- `POST /projects/:projectId/operational-shifts/:reportId/close`;
+- `GET /projects/:projectId/frequency`.
+
+As rotas de criação manual continuam sendo:
+
 - `GET /projects/:projectId/daily-reports`
 - `GET /projects/:projectId/daily-reports/options?reportDate=&shift=`
 - `GET /projects/:projectId/daily-reports/:reportId`
@@ -119,6 +176,8 @@ Conflitos funcionais retornam `409` com códigos públicos:
 - `DAILY_REPORT_METER_READING_CONFLICT`.
 - `PROJECT_SHIFT_NOT_ENABLED`.
 - `PRODUCTION_RDO_CONFIRMATION_REQUIRED`.
+- `OPERATIONAL_SHIFT_NOT_STARTED`.
+- `OPERATIONAL_SHIFT_INCOMPLETE`.
 
 Detalhes de conflito contêm somente identificadores, nomes ou categorias
 seguras dos recursos afetados.

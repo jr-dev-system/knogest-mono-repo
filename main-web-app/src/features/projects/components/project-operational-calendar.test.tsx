@@ -3,6 +3,9 @@
 import { act, cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+const push = vi.fn();
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push }) }));
+
 import { ProjectOperationalCalendar } from "./project-operational-calendar";
 
 afterEach(() => {
@@ -16,7 +19,7 @@ describe("ProjectOperationalCalendar", () => {
     vi.setSystemTime(new Date("2026-09-15T12:00:00.000Z"));
 
     render(
-      <ProjectOperationalCalendar startedAt="2026-08-20T12:00:00.000Z" />,
+      <ProjectOperationalCalendar projectId="project-1" startedAt="2026-08-20T12:00:00.000Z" />,
     );
 
     const monthSelect = screen.getByLabelText("Mês exibido");
@@ -30,7 +33,7 @@ describe("ProjectOperationalCalendar", () => {
     vi.setSystemTime(new Date("2026-09-15T02:59:59.000Z"));
 
     render(
-      <ProjectOperationalCalendar startedAt="2026-09-01T12:00:00.000Z" />,
+      <ProjectOperationalCalendar projectId="project-1" startedAt="2026-09-01T12:00:00.000Z" />,
     );
 
     expect(
@@ -53,12 +56,12 @@ describe("ProjectOperationalCalendar", () => {
     ).toBe(false);
   });
 
-  it("keeps available days as actionless buttons in this first stage", () => {
+  it("opens the operational command center for an available day", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-09-15T12:00:00.000Z"));
 
     render(
-      <ProjectOperationalCalendar startedAt="2026-09-01T12:00:00.000Z" />,
+      <ProjectOperationalCalendar projectId="project-1" startedAt="2026-09-01T12:00:00.000Z" />,
     );
 
     const day = screen.getByRole("button", {
@@ -67,6 +70,8 @@ describe("ProjectOperationalCalendar", () => {
     day.click();
 
     expect((day as HTMLButtonElement).disabled).toBe(false);
-    expect(day.getAttribute("aria-pressed")).toBeNull();
+    expect(push).toHaveBeenCalledWith(
+      "/home/obras/project-1/operacao/2026-09-14",
+    );
   });
 });

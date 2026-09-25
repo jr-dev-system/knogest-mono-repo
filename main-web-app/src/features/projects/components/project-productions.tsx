@@ -48,9 +48,11 @@ const statusLabels: Record<ProjectProductionDetail["status"], string> = {
 
 export function ProjectProductions({
   initialPage,
+  initialContext,
   projectId,
 }: {
   initialPage: ProjectProductionsPage;
+  initialContext?: { date: string; shift: "day" | "night" };
   projectId: string;
 }) {
   const [productions, setProductions] = React.useState(initialPage.data);
@@ -64,11 +66,15 @@ export function ProjectProductions({
   const [open, setOpen] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [reason, setReason] = React.useState("");
+  const initialContextOpened = React.useRef(false);
 
-  async function openNew() {
+  async function openNew(context = initialContext) {
     setBusy(true);
     try {
-      const resolved = await resolveOptions(todayInSaoPaulo(), "day");
+      const resolved = await resolveOptions(
+        context?.date ?? todayInSaoPaulo(),
+        context?.shift ?? "day",
+      );
       setDetail(null);
       setOptions(resolved);
       setReason("");
@@ -79,6 +85,14 @@ export function ProjectProductions({
       setBusy(false);
     }
   }
+
+  React.useEffect(() => {
+    if (!initialContext || initialContextOpened.current) return;
+    initialContextOpened.current = true;
+    void openNew(initialContext);
+    // A entrada operacional deve abrir uma única vez; alterações posteriores de estado não reabrem o assistente.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialContext?.date, initialContext?.shift]);
 
   async function openExisting(id: string) {
     setBusy(true);
@@ -320,6 +334,7 @@ export function ProjectProductions({
           projectId={projectId}
           options={options}
           detail={detail}
+          contextLocked={Boolean(initialContext && !detail)}
           onContextChange={resolveOptions}
           onSaved={upsert}
           workflowActions={

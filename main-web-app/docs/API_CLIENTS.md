@@ -57,6 +57,20 @@ action de finalização chama
 `Content-Type`. O componente só aplica o snapshot `finalized` quando o resultado
 de domínio é `success`; um `200` do protocolo da Server Action não basta.
 
+A Central operacional carrega
+`GET /projects/:projectId/operational-days/:reportDate` no servidor e executa
+início de turno, salvamento do RDO, interferências e fechamento por Server
+Actions finas em `src/features/projects/operational-day.actions.ts`. Cada ação
+valida UUID/data, chama exclusivamente o cliente Kubb e recarrega o retrato do
+dia devolvido ao componente. A tela também chama `router.refresh()` a cada 30
+segundos e ao recuperar foco.
+
+O CTA de produção navega para a seção existente com `date` e `shift` na query.
+Esses parâmetros abrem o assistente já existente e bloqueiam a troca do
+contexto operacional; não criam uma segunda implementação de produção. Os
+CTAs de manutenção e abastecimento são deliberadamente locais nesta versão e
+apenas informam indisponibilidade, sem requisição HTTP.
+
 O fluxo de produção usa os clientes gerados para opções do turno, listagem,
 detalhe, comando discriminado, catálogos, workflow, qualidade, histórico e
 viagens legadas. `productions.actions.ts` é a fronteira server-only;

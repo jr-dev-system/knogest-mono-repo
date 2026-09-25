@@ -20,13 +20,16 @@ export default async function Page({
   searchParams,
 }: {
   params: Promise<{ projectId: string }>;
-  searchParams: Promise<{ section?: string; teamShift?: string }>;
+  searchParams: Promise<{
+    section?: string;
+    teamShift?: string;
+    date?: string;
+    shift?: string;
+  }>;
 }) {
   const { companies, selectedCompany } = await requireCompanyWorkspace();
-  const [{ projectId }, { section, teamShift }] = await Promise.all([
-    params,
-    searchParams,
-  ]);
+  const [{ projectId }, { section, teamShift, date, shift }] =
+    await Promise.all([params, searchParams]);
   let project;
   let options;
   let dailyReports;
@@ -52,6 +55,11 @@ export default async function Page({
         initialDailyReports={dailyReports}
         initialSection={section}
         initialTeamShift={teamShift === "night" ? "night" : "day"}
+        initialProductionContext={
+          section === "production" && date
+            ? { date, shift: shift === "night" ? "night" : "day" }
+            : undefined
+        }
         initialProductions={productions}
         lookupSuppliedItemOfferSuppliersAction={
           lookupProjectSuppliedItemOfferSuppliersAction
