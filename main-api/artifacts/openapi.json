@@ -16104,6 +16104,7 @@
                     "uniqueItems": true,
                     "items": { "type": "string", "format": "uuid" }
                   },
+                  "nightShiftEnabled": { "type": "boolean" },
                   "weeklySchedule": {
                     "type": "array",
                     "minItems": 7,
@@ -17491,6 +17492,969 @@
             }
           },
           "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/mobilization/machine-options": {
+      "get": {
+        "summary": "List paginated Machine mobilization options for one Project",
+        "tags": ["Projects"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 15,
+              "default": 15
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 2048 },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "enum": ["YELLOW_LINE", "WHITE_LINE"] },
+            "in": "query",
+            "name": "type",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "manufacturer",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "model",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "version",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["selected", "data", "facets", "pageInfo"],
+                      "properties": {
+                        "selected": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "label",
+                              "type",
+                              "manufacturer",
+                              "model",
+                              "version",
+                              "meterType",
+                              "identifiers",
+                              "detail",
+                              "readingId",
+                              "requiresOperator",
+                              "requiredJobRoleId",
+                              "requiredJobRoleName",
+                              "acceptsAnyJobRole",
+                              "available"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "label": { "type": "string" },
+                              "type": { "enum": ["YELLOW_LINE", "WHITE_LINE"] },
+                              "manufacturer": { "type": "string" },
+                              "model": { "type": "string" },
+                              "version": { "type": "string", "nullable": true },
+                              "meterType": {
+                                "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "identifiers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["kind", "value"],
+                                  "properties": {
+                                    "kind": {
+                                      "enum": ["PLATE", "COMPANY_TAG"]
+                                    },
+                                    "value": { "type": "string" }
+                                  }
+                                }
+                              },
+                              "detail": { "type": "string", "nullable": true },
+                              "readingId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "requiresOperator": { "type": "boolean" },
+                              "requiredJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "requiredJobRoleName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "acceptsAnyJobRole": { "type": "boolean" },
+                              "available": { "type": "boolean" }
+                            }
+                          }
+                        },
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "label",
+                              "type",
+                              "manufacturer",
+                              "model",
+                              "version",
+                              "meterType",
+                              "identifiers",
+                              "detail",
+                              "readingId",
+                              "requiresOperator",
+                              "requiredJobRoleId",
+                              "requiredJobRoleName",
+                              "acceptsAnyJobRole",
+                              "available"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "label": { "type": "string" },
+                              "type": { "enum": ["YELLOW_LINE", "WHITE_LINE"] },
+                              "manufacturer": { "type": "string" },
+                              "model": { "type": "string" },
+                              "version": { "type": "string", "nullable": true },
+                              "meterType": {
+                                "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "identifiers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["kind", "value"],
+                                  "properties": {
+                                    "kind": {
+                                      "enum": ["PLATE", "COMPANY_TAG"]
+                                    },
+                                    "value": { "type": "string" }
+                                  }
+                                }
+                              },
+                              "detail": { "type": "string", "nullable": true },
+                              "readingId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "requiresOperator": { "type": "boolean" },
+                              "requiredJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "requiredJobRoleName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "acceptsAnyJobRole": { "type": "boolean" },
+                              "available": { "type": "boolean" }
+                            }
+                          }
+                        },
+                        "facets": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": ["manufacturers", "models", "versions"],
+                          "properties": {
+                            "manufacturers": {
+                              "type": "array",
+                              "items": { "type": "string" }
+                            },
+                            "models": {
+                              "type": "array",
+                              "items": { "type": "string" }
+                            },
+                            "versions": {
+                              "type": "array",
+                              "items": { "type": "string" }
+                            }
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/v1/projects/{projectId}/mobilization/machines": {
+      "get": {
+        "summary": "List paginated machines mobilized to one Project",
+        "tags": ["Projects"],
+        "parameters": [
+          {
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 15,
+              "default": 15
+            },
+            "in": "query",
+            "name": "limit",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 2048 },
+            "in": "query",
+            "name": "cursor",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "maxLength": 120 },
+            "in": "query",
+            "name": "search",
+            "required": false
+          },
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["data", "pageInfo"],
+                      "properties": {
+                        "data": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": [
+                              "id",
+                              "machineId",
+                              "name",
+                              "type",
+                              "manufacturer",
+                              "model",
+                              "version",
+                              "meterType",
+                              "identifiers",
+                              "startMeterReading",
+                              "requiresOperator",
+                              "requiredJobRoleId",
+                              "requiredJobRoleName",
+                              "acceptsAnyJobRole",
+                              "operatorAssignments"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "machineId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "name": { "type": "string" },
+                              "type": { "enum": ["YELLOW_LINE", "WHITE_LINE"] },
+                              "manufacturer": { "type": "string" },
+                              "model": { "type": "string" },
+                              "version": { "type": "string", "nullable": true },
+                              "meterType": {
+                                "enum": ["HOUR_METER", "ODOMETER"]
+                              },
+                              "identifiers": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["kind", "value"],
+                                  "properties": {
+                                    "kind": {
+                                      "enum": ["PLATE", "COMPANY_TAG"]
+                                    },
+                                    "value": { "type": "string" }
+                                  }
+                                }
+                              },
+                              "startMeterReading": {
+                                "type": "object",
+                                "nullable": true,
+                                "required": ["id", "value"],
+                                "properties": {
+                                  "id": { "type": "string", "format": "uuid" },
+                                  "value": { "type": "string" }
+                                }
+                              },
+                              "requiresOperator": { "type": "boolean" },
+                              "requiredJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "requiredJobRoleName": {
+                                "type": "string",
+                                "nullable": true
+                              },
+                              "acceptsAnyJobRole": { "type": "boolean" },
+                              "operatorAssignments": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": ["shift", "operator"],
+                                  "properties": {
+                                    "shift": { "enum": ["day", "night"] },
+                                    "operator": {
+                                      "type": "object",
+                                      "nullable": true,
+                                      "required": ["id", "name"],
+                                      "properties": {
+                                        "id": {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        "name": { "type": "string" }
+                                      }
+                                    }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "pageInfo": {
+                          "type": "object",
+                          "required": ["hasNextPage", "nextCursor"],
+                          "properties": {
+                            "hasNextPage": { "type": "boolean" },
+                            "nextCursor": { "type": "string", "nullable": true }
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "summary": "Reconcile machines mobilized to a Project",
+        "tags": ["Projects"],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["allocations"],
+                "properties": {
+                  "allocations": {
+                    "type": "array",
+                    "maxItems": 100,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["machineId", "startMeterReadingId"],
+                      "properties": {
+                        "machineId": { "type": "string", "format": "uuid" },
+                        "startMeterReadingId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "operatorEmploymentId": {
+                          "type": "string",
+                          "format": "uuid"
+                        },
+                        "operatorAssignments": {
+                          "type": "array",
+                          "minItems": 0,
+                          "maxItems": 2,
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": false,
+                            "required": ["shift", "operatorEmploymentId"],
+                            "properties": {
+                              "shift": { "enum": ["day", "night"] },
+                              "operatorEmploymentId": {
+                                "type": "string",
+                                "format": "uuid"
+                              }
+                            }
+                          }
+                        },
+                        "rental": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "lessorName",
+                            "hourlyRate",
+                            "monthlyHours"
+                          ],
+                          "properties": {
+                            "lessorName": {
+                              "type": "string",
+                              "minLength": 1,
+                              "maxLength": 180
+                            },
+                            "hourlyRate": {
+                              "type": "string",
+                              "pattern": "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$"
+                            },
+                            "monthlyHours": {
+                              "type": "integer",
+                              "minimum": 1,
+                              "maximum": 744
+                            }
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "reason": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 500
+                  }
+                }
+              }
+            }
+          }
+        },
+        "security": [{ "bearerAuth": [] }],
+        "parameters": [
+          {
+            "schema": { "type": "string" },
+            "in": "path",
+            "name": "projectId",
+            "required": true
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": [
+                        "id",
+                        "name",
+                        "status",
+                        "actualStartedAt",
+                        "createdAt",
+                        "baseline",
+                        "quantityBaseline",
+                        "workFronts",
+                        "employeeAllocations",
+                        "readiness"
+                      ],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "name": { "type": "string" },
+                        "contractNumber": {
+                          "type": "string",
+                          "nullable": true
+                        },
+                        "status": {
+                          "enum": [
+                            "planned",
+                            "active",
+                            "paused",
+                            "completed",
+                            "cancelled"
+                          ]
+                        },
+                        "actualStartedAt": {
+                          "type": "string",
+                          "format": "date-time",
+                          "nullable": true
+                        },
+                        "createdAt": {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        "baseline": {
+                          "type": "object",
+                          "nullable": true,
+                          "additionalProperties": true
+                        },
+                        "employeeAllocations": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "id",
+                              "employment",
+                              "shift",
+                              "jobRole",
+                              "confirmedJobRoleId",
+                              "confirmedJobRolePeriodId",
+                              "monthlyWorkloadHours",
+                              "compensationMode",
+                              "compensationValue",
+                              "overtimeRate",
+                              "effectiveFrom"
+                            ],
+                            "properties": {
+                              "id": { "type": "string", "format": "uuid" },
+                              "employment": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              },
+                              "shift": { "enum": ["day", "night"] },
+                              "jobRole": { "type": "string" },
+                              "confirmedJobRoleId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "confirmedJobRolePeriodId": {
+                                "type": "string",
+                                "format": "uuid",
+                                "nullable": true
+                              },
+                              "monthlyWorkloadHours": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 744
+                              },
+                              "compensationMode": {
+                                "enum": [
+                                  "daily",
+                                  "hourly",
+                                  "weekly",
+                                  "fortnightly",
+                                  "monthly"
+                                ]
+                              },
+                              "compensationValue": { "type": "string" },
+                              "overtimeRate": { "type": "string" },
+                              "effectiveFrom": {
+                                "type": "string",
+                                "format": "date-time"
+                              }
+                            }
+                          }
+                        },
+                        "quantityBaseline": {
+                          "type": "object",
+                          "additionalProperties": false,
+                          "required": [
+                            "revision",
+                            "createdAt",
+                            "reason",
+                            "items"
+                          ],
+                          "properties": {
+                            "revision": { "type": "integer", "nullable": true },
+                            "createdAt": {
+                              "type": "string",
+                              "format": "date-time",
+                              "nullable": true
+                            },
+                            "reason": { "type": "string", "nullable": true },
+                            "items": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "additionalProperties": false,
+                                "required": [
+                                  "serviceCode",
+                                  "unitCode",
+                                  "total",
+                                  "allocated",
+                                  "unallocated",
+                                  "produced"
+                                ],
+                                "properties": {
+                                  "serviceCode": { "type": "string" },
+                                  "unitCode": { "type": "string" },
+                                  "total": { "type": "string" },
+                                  "allocated": { "type": "string" },
+                                  "unallocated": { "type": "string" },
+                                  "produced": { "type": "string" }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "workFronts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": ["services"],
+                            "properties": {
+                              "services": {
+                                "type": "array",
+                                "items": {
+                                  "type": "object",
+                                  "additionalProperties": false,
+                                  "required": [
+                                    "serviceCode",
+                                    "unitCode",
+                                    "quantity",
+                                    "produced",
+                                    "minimumQuantity",
+                                    "maximumQuantity",
+                                    "hasProductions"
+                                  ],
+                                  "properties": {
+                                    "serviceCode": { "type": "string" },
+                                    "unitCode": { "type": "string" },
+                                    "quantity": { "type": "string" },
+                                    "produced": { "type": "string" },
+                                    "minimumQuantity": { "type": "string" },
+                                    "maximumQuantity": { "type": "string" },
+                                    "hasProductions": { "type": "boolean" }
+                                  }
+                                }
+                              }
+                            }
+                          }
+                        },
+                        "readiness": {
+                          "type": "object",
+                          "required": ["canActivate", "blockers"],
+                          "properties": {
+                            "canActivate": { "type": "boolean" },
+                            "blockers": {
+                              "type": "array",
+                              "items": {
+                                "type": "object",
+                                "required": ["section", "message"],
+                                "properties": {
+                                  "section": {
+                                    "enum": [
+                                      "dates",
+                                      "metrics",
+                                      "fronts",
+                                      "fuel",
+                                      "items",
+                                      "equipment",
+                                      "team",
+                                      "payments"
+                                    ]
+                                  },
+                                  "message": { "type": "string" }
+                                },
+                                "additionalProperties": false
+                              }
+                            }
+                          },
+                          "additionalProperties": false
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": {
+                      "type": "object",
+                      "nullable": true,
+                      "additionalProperties": true
+                    },
+                    "requestId": { "type": "string" }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
             "description": "Default Response",
             "content": {
               "application/json": {
@@ -19873,6 +20837,7 @@
                       }
                     }
                   },
+                  "nightShiftEnabled": { "type": "boolean" },
                   "weeklySchedule": {
                     "type": "array",
                     "minItems": 7,
@@ -20352,6 +21317,7 @@
                       }
                     }
                   },
+                  "nightShiftEnabled": { "type": "boolean" },
                   "weeklySchedule": {
                     "type": "array",
                     "minItems": 7,
@@ -20428,446 +21394,6 @@
           }
         ],
         "security": [{ "bearerAuth": [] }],
-        "responses": {
-          "200": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": ["success", "message", "data"],
-                  "properties": {
-                    "success": { "type": "boolean", "enum": [true] },
-                    "message": { "type": "string" },
-                    "data": {
-                      "type": "object",
-                      "additionalProperties": true,
-                      "required": [
-                        "id",
-                        "name",
-                        "status",
-                        "actualStartedAt",
-                        "createdAt",
-                        "baseline",
-                        "quantityBaseline",
-                        "workFronts",
-                        "employeeAllocations",
-                        "readiness"
-                      ],
-                      "properties": {
-                        "id": { "type": "string", "format": "uuid" },
-                        "name": { "type": "string" },
-                        "contractNumber": {
-                          "type": "string",
-                          "nullable": true
-                        },
-                        "status": {
-                          "enum": [
-                            "planned",
-                            "active",
-                            "paused",
-                            "completed",
-                            "cancelled"
-                          ]
-                        },
-                        "actualStartedAt": {
-                          "type": "string",
-                          "format": "date-time",
-                          "nullable": true
-                        },
-                        "createdAt": {
-                          "type": "string",
-                          "format": "date-time"
-                        },
-                        "baseline": {
-                          "type": "object",
-                          "nullable": true,
-                          "additionalProperties": true
-                        },
-                        "employeeAllocations": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": true,
-                            "required": [
-                              "id",
-                              "employment",
-                              "shift",
-                              "jobRole",
-                              "confirmedJobRoleId",
-                              "confirmedJobRolePeriodId",
-                              "monthlyWorkloadHours",
-                              "compensationMode",
-                              "compensationValue",
-                              "overtimeRate",
-                              "effectiveFrom"
-                            ],
-                            "properties": {
-                              "id": { "type": "string", "format": "uuid" },
-                              "employment": {
-                                "type": "object",
-                                "nullable": true,
-                                "additionalProperties": true
-                              },
-                              "shift": { "enum": ["day", "night"] },
-                              "jobRole": { "type": "string" },
-                              "confirmedJobRoleId": {
-                                "type": "string",
-                                "format": "uuid",
-                                "nullable": true
-                              },
-                              "confirmedJobRolePeriodId": {
-                                "type": "string",
-                                "format": "uuid",
-                                "nullable": true
-                              },
-                              "monthlyWorkloadHours": {
-                                "type": "integer",
-                                "minimum": 1,
-                                "maximum": 744
-                              },
-                              "compensationMode": {
-                                "enum": [
-                                  "daily",
-                                  "hourly",
-                                  "weekly",
-                                  "fortnightly",
-                                  "monthly"
-                                ]
-                              },
-                              "compensationValue": { "type": "string" },
-                              "overtimeRate": { "type": "string" },
-                              "effectiveFrom": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            }
-                          }
-                        },
-                        "quantityBaseline": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "revision",
-                            "createdAt",
-                            "reason",
-                            "items"
-                          ],
-                          "properties": {
-                            "revision": { "type": "integer", "nullable": true },
-                            "createdAt": {
-                              "type": "string",
-                              "format": "date-time",
-                              "nullable": true
-                            },
-                            "reason": { "type": "string", "nullable": true },
-                            "items": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "additionalProperties": false,
-                                "required": [
-                                  "serviceCode",
-                                  "unitCode",
-                                  "total",
-                                  "allocated",
-                                  "unallocated",
-                                  "produced"
-                                ],
-                                "properties": {
-                                  "serviceCode": { "type": "string" },
-                                  "unitCode": { "type": "string" },
-                                  "total": { "type": "string" },
-                                  "allocated": { "type": "string" },
-                                  "unallocated": { "type": "string" },
-                                  "produced": { "type": "string" }
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "workFronts": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": true,
-                            "required": ["services"],
-                            "properties": {
-                              "services": {
-                                "type": "array",
-                                "items": {
-                                  "type": "object",
-                                  "additionalProperties": false,
-                                  "required": [
-                                    "serviceCode",
-                                    "unitCode",
-                                    "quantity",
-                                    "produced",
-                                    "minimumQuantity",
-                                    "maximumQuantity",
-                                    "hasProductions"
-                                  ],
-                                  "properties": {
-                                    "serviceCode": { "type": "string" },
-                                    "unitCode": { "type": "string" },
-                                    "quantity": { "type": "string" },
-                                    "produced": { "type": "string" },
-                                    "minimumQuantity": { "type": "string" },
-                                    "maximumQuantity": { "type": "string" },
-                                    "hasProductions": { "type": "boolean" }
-                                  }
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "readiness": {
-                          "type": "object",
-                          "required": ["canActivate", "blockers"],
-                          "properties": {
-                            "canActivate": { "type": "boolean" },
-                            "blockers": {
-                              "type": "array",
-                              "items": {
-                                "type": "object",
-                                "required": ["section", "message"],
-                                "properties": {
-                                  "section": {
-                                    "enum": [
-                                      "dates",
-                                      "metrics",
-                                      "fronts",
-                                      "fuel",
-                                      "items",
-                                      "equipment",
-                                      "team",
-                                      "payments"
-                                    ]
-                                  },
-                                  "message": { "type": "string" }
-                                },
-                                "additionalProperties": false
-                              }
-                            }
-                          },
-                          "additionalProperties": false
-                        }
-                      }
-                    }
-                  }
-                }
-              }
-            }
-          },
-          "400": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "code",
-                    "message",
-                    "details",
-                    "requestId"
-                  ],
-                  "properties": {
-                    "success": { "type": "boolean", "enum": [false] },
-                    "code": { "type": "string" },
-                    "message": { "type": "string" },
-                    "details": {
-                      "type": "object",
-                      "nullable": true,
-                      "additionalProperties": true
-                    },
-                    "requestId": { "type": "string" }
-                  }
-                }
-              }
-            }
-          },
-          "404": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "code",
-                    "message",
-                    "details",
-                    "requestId"
-                  ],
-                  "properties": {
-                    "success": { "type": "boolean", "enum": [false] },
-                    "code": { "type": "string" },
-                    "message": { "type": "string" },
-                    "details": {
-                      "type": "object",
-                      "nullable": true,
-                      "additionalProperties": true
-                    },
-                    "requestId": { "type": "string" }
-                  }
-                }
-              }
-            }
-          },
-          "409": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "code",
-                    "message",
-                    "details",
-                    "requestId"
-                  ],
-                  "properties": {
-                    "success": { "type": "boolean", "enum": [false] },
-                    "code": { "type": "string" },
-                    "message": { "type": "string" },
-                    "details": {
-                      "type": "object",
-                      "nullable": true,
-                      "additionalProperties": true
-                    },
-                    "requestId": { "type": "string" }
-                  }
-                }
-              }
-            }
-          },
-          "422": {
-            "description": "Default Response",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "object",
-                  "required": [
-                    "success",
-                    "code",
-                    "message",
-                    "details",
-                    "requestId"
-                  ],
-                  "properties": {
-                    "success": { "type": "boolean", "enum": [false] },
-                    "code": { "type": "string" },
-                    "message": { "type": "string" },
-                    "details": {
-                      "type": "object",
-                      "nullable": true,
-                      "additionalProperties": true
-                    },
-                    "requestId": { "type": "string" }
-                  }
-                }
-              }
-            }
-          }
-        }
-      }
-    },
-    "/api/v1/projects/{projectId}/mobilization/machines": {
-      "put": {
-        "summary": "Reconcile machines mobilized to a Project",
-        "tags": ["Projects"],
-        "requestBody": {
-          "required": true,
-          "content": {
-            "application/json": {
-              "schema": {
-                "type": "object",
-                "additionalProperties": false,
-                "required": ["allocations"],
-                "properties": {
-                  "allocations": {
-                    "type": "array",
-                    "maxItems": 100,
-                    "items": {
-                      "type": "object",
-                      "additionalProperties": false,
-                      "required": ["machineId", "startMeterReadingId"],
-                      "properties": {
-                        "machineId": { "type": "string", "format": "uuid" },
-                        "startMeterReadingId": {
-                          "type": "string",
-                          "format": "uuid"
-                        },
-                        "operatorEmploymentId": {
-                          "type": "string",
-                          "format": "uuid"
-                        },
-                        "operatorAssignments": {
-                          "type": "array",
-                          "minItems": 0,
-                          "maxItems": 2,
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["shift", "operatorEmploymentId"],
-                            "properties": {
-                              "shift": { "enum": ["day", "night"] },
-                              "operatorEmploymentId": {
-                                "type": "string",
-                                "format": "uuid"
-                              }
-                            }
-                          }
-                        },
-                        "rental": {
-                          "type": "object",
-                          "additionalProperties": false,
-                          "required": [
-                            "lessorName",
-                            "hourlyRate",
-                            "monthlyHours"
-                          ],
-                          "properties": {
-                            "lessorName": {
-                              "type": "string",
-                              "minLength": 1,
-                              "maxLength": 180
-                            },
-                            "hourlyRate": {
-                              "type": "string",
-                              "pattern": "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$"
-                            },
-                            "monthlyHours": {
-                              "type": "integer",
-                              "minimum": 1,
-                              "maximum": 744
-                            }
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "reason": {
-                    "type": "string",
-                    "nullable": true,
-                    "maxLength": 500
-                  }
-                }
-              }
-            }
-          }
-        },
-        "security": [{ "bearerAuth": [] }],
-        "parameters": [
-          {
-            "schema": { "type": "string" },
-            "in": "path",
-            "name": "projectId",
-            "required": true
-          }
-        ],
         "responses": {
           "200": {
             "description": "Default Response",

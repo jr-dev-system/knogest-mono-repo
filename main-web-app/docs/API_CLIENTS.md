@@ -141,6 +141,15 @@ turno habilitado, e a confirmação fica indisponível quando não houver
 candidato. O `requestId`, quando presente, pode ser usado no atendimento. Um
 sucesso usa o toast global transitório e fecha o modal após atualizar o
 snapshot.
+A aba de máquinas consulta separadamente
+`GET /projects/:projectId/mobilization/machines` para renderizar somente as
+alocações vigentes. A busca de nome, fabricante, modelo, versão, placa ou
+patrimônio é debounced em 300 ms; alteração da busca invalida páginas e
+cursores anteriores. O lápis de uma máquina que exige operador abre o mesmo
+formulário de designação por turno da inclusão, atualiza apenas suas
+`operatorAssignments` no comando completo e salva pelo transporte de
+mobilização já existente. O botão de engrenagem é apenas uma affordance visual
+nesta versão e não inicia transporte nem altera estado.
 O modal de mobilização de uma frente consulta
 `GET /projects/:projectId/fronts/:frontId/mobilization-options` pela Server
 Action correspondente. Funcionários e máquinas mantêm caches separados por

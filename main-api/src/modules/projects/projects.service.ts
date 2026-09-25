@@ -8,6 +8,8 @@ import type {
   ProjectEmployeeMobilizationCommand,
   ProjectListQuery,
   ProjectMachineMobilizationCommand,
+  ProjectMachineMobilizationMembersQuery,
+  ProjectMachineMobilizationOptionsQuery,
   ProjectMobilizationHistoryQuery,
   ProjectReadinessCommand,
   ProjectTeamCandidatesQuery,
@@ -47,6 +49,22 @@ export class ProjectsService {
 
   readinessOptions(scope: ProjectScope, projectId: string) {
     return this.handler.readinessOptions(scope, projectId);
+  }
+
+  machineMobilizationOptions(
+    scope: ProjectScope,
+    projectId: string,
+    query: ProjectMachineMobilizationOptionsQuery,
+  ) {
+    return this.handler.machineMobilizationOptions(scope, projectId, query);
+  }
+
+  machineMobilizationMembers(
+    scope: ProjectScope,
+    projectId: string,
+    query: ProjectMachineMobilizationMembersQuery,
+  ) {
+    return this.handler.machineMobilizationMembers(scope, projectId, query);
   }
 
   teamCandidates(

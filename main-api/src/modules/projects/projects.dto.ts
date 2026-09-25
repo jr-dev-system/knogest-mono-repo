@@ -336,6 +336,7 @@ export const projectCommandSchema = z
     clientId: uuid,
     managerEmploymentId: uuid,
     technicalResponsibilityEmploymentIds: z.array(uuid).min(1).max(20),
+    nightShiftEnabled: z.boolean().optional(),
     weeklySchedule: z.array(projectScheduleDaySchema).min(7).max(14),
     breakTemplates: z.array(projectBreakTemplateSchema).max(20),
     initialEmployeeAllocations: z
@@ -722,6 +723,36 @@ export const projectTeamCandidatesQuerySchema = z
   })
   .strict();
 
+export const projectMachineMobilizationOptionsQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(15).default(15),
+    cursor: z
+      .string()
+      .min(1)
+      .max(2048)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .optional(),
+    type: z.enum(["YELLOW_LINE", "WHITE_LINE"]).optional(),
+    manufacturer: z.string().trim().max(120).optional(),
+    model: z.string().trim().max(120).optional(),
+    version: z.string().trim().max(120).optional(),
+    search: z.string().trim().max(120).optional(),
+  })
+  .strict();
+
+export const projectMachineMobilizationMembersQuerySchema = z
+  .object({
+    limit: z.coerce.number().int().min(1).max(15).default(15),
+    cursor: z
+      .string()
+      .min(1)
+      .max(2048)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .optional(),
+    search: z.string().trim().max(120).optional(),
+  })
+  .strict();
+
 export const projectShiftParamsSchema = z
   .object({
     projectId: uuid,
@@ -776,6 +807,7 @@ const projectMachineReadinessSchema = projectMachineAllocationSchema;
 export const projectEmployeeMobilizationCommandSchema = z
   .object({
     allocations: z.array(projectEmployeeReadinessSchema).max(200),
+    nightShiftEnabled: z.boolean().optional(),
     weeklySchedule: z.array(projectScheduleDaySchema).min(7).max(14).optional(),
     breakTemplates: z.array(projectBreakTemplateSchema).max(20).optional(),
     reason: optionalNullableText(500),
@@ -973,6 +1005,12 @@ export type ProjectCommand = z.infer<typeof projectCommandSchema>;
 export type ProjectListQuery = z.infer<typeof projectListQuerySchema>;
 export type ProjectTeamCandidatesQuery = z.infer<
   typeof projectTeamCandidatesQuerySchema
+>;
+export type ProjectMachineMobilizationOptionsQuery = z.infer<
+  typeof projectMachineMobilizationOptionsQuerySchema
+>;
+export type ProjectMachineMobilizationMembersQuery = z.infer<
+  typeof projectMachineMobilizationMembersQuerySchema
 >;
 export type ProjectTeamMembersQuery = z.infer<
   typeof projectTeamMembersQuerySchema

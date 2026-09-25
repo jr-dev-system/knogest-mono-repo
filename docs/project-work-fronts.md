@@ -88,6 +88,15 @@ não inicia projeto nem frente e não cria uma destinação de frente. Cada unid
 retornada nas opções informa se exige operador e, quando aplicável, a função
 compatível para cada turno.
 
+A edição posterior do pool de máquinas na página da obra usa um wizard próprio
+de seleção e resumo. Sua consulta paginada aceita tipo, fabricante, modelo,
+versão e texto de nome, placa ou patrimônio; as máquinas já confirmadas ficam
+fixas no topo em ordem de confirmação visual, mesmo após filtrar ou trocar de
+página. Essa ordem é apenas de interface e não altera os períodos de
+mobilização nem a ordem de recursos destinada às frentes. A configuração do
+operador abre junto da máquina acionada e aplica as mesmas regras de turno,
+função confirmada e exclusividade já usadas no pool.
+
 Pessoas e máquinas só podem estar em uma frente por vez dentro da obra. Um recurso ocupado aparece indisponível e deve ser liberado da frente atual antes de outra destinação; não existe transferência automática.
 
 Máquinas cujo modelo exige operador possuem um operador por turno. Ao selecionar
@@ -126,6 +135,7 @@ Frente: `PLANNED → ACTIVE`; uma frente planejada também pode ser cancelada. C
 - `PUT /projects/:projectId/fronts/:frontId/services`
 - `PUT /projects/:projectId/mobilization/employees`
 - `PUT /projects/:projectId/mobilization/machines`
+- `GET /projects/:projectId/mobilization/machine-options`
 - `PUT /projects/:projectId/fronts/:frontId/mobilization`
 - `GET /projects/:projectId/fronts/:frontId/mobilization-options`
 - `GET /projects/:projectId/mobilization-history`

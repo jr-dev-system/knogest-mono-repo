@@ -364,7 +364,7 @@ export async function createMachineHandler(
     model: string;
     version?: string;
     loadCapacity?: string;
-    loadCapacityUnitCode?: string;
+    loadCapacityUnitCode?: "M3_LOOSE" | "M3_COMPACTED" | "LITER" | "CUBIC_YARD";
     meterType: "HOUR_METER" | "ODOMETER";
     loadVolumeM3?: string;
     maxSupportedWeightT?: string;
@@ -757,7 +757,13 @@ export async function addMachineModelUnitsHandler(
     version: model.version ?? undefined,
     meterType: input.unit.meterType,
     loadCapacity: model.loadCapacity?.toFixed(3) ?? undefined,
-    loadCapacityUnitCode: model.loadCapacityUnitCode ?? undefined,
+    loadCapacityUnitCode:
+      (model.loadCapacityUnitCode as
+        | "M3_LOOSE"
+        | "M3_COMPACTED"
+        | "LITER"
+        | "CUBIC_YARD"
+        | null) ?? undefined,
     loadVolumeM3: model.loadVolumeM3?.toFixed(3) ?? undefined,
     maxSupportedWeightT: model.maxSupportedWeightT?.toFixed(3) ?? undefined,
     ownershipKind: input.unit.ownershipKind,
@@ -801,6 +807,29 @@ export async function allocateNewMachineUnitHandler(
       message: "Eligible Project not found",
       statusCode: 404,
     });
+  const schedule = await context.prisma.projectScheduleRevision.findFirst({
+    where: {
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      projectId: project.id,
+      effectiveTo: null,
+    },
+    orderBy: { effectiveFrom: "desc" },
+    select: { nightShiftEnabled: true },
+  });
+  const enabledShifts: Array<"day" | "night"> = schedule?.nightShiftEnabled
+    ? (["day", "night"] as const)
+    : (["day"] as const);
+  if (
+    input.allocation.operatorAssignments.some(
+      (item) => !enabledShifts.includes(item.shift),
+    )
+  )
+    throw new AppError({
+      code: "PROJECT_SHIFT_NOT_ENABLED",
+      message: "O turno selecionado não está habilitado para esta obra",
+      statusCode: 409,
+    });
   const latestReading = input.machine.meterReadings[0];
   if (!latestReading)
     throw new AppError({
@@ -835,6 +864,20 @@ export async function allocateNewMachineUnitHandler(
     throw new AppError({
       code: "MACHINE_OPERATOR_REQUIRED",
       message: "Machine requires an operator",
+      statusCode: 409,
+    });
+  if (
+    input.machine.machineModel.requiresOperator &&
+    enabledShifts.some(
+      (shift) =>
+        !input.allocation.operatorAssignments.some(
+          (assignment) => assignment.shift === shift,
+        ),
+    )
+  )
+    throw new AppError({
+      code: "MACHINE_OPERATOR_REQUIRED",
+      message: "Machine requires an operator in every enabled Project shift",
       statusCode: 409,
     });
   if (

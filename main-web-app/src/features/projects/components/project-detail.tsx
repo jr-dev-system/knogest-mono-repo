@@ -88,6 +88,8 @@ import type {
   EarthworksServiceCode,
   ProjectDetailSnapshot,
   ProjectMobilizationHistoryItem,
+  ProjectMachineMobilizationMember,
+  ProjectMachineMobilizationOption,
   ProjectOfferSnapshot,
   ProjectReadinessOptions,
   ProjectSuppliedItemOfferOption,
@@ -104,7 +106,12 @@ import {
   type EmployeeMobilizationHandle,
   type ProjectWizardOptions,
 } from "./project-wizard";
-import { ProjectMachineMobilizationWizard } from "./project-machine-mobilization-wizard";
+import {
+  MachineConfiguration,
+  type MachineDraft,
+  ProjectMachineMobilizationWizard,
+} from "./project-machine-mobilization-wizard";
+import { ProjectMachineView } from "./project-machine-view";
 import {
   buildMaterialAddCommands,
   buildMaterialEditCommands,
@@ -2323,6 +2330,7 @@ export function ProjectDetail({
     | "accountability"
     | "team"
     | "teamMember"
+    | "machineOperators"
     | "fuelAdd"
     | "fuelEdit"
     | "materials"
@@ -2349,6 +2357,16 @@ export function ProjectDetail({
   const [removingTeamMember, setRemovingTeamMember] =
     React.useState<ProjectTeamMember | null>(null);
   const [teamReloadKey, setTeamReloadKey] = React.useState(0);
+  const [machineReloadKey, setMachineReloadKey] = React.useState(0);
+  const [editingMachineOperators, setEditingMachineOperators] =
+    React.useState<ProjectMachineMobilizationMember | null>(null);
+  const [machineOperatorDraft, setMachineOperatorDraft] =
+    React.useState<MachineDraft | null>(null);
+  const [machineOperatorError, setMachineOperatorError] = React.useState<
+    string | null
+  >(null);
+  const [isSavingMachineOperators, setIsSavingMachineOperators] =
+    React.useState(false);
   const [teamPages, setTeamPages] = React.useState<ProjectTeamCandidatesPage[]>(
     [],
   );
@@ -2366,6 +2384,10 @@ export function ProjectDetail({
     control: readinessForm.control,
     name: "initialEmployeeAllocations",
   });
+  const watchedMachineAllocations = useWatch({
+    control: readinessForm.control,
+    name: "initialMachineAllocations",
+  });
   const watchedClientId = useWatch({
     control: readinessForm.control,
     name: "clientId",
@@ -2382,6 +2404,80 @@ export function ProjectDetail({
     data: [],
     pageInfo: { hasNextPage: false, nextCursor: null },
   };
+  const editingMachineOption =
+    React.useMemo<ProjectMachineMobilizationOption | null>(() => {
+      if (!editingMachineOperators) return null;
+      return {
+        id: editingMachineOperators.machineId,
+        label: editingMachineOperators.name,
+        type: editingMachineOperators.type,
+        manufacturer: editingMachineOperators.manufacturer,
+        model: editingMachineOperators.model,
+        version: editingMachineOperators.version,
+        meterType: editingMachineOperators.meterType,
+        identifiers: editingMachineOperators.identifiers,
+        detail: editingMachineOperators.startMeterReading?.value ?? null,
+        readingId: editingMachineOperators.startMeterReading?.id ?? null,
+        requiresOperator: editingMachineOperators.requiresOperator,
+        requiredJobRoleId: editingMachineOperators.requiredJobRoleId,
+        requiredJobRoleName: editingMachineOperators.requiredJobRoleName,
+        acceptsAnyJobRole: editingMachineOperators.acceptsAnyJobRole,
+        available: true,
+      };
+    }, [editingMachineOperators]);
+  const machineOperatorEnabledShifts = project.schedule.shifts;
+  const machineOperatorTeamById = new Map(
+    watchedEmployeeAllocations.map((allocation) => [
+      allocation.employmentId,
+      {
+        shift: allocation.shift,
+        confirmedJobRoleId: allocation.confirmedJobRoleId ?? null,
+      },
+    ]),
+  );
+  const machineOperatorUsedIds = new Set(
+    watchedMachineAllocations
+      .filter(
+        (allocation) =>
+          allocation.machineId !== editingMachineOperators?.machineId,
+      )
+      .flatMap((allocation) =>
+        allocation.operatorAssignments.map(
+          (assignment) => assignment.operatorEmploymentId,
+        ),
+      ),
+  );
+  const machineOperatorCandidates = (shift: "day" | "night") => {
+    const currentId = machineOperatorDraft?.operatorAssignments.find(
+      (assignment) => assignment.shift === shift,
+    )?.operatorEmploymentId;
+    return options.employees.filter((employee) => {
+      const team = machineOperatorTeamById.get(employee.id);
+      return (
+        team?.shift === shift &&
+        (editingMachineOption?.acceptsAnyJobRole ||
+          team.confirmedJobRoleId === editingMachineOption?.requiredJobRoleId ||
+          employee.id === currentId) &&
+        (!machineOperatorUsedIds.has(employee.id) || employee.id === currentId)
+      );
+    });
+  };
+  const machineOperatorUnavailableShifts =
+    editingMachineOption?.requiresOperator
+      ? machineOperatorEnabledShifts.filter(
+          (shift) => machineOperatorCandidates(shift).length === 0,
+        )
+      : [];
+  const machineOperatorMissingAssignments =
+    editingMachineOption?.requiresOperator
+      ? machineOperatorEnabledShifts.filter(
+          (shift) =>
+            !machineOperatorDraft?.operatorAssignments.some(
+              (assignment) =>
+                assignment.shift === shift && assignment.operatorEmploymentId,
+            ),
+        )
+      : [];
 
   const loadTeamCandidatePage = React.useCallback(
     (cursor?: string | null, append = false) => {
@@ -2472,6 +2568,11 @@ export function ProjectDetail({
     setFrontEmploymentIds([]);
     setFrontMachineIds([]);
     setFrontMobilizationIssues([]);
+    setEditingMachineOperators(null);
+    setMachineOperatorDraft(null);
+    setMachineOperatorError(null);
+    setIsSavingMachineOperators(false);
+    setMachineReloadKey((current) => current + 1);
     if (projectChanged || statusChanged) {
       setActiveTab(project.status === "active" ? "overview" : "planning");
     }
@@ -3169,6 +3270,112 @@ export function ProjectDetail({
         description: result.message,
       });
     });
+  };
+
+  const saveMachineAllocations = async (values: ProjectCommand) => {
+    let result:
+      | Awaited<ReturnType<typeof saveProjectMachineMobilizationAction>>
+      | Awaited<ReturnType<typeof saveProjectReadinessAction>>;
+    try {
+      result =
+        project.status === "active"
+          ? await saveProjectMachineMobilizationAction(
+              project.id,
+              values.initialMachineAllocations,
+            )
+          : await saveProjectReadinessAction(project.id, {
+              machineAllocations: values.initialMachineAllocations,
+            });
+    } catch (error) {
+      const message = "A comunicação com o servidor falhou. Tente novamente.";
+      toast.error("Não foi possível salvar máquinas e operadores.", {
+        description: message,
+      });
+      throw new Error(message);
+    }
+    if (result.kind !== "success") {
+      const message = machineSaveFailureMessage(result);
+      toast.error(
+        project.status === "active"
+          ? "Não foi possível atualizar as máquinas mobilizadas."
+          : "Não foi possível salvar máquinas e operadores.",
+        { description: message },
+      );
+      throw new Error(message);
+    }
+    toast.success(
+      project.status === "active"
+        ? "Máquinas mobilizadas atualizadas."
+        : "Máquinas e operadores salvos.",
+    );
+    setProject(result.project);
+    readinessForm.reset(projectToCommand(result.project));
+    setMachineReloadKey((current) => current + 1);
+    router.refresh();
+  };
+
+  const openMachineOperatorModal = (
+    machine: ProjectMachineMobilizationMember,
+  ) => {
+    const command = projectToCommand(project);
+    readinessForm.reset(command);
+    setEditingMachineOperators(machine);
+    setMachineOperatorDraft({
+      machineId: machine.machineId,
+      operatorAssignments: project.schedule.shifts.map((shift) => ({
+        shift,
+        operatorEmploymentId:
+          machine.operatorAssignments.find(
+            (assignment) => assignment.shift === shift,
+          )?.operator?.id ?? "",
+      })),
+    });
+    setMachineOperatorError(null);
+    setOpenModal("machineOperators");
+  };
+
+  const closeMachineOperatorModal = () => {
+    if (isSavingMachineOperators) return;
+    readinessForm.reset(projectToCommand(project));
+    setEditingMachineOperators(null);
+    setMachineOperatorDraft(null);
+    setMachineOperatorError(null);
+    setOpenModal(null);
+  };
+
+  const saveMachineOperators = async () => {
+    if (!editingMachineOperators || !machineOperatorDraft) return;
+    if (
+      machineOperatorMissingAssignments.length > 0 ||
+      machineOperatorUnavailableShifts.length > 0
+    )
+      return;
+    const values = readinessForm.getValues();
+    const operatorAssignments = machineOperatorDraft.operatorAssignments.filter(
+      (assignment) => assignment.operatorEmploymentId,
+    );
+    const initialMachineAllocations = values.initialMachineAllocations.map(
+      (allocation) =>
+        allocation.machineId === editingMachineOperators.machineId
+          ? { ...allocation, operatorAssignments }
+          : allocation,
+    );
+    setIsSavingMachineOperators(true);
+    setMachineOperatorError(null);
+    try {
+      await saveMachineAllocations({ ...values, initialMachineAllocations });
+      setEditingMachineOperators(null);
+      setMachineOperatorDraft(null);
+      setOpenModal(null);
+    } catch (error) {
+      setMachineOperatorError(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível salvar os operadores.",
+      );
+    } finally {
+      setIsSavingMachineOperators(false);
+    }
   };
 
   const removeTeamMember = () => {
@@ -4694,7 +4901,7 @@ export function ProjectDetail({
               <Section
                 icon={Truck}
                 title="Máquinas e operadores"
-                description=""
+                description="Acompanhe as máquinas mobilizadas e seus operadores por turno."
                 status={machinesStatus}
                 action={
                   <div className="flex flex-wrap gap-2">
@@ -4711,83 +4918,18 @@ export function ProjectDetail({
                         defaultValues={projectToCommand(project)}
                         operatorOptions={modalOptions.employees}
                         projectId={project.id}
-                        onSubmit={async (values) => {
-                          try {
-                            const result =
-                              project.status === "active"
-                                ? await saveProjectMachineMobilizationAction(
-                                    project.id,
-                                    values.initialMachineAllocations,
-                                  )
-                                : await saveProjectReadinessAction(project.id, {
-                                    machineAllocations:
-                                      values.initialMachineAllocations,
-                                  });
-                            if (result.kind === "success") {
-                              toast.success(
-                                project.status === "active"
-                                  ? "Máquinas mobilizadas atualizadas."
-                                  : "Máquinas e operadores salvos.",
-                              );
-                              setProject(result.project);
-                              readinessForm.reset(
-                                projectToCommand(result.project),
-                              );
-                              router.refresh();
-                              return;
-                            }
-                            const message = machineSaveFailureMessage(result);
-                            toast.error(
-                              project.status === "active"
-                                ? "Não foi possível atualizar as máquinas mobilizadas."
-                                : "Não foi possível salvar máquinas e operadores.",
-                              { description: message },
-                            );
-                            throw new Error(message);
-                          } catch (error) {
-                            if (error instanceof Error) throw error;
-                            const message =
-                              "A comunicação com o servidor falhou. Tente novamente.";
-                            toast.error(
-                              "Não foi possível salvar máquinas e operadores.",
-                              {
-                                description: message,
-                              },
-                            );
-                            throw new Error(message);
-                          }
-                        }}
+                        onSubmit={saveMachineAllocations}
                       />
                     )}
                   </div>
                 }
               >
-                <div className="grid gap-2 text-sm">
-                  {project.machineAllocations.length ? (
-                    project.machineAllocations.map((allocation) => (
-                      <div
-                        key={allocation.id}
-                        className="rounded-md border border-border bg-background px-3 py-2"
-                      >
-                        <p className="font-bold">
-                          {allocation.machine?.name ?? "Máquina"}
-                        </p>
-                        <p className="text-muted-foreground">
-                          {allocation.operatorAssignments.length
-                            ? allocation.operatorAssignments
-                                .map(
-                                  (assignment) =>
-                                    `${assignment.shift === "night" ? "Noturno" : "Diurno"}: ${assignment.operator?.name ?? "Não informado"}`,
-                                )
-                                .join(" · ")
-                            : "Nenhum operador por turno informado"}
-                        </p>
-                      </div>
-                    ))
-                  ) : (
-                    <EmptyBlock>Nenhuma máquina alocada.</EmptyBlock>
-                  )}
-                </div>
+                <ProjectMachineView
+                  canEdit={canManageMobilization}
+                  onEditMachine={openMachineOperatorModal}
+                  projectId={project.id}
+                  reloadKey={machineReloadKey}
+                />
               </Section>
             )}
 
@@ -5036,6 +5178,72 @@ export function ProjectDetail({
             description={null}
           />
         )}
+      </OperationsModal>
+
+      <OperationsModal
+        icon={Truck}
+        open={openModal === "machineOperators"}
+        onOpenChange={(open) => {
+          if (!open) closeMachineOperatorModal();
+        }}
+        size="lg"
+        title={
+          editingMachineOperators
+            ? `Editar operadores de ${editingMachineOperators.name}`
+            : "Editar operadores"
+        }
+        description="Atualize os operadores por turno sem alterar a mobilização da máquina."
+      >
+        <div className="grid gap-4">
+          {machineOperatorError && (
+            <FormErrorDeclaration
+              issues={[
+                { location: "Operadores", message: machineOperatorError },
+              ]}
+              title="Não foi possível salvar os operadores."
+              description="Corrija o conflito informado e tente novamente."
+            />
+          )}
+          {editingMachineOption && machineOperatorDraft && (
+            <MachineConfiguration
+              draft={machineOperatorDraft}
+              employees={modalOptions.employees}
+              enabledShifts={machineOperatorEnabledShifts}
+              form={readinessForm}
+              machine={editingMachineOption}
+              onCancel={closeMachineOperatorModal}
+              onChange={(shift, operatorEmploymentId) => {
+                setMachineOperatorDraft((current) =>
+                  current
+                    ? {
+                        ...current,
+                        operatorAssignments: [
+                          ...current.operatorAssignments.filter(
+                            (assignment) => assignment.shift !== shift,
+                          ),
+                          { shift, operatorEmploymentId },
+                        ],
+                      }
+                    : current,
+                );
+                setMachineOperatorError(null);
+              }}
+              onConfirm={() => void saveMachineOperators()}
+              message=""
+              confirmLabel={
+                isSavingMachineOperators
+                  ? "Salvando operadores..."
+                  : "Salvar operadores"
+              }
+              unavailableShifts={machineOperatorUnavailableShifts}
+              canConfirm={
+                !isSavingMachineOperators &&
+                machineOperatorMissingAssignments.length === 0 &&
+                machineOperatorUnavailableShifts.length === 0
+              }
+            />
+          )}
+        </div>
       </OperationsModal>
 
       <AlertDialog

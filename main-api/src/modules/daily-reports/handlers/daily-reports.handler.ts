@@ -136,7 +136,7 @@ export async function findProjectDailyReportContextHandler(
     context.prisma.projectScheduleRevision.findFirst({
       where: { ...where, ...overlap },
       orderBy: { effectiveFrom: "desc" },
-      select: { id: true },
+      select: { id: true, nightShiftEnabled: true },
     }),
     context.prisma.projectEmployeeAllocation.findMany({
       where: { ...where, ...overlap, shift },
@@ -245,6 +245,7 @@ export async function findProjectDailyReportContextHandler(
 
   return {
     project,
+    shiftEnabled: shift === "DAY" || Boolean(scheduleRevision?.nightShiftEnabled),
     manager,
     technicalResponsibilities,
     scheduleDays,

@@ -4,6 +4,8 @@ import {
   projectCommandSchema,
   projectIdempotencyKeySchema,
   projectListQuerySchema,
+  projectMachineMobilizationMembersQuerySchema,
+  projectMachineMobilizationOptionsQuerySchema,
   projectQuantityBaselineRevisionCommandSchema,
   projectReadinessCommandSchema,
   projectTeamCandidatesQuerySchema,
@@ -117,6 +119,49 @@ describe("Projects DTO", () => {
       projectWorkFrontMobilizationOptionsQuerySchema.parse({
         resourceType: "employee",
         limit: 16,
+      }),
+    ).toThrow();
+  });
+
+  it("normalizes machine mobilization filters and binds results to pages of at most 15", () => {
+    expect(
+      projectMachineMobilizationOptionsQuerySchema.parse({
+        type: "YELLOW_LINE",
+        manufacturer: "  Caterpillar ",
+        model: "  320 ",
+        version: "  GC ",
+        search: "  ABC-1234 ",
+      }),
+    ).toEqual({
+      type: "YELLOW_LINE",
+      manufacturer: "Caterpillar",
+      model: "320",
+      version: "GC",
+      search: "ABC-1234",
+      limit: 15,
+    });
+    expect(() =>
+      projectMachineMobilizationOptionsQuerySchema.parse({ limit: 16 }),
+    ).toThrow();
+    expect(() =>
+      projectMachineMobilizationOptionsQuerySchema.parse({
+        cursor: "cursor com espaço",
+      }),
+    ).toThrow();
+  });
+
+  it("normalizes the mobilized-machine listing search and limits cursor pages to 15", () => {
+    expect(
+      projectMachineMobilizationMembersQuerySchema.parse({
+        search: "  Escavadeira 01  ",
+      }),
+    ).toEqual({ search: "Escavadeira 01", limit: 15 });
+    expect(() =>
+      projectMachineMobilizationMembersQuerySchema.parse({ limit: 16 }),
+    ).toThrow();
+    expect(() =>
+      projectMachineMobilizationMembersQuerySchema.parse({
+        cursor: "cursor com espaço",
       }),
     ).toThrow();
   });

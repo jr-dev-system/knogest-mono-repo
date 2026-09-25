@@ -61,7 +61,7 @@ export class DailyReportsService {
       shiftToDb(query.shift),
     );
     assertProjectAvailable(broadContext?.project, query.reportDate);
-    if (!broadContext!.scheduleDays.length)
+    if (!broadContext!.shiftEnabled || !broadContext!.scheduleDays.length)
       throw new AppError({
         code: "PROJECT_SHIFT_NOT_ENABLED",
         statusCode: 409,

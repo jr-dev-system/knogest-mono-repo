@@ -1042,12 +1042,13 @@ model ProjectTechnicalResponsibility {
 }
 
 model ProjectScheduleRevision {
-  id            String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId String    @map("corporation_id") @db.Uuid
-  companyId     String    @map("company_id") @db.Uuid
-  projectId     String    @map("project_id") @db.Uuid
-  effectiveFrom DateTime  @map("effective_from") @db.Timestamptz(3)
-  effectiveTo   DateTime? @map("effective_to") @db.Timestamptz(3)
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId     String    @map("corporation_id") @db.Uuid
+  companyId         String    @map("company_id") @db.Uuid
+  projectId         String    @map("project_id") @db.Uuid
+  nightShiftEnabled Boolean   @default(false) @map("night_shift_enabled")
+  effectiveFrom     DateTime  @map("effective_from") @db.Timestamptz(3)
+  effectiveTo       DateTime? @map("effective_to") @db.Timestamptz(3)
 
   @@index([corporationId, companyId, projectId])
   @@map("project_schedule_revisions")

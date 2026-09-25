@@ -6,9 +6,17 @@ Este documento é a fonte canônica dos turnos fixos da equipe de uma obra.
 
 - Toda obra possui o turno `DIURNO`; ele é criado por padrão e não pode ser
   removido.
-- O turno `NOTURNO` é opcional. Ao ser habilitado, começa copiando os dias de
+- O turno `NOTURNO` é opcional. A ativação e a desativação são feitas no modal
+  **Editar jornada noturna**; o diurno é obrigatório e não controla esse
+  estado. Ao ser habilitado, o noturno começa copiando os dias de
   trabalho e intervalos do diurno, com janela sugerida de `18:00` a `06:00` do
-  dia seguinte. Depois disso, as duas escalas são independentes.
+  dia seguinte. Depois disso, as duas escalas são independentes. Desabilitá-lo
+  não remove sua jornada, intervalos, equipe, operadores ou vínculos de frente:
+  esses dados retornam ao reativá-lo.
+- Enquanto estiver desativado, a aba Noturno segue indisponível para operação,
+  mas o botão **Editar turno noturno** abre exclusivamente sua jornada. Essa
+  edição pode reativar ou suspender o turno; não mobiliza, altera ou remove
+  integrantes durante a transição.
 - Cada turno tem exatamente sete dias configurados. Dias úteis possuem início,
   fim e indicador de encerramento no mesmo dia ou no dia seguinte.
 - Cada trabalhador mobilizado pertence a exatamente um turno. A mudança de
@@ -42,8 +50,9 @@ Este documento é a fonte canônica dos turnos fixos da equipe de uma obra.
 - Ao mudar o turno de um trabalhador, suas vinculações atuais como operador e
   participante de frente são realocadas na mesma transação. A mudança é
   bloqueada se o destino da máquina já estiver ocupado naquele turno.
-- O turno noturno só pode ser removido quando não houver trabalhadores,
-  operadores, máquinas ou vínculos de frente ainda associados a ele.
+- Enquanto desabilitado, o Noturno permanece visível na aba Equipe, mas não
+  aceita carregamento, edição nem inclusão. A API também recusa novas ações
+  operacionais nesse turno com `409 PROJECT_SHIFT_NOT_ENABLED`.
 
 ## RDO e produção
 
@@ -63,12 +72,13 @@ mudanças posteriores de turno.
 - Alocações de equipe incluem `shift: day | night`.
 - Jornadas e intervalos incluem `shift`; jornadas incluem `endDayOffset`.
 - Máquinas que exigem operador usam `operatorAssignments[]`, com `shift` e
-  `operatorEmploymentId`; máquinas sem requisito enviam a lista vazia.
+  `operatorEmploymentId`; deve existir uma designação válida para cada turno
+  habilitado. Máquinas sem requisito enviam a lista vazia.
 - A criação de unidade por modelo pode incluir uma mobilização inicial atômica.
   Nesse caso, `POST /machine-models/:machineModelId/units` recebe `allocation`
-  com a obra e os mesmos `operatorAssignments[]`; operadores precisam pertencer
-  à equipe e ao turno informados, respeitar a função confirmada e estar livres
-  de outra máquina naquele turno.
+  com a obra e os mesmos `operatorAssignments[]`; operadores precisam cobrir
+  todos os turnos habilitados, pertencer à equipe e ao turno informados,
+  respeitar a função confirmada e estar livres de outra máquina naquele turno.
 - Mobilização de frente usa `machineAssignments[]`, com `machineId` e `shift`.
 - `PUT /projects/:projectId/mobilization/employees` pode reconciliar equipe,
   jornada e intervalos juntos.

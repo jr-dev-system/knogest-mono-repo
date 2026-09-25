@@ -41,7 +41,7 @@ type Filters = {
   search: string;
 };
 
-type MachineDraft = {
+export type MachineDraft = {
   machineId: string;
   operatorAssignments: {
     shift: "day" | "night";
@@ -82,23 +82,55 @@ function MachineIdentity({
   machine: ProjectMachineMobilizationOption;
 }) {
   return (
-    <div className="min-w-0">
+    <div className="min-w-0 flex-1">
       <p className="truncate text-sm font-bold text-foreground">
         {machine.label}
       </p>
-      <p className="truncate text-xs font-medium text-muted-foreground">
-        {machine.manufacturer} / {machine.model}
-        {machine.version ? ` · ${machine.version}` : ""}
+      <p className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-medium text-muted-foreground">
+        <span>{machineTypeLabel(machine.type)}</span>
+        <span aria-hidden="true">·</span>
+        <span>Leitura {machineReading(machine)}</span>
+        {identifiersLabel(machine) && (
+          <>
+            <span aria-hidden="true">·</span>
+            <span>{identifiersLabel(machine)}</span>
+          </>
+        )}
       </p>
-      <p className="mt-0.5 truncate text-xs font-medium text-muted-foreground">
-        {machineTypeLabel(machine.type)} · Leitura {machineReading(machine)}
-        {identifiersLabel(machine) ? ` · ${identifiersLabel(machine)}` : ""}
-      </p>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3 text-xs sm:grid-cols-3 sm:gap-x-3">
+        <div className="col-span-2 min-w-0 sm:col-span-1">
+          <dt className="font-semibold text-foreground">Modelo</dt>
+          <dd
+            title={machine.model || "Não informado"}
+            className="truncate font-bold text-foreground"
+          >
+            {machine.model || "Não informado"}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="font-semibold text-foreground">Versão</dt>
+          <dd
+            title={machine.version || "Não informada"}
+            className="truncate font-bold text-foreground"
+          >
+            {machine.version || "Não informada"}
+          </dd>
+        </div>
+        <div className="min-w-0">
+          <dt className="font-semibold text-foreground">Fabricante</dt>
+          <dd
+            title={machine.manufacturer || "Não informado"}
+            className="truncate font-bold text-foreground"
+          >
+            {machine.manufacturer || "Não informado"}
+          </dd>
+        </div>
+      </dl>
     </div>
   );
 }
 
-function MachineConfiguration({
+export function MachineConfiguration({
   draft,
   employees,
   enabledShifts,
@@ -108,6 +140,7 @@ function MachineConfiguration({
   onChange,
   onConfirm,
   message,
+  confirmLabel = "Confirmar máquina",
   unavailableShifts,
   canConfirm,
 }: {
@@ -120,6 +153,7 @@ function MachineConfiguration({
   onChange: (shift: "day" | "night", employmentId: string) => void;
   onConfirm: () => void;
   message: string;
+  confirmLabel?: string;
   unavailableShifts: Array<"day" | "night">;
   canConfirm: boolean;
 }) {
@@ -246,7 +280,7 @@ function MachineConfiguration({
         </Button>
         <Button type="button" onClick={onConfirm} disabled={!canConfirm}>
           <Check className="size-4" />
-          Confirmar máquina
+          {confirmLabel}
         </Button>
       </div>
     </div>
@@ -288,10 +322,7 @@ function SelectedCount({ count }: { count: number }) {
 
 function MachineResultsSkeleton() {
   return (
-    <div
-      aria-hidden="true"
-      className="grid gap-2 motion-reduce:animate-none"
-    >
+    <div aria-hidden="true" className="grid gap-2 motion-reduce:animate-none">
       {Array.from({ length: 4 }, (_, index) => (
         <div
           key={index}
@@ -518,7 +549,10 @@ function MachineSelectionStep({
 
   return (
     <div className="grid gap-5">
-      <section className="-mx-5 border-y border-border bg-popover px-5 py-3">
+      <section
+        aria-label="Filtros avançados de máquinas"
+        className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:p-4"
+      >
         <div className="flex flex-wrap items-start justify-between gap-2">
           <div>
             <h3 className="text-sm font-bold">Filtros avançados</h3>
@@ -527,8 +561,8 @@ function MachineSelectionStep({
             </p>
           </div>
         </div>
-        <div id="machine-advanced-filters" className="mt-2 grid gap-2">
-          <div className="grid gap-2 [grid-template-columns:repeat(auto-fit,minmax(min(100%,10.5rem),1fr))]">
+        <div id="machine-advanced-filters" className="grid gap-3">
+          <div className="grid gap-3 [grid-template-columns:repeat(auto-fit,minmax(min(100%,10.5rem),1fr))]">
             <label className="grid gap-1.5 text-sm font-semibold">
               <span>Tipo</span>
               <select
@@ -609,26 +643,29 @@ function MachineSelectionStep({
               </select>
             </label>
           </div>
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <span className="relative flex-1">
-              <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                autoFocus
-                className="h-11 w-full pl-9"
-                value={filters.search}
-                onChange={(event) =>
-                  onFiltersChange({
-                    ...filters,
-                    search: event.target.value,
-                  })
-                }
-                placeholder="Buscar unidade, placa ou patrimônio"
-              />
-            </span>
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <label className="grid min-w-[min(100%,18rem)] flex-1 gap-1.5 text-sm font-semibold">
+              <span>Buscar unidade</span>
+              <span className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  autoFocus
+                  className="h-11 w-full bg-background pl-9"
+                  value={filters.search}
+                  onChange={(event) =>
+                    onFiltersChange({
+                      ...filters,
+                      search: event.target.value,
+                    })
+                  }
+                  placeholder="Buscar unidade, placa ou patrimônio"
+                />
+              </span>
+            </label>
             <Button
               type="button"
               variant="link"
-              className="h-auto px-0"
+              className="min-h-11 px-0"
               onClick={() => onFiltersChange(emptyFilters)}
             >
               Limpar filtros
@@ -706,54 +743,54 @@ function MachineSelectionStep({
         </div>
         {isInitialLoading ? (
           <MachineResultsSkeleton />
-        ) : unselected.length
-          ? unselected.map((machine) => {
-              const editing = draft?.machineId === machine.id;
-              return (
-                <div
-                  key={machine.id}
-                  className={cn(
-                    "rounded-md border border-border bg-background px-3 py-2 transition-[background-color,border-color,transform] duration-200 ease-out hover:bg-muted/50",
-                    editing && "border-primary/35 bg-primary/[0.035]",
-                    !machine.readingId && "cursor-not-allowed opacity-60",
-                  )}
-                >
-                  <label className="flex cursor-pointer items-start gap-3">
-                    <input
-                      className="mt-0.5 size-4 accent-primary"
-                      type="checkbox"
-                      disabled={!machine.readingId}
-                      checked={false}
-                      onChange={(event) =>
-                        event.target.checked && begin(machine)
-                      }
-                      aria-label={`Selecionar ${machine.label}`}
-                    />
-                    <MachineIdentity machine={machine} />
-                  </label>
-                  {editing && (
-                    <MachineConfiguration
-                      draft={draft}
-                      employees={employees}
-                      enabledShifts={enabledShifts}
-                      form={form}
-                      machine={machine}
-                      onCancel={() => setDraft(null)}
-                      onChange={changeDraft}
-                      onConfirm={confirm}
-                      message={message}
-                      unavailableShifts={unavailableShifts}
-                      canConfirm={canConfirmDraft}
-                    />
-                  )}
-                </div>
-              );
-            })
-          : !loading && (
-              <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm font-medium text-muted-foreground">
-                Nenhuma máquina encontrada com estes filtros.
-              </p>
-            )}
+        ) : unselected.length ? (
+          unselected.map((machine) => {
+            const editing = draft?.machineId === machine.id;
+            return (
+              <div
+                key={machine.id}
+                className={cn(
+                  "rounded-md border border-border bg-background px-3 py-2 transition-[background-color,border-color,transform] duration-200 ease-out hover:bg-muted/50",
+                  editing && "border-primary/35 bg-primary/[0.035]",
+                  !machine.readingId && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <label className="flex cursor-pointer items-start gap-3">
+                  <input
+                    className="mt-0.5 size-4 accent-primary"
+                    type="checkbox"
+                    disabled={!machine.readingId}
+                    checked={false}
+                    onChange={(event) => event.target.checked && begin(machine)}
+                    aria-label={`Selecionar ${machine.label}`}
+                  />
+                  <MachineIdentity machine={machine} />
+                </label>
+                {editing && (
+                  <MachineConfiguration
+                    draft={draft}
+                    employees={employees}
+                    enabledShifts={enabledShifts}
+                    form={form}
+                    machine={machine}
+                    onCancel={() => setDraft(null)}
+                    onChange={changeDraft}
+                    onConfirm={confirm}
+                    message={message}
+                    unavailableShifts={unavailableShifts}
+                    canConfirm={canConfirmDraft}
+                  />
+                )}
+              </div>
+            );
+          })
+        ) : (
+          !loading && (
+            <p className="rounded-md border border-dashed border-border px-3 py-4 text-sm font-medium text-muted-foreground">
+              Nenhuma máquina encontrada com estes filtros.
+            </p>
+          )
+        )}
         <div className="flex items-center justify-end gap-2 pt-2">
           <Button
             type="button"

@@ -6,6 +6,7 @@ import { postApiV1Projects } from "@/generated/clients/postApiV1Projects";
 import { getApiV1ProjectsProjectidTeamCandidates } from "@/generated/clients/getApiV1ProjectsProjectidTeamCandidates";
 import { getApiV1ProjectsProjectidTeamMembers } from "@/generated/clients/getApiV1ProjectsProjectidTeamMembers";
 import { getApiV1ProjectsProjectidMobilizationMachineOptions } from "@/generated/clients/getApiV1ProjectsProjectidMobilizationMachineOptions";
+import { getApiV1ProjectsProjectidMobilizationMachines } from "@/generated/clients/getApiV1ProjectsProjectidMobilizationMachines";
 import { getApiV1ProjectsProjectidFrontsFrontidMobilizationOptions } from "@/generated/clients/getApiV1ProjectsProjectidFrontsFrontidMobilizationOptions";
 import client, { ApiClientError } from "@/lib/api/server-client";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
@@ -15,6 +16,7 @@ import type {
   FuelSupplierOption,
   ProjectDetailSnapshot,
   ProjectMobilizationHistoryPage,
+  ProjectMachineMobilizationMembersPage,
   ProjectMachineMobilizationOptionsPage,
   ProjectSuppliedItemOffersPage,
   ProjectTeamCandidatesPage,
@@ -697,9 +699,9 @@ export async function saveProjectEmployeeMobilizationAction(
         allocations: parsed,
         ...(schedule
           ? {
-            weeklySchedule: schedule.weeklySchedule,
-            breakTemplates: schedule.breakTemplates,
-            nightShiftEnabled: schedule.nightShiftEnabled,
+              weeklySchedule: schedule.weeklySchedule,
+              breakTemplates: schedule.breakTemplates,
+              nightShiftEnabled: schedule.nightShiftEnabled,
             }
           : {}),
       },
@@ -764,6 +766,27 @@ export async function getProjectMachineMobilizationOptionsAction({
       search: search?.trim() || undefined,
       type,
       version: version?.trim() || undefined,
+    },
+  });
+  return response.data;
+}
+
+export async function getProjectMachineMobilizationMembersAction({
+  cursor,
+  projectId,
+  search,
+}: {
+  cursor?: string | null;
+  projectId: string;
+  search?: string;
+}): Promise<ProjectMachineMobilizationMembersPage> {
+  const id = z.string().uuid().parse(projectId);
+  const response = await getApiV1ProjectsProjectidMobilizationMachines({
+    projectId: id,
+    params: {
+      limit: 15,
+      cursor: cursor || undefined,
+      search: search?.trim() || undefined,
     },
   });
   return response.data;

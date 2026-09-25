@@ -147,6 +147,13 @@ personal-data ciphertext.
 busca, cargo ou turno retornam `400 VALIDATION_ERROR` no envelope canônico; não
 há novos códigos de erro públicos para a filtragem.
 
+## Filtros de máquinas mobilizadas
+
+`GET /projects/:projectId/mobilization/machines` valida `search` e `cursor`
+como query estrita. Valores inválidos ou cursores emitidos para outra busca ou
+obra retornam `400 VALIDATION_ERROR` no envelope canônico; não há novo código
+público para a listagem.
+
 ## Funções da empresa
 
 - `JOB_ROLE_ALREADY_EXISTS` retorna `409` quando o nome normalizado da função

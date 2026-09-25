@@ -100,6 +100,43 @@ essa elegibilidade. Ao editar uma máquina, seu operador atual continua elegíve
 para que a alocação possa ser corrigida, mesmo quando ficou incompatível. A
 exceção é `acceptsAnyJobRole`, que aceita qualquer função.
 
+No editor de máquinas da página da obra, `GET
+/projects/:projectId/mobilization/machine-options` oferece a mesma elegibilidade
+em páginas de até 15 unidades. Aceita `type` (linha amarela ou branca),
+`manufacturer`, `model`, `version` e `search` (nome, placa ou patrimônio). Os
+filtros de fabricante, modelo e versão são dependentes, e o cursor fica ligado
+a todos os filtros normalizados; trocar qualquer filtro exige começar da
+primeira página. A resposta também traz as máquinas já mobilizadas, inclusive
+quando não correspondem ao filtro atual, para que a revisão local nunca perca
+uma seleção. Unidades mobilizadas em outra obra permanecem indisponíveis.
+
+O editor é um wizard de inclusão: primeiro seleciona e configura, depois
+apresenta o resumo antes do salvamento. Ele lista e conta somente máquinas
+confirmadas na abertura atual; mobilizações existentes são preservadas nesse
+fluxo. Ao abrir uma máquina, a configuração de operadores aparece junto à
+própria linha e rola o modal até ela, preservando filtro, resultado e página.
+Enquanto as opções são consultadas, o modal reserva a área da lista com
+skeletons para evitar salto de layout. O salvamento continua em `PUT
+/projects/:projectId/mobilization/machines` para obra ativa e em `PUT
+/projects/:projectId/readiness` para obra planejada.
+
+A aba **Máquinas e operadores** consulta `GET
+/projects/:projectId/mobilization/machines` em páginas de até 15 alocações
+atuais. A busca encontra nome, fabricante, modelo, versão, placa e patrimônio;
+o cursor é vinculado a tenant, empresa, obra e busca normalizada. Cada cartão
+mostra a máquina, leitura de abertura e operadores por turno. A ação de lápis
+abre um modal focado somente nos operadores, pré-preenche as designações e usa
+a mesma elegibilidade da inclusão: turno correspondente, função confirmada
+compatível e exclusividade por turno. Salvar reconcilia a lista completa de
+alocações e preserva máquina, leitura e termos de locação. Máquinas sem
+exigência de operador não podem abrir essa edição.
+
+Para modelos que exigem operador, cada turno habilitado precisa de um operador
+compatível. O seletor não oferece “não mobilizar” nesses turnos; se não houver
+integrante elegível, a máquina fica sem confirmação, a interface explica a
+causa e desabilita a confirmação. A mesma regra é validada pela API, inclusive
+na criação atômica de unidade.
+
 Cada alocação de equipe persiste `confirmedJobRoleId` e, quando a confirmação
 coincide com o vínculo atual, `confirmedJobRolePeriodId`. Registros legados que
 não possuem um identificador confiável de função não são associados por nome:

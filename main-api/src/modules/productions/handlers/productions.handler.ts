@@ -234,21 +234,10 @@ export async function findProductionOptionsContextHandler(
     await context.prisma.projectScheduleRevision.findFirst({
       where: { ...scopeWhere(scope, projectId), ...overlap },
       orderBy: { effectiveFrom: "desc" },
-      select: { id: true },
+      select: { id: true, nightShiftEnabled: true },
     });
-  const shiftEnabled = scheduleRevision
-    ? Boolean(
-        await context.prisma.projectScheduleDay.findFirst({
-          where: {
-            corporationId: scope.corporationId,
-            companyId: scope.companyId,
-            scheduleRevisionId: scheduleRevision.id,
-            shift,
-          },
-          select: { id: true },
-        }),
-      )
-    : false;
+  const shiftEnabled =
+    shift === "DAY" || Boolean(scheduleRevision?.nightShiftEnabled);
   const [services, assignments, employeeAllocations] = await Promise.all([
     frontIds.length
       ? context.prisma.projectWorkFrontService.findMany({

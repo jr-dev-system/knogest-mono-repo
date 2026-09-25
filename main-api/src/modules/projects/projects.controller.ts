@@ -6,6 +6,8 @@ import {
   projectIdempotencyKeySchema,
   projectListQuerySchema,
   projectMachineMobilizationCommandSchema,
+  projectMachineMobilizationMembersQuerySchema,
+  projectMachineMobilizationOptionsQuerySchema,
   projectMobilizationHistoryQuerySchema,
   projectParamsSchema,
   projectQuantityBaselineRevisionCommandSchema,
@@ -198,6 +200,7 @@ const projectCommandOpenApiSchema = {
       uniqueItems: true,
       items: uuid,
     },
+    nightShiftEnabled: { type: "boolean" },
     weeklySchedule: {
       type: "array",
       minItems: 7,
@@ -623,6 +626,7 @@ const projectEmployeeMobilizationOpenApiSchema = {
   properties: {
     allocations:
       projectReadinessCommandOpenApiSchema.properties.employeeAllocations,
+    nightShiftEnabled: { type: "boolean" },
     weeklySchedule: projectCommandOpenApiSchema.properties.weeklySchedule,
     breakTemplates: projectCommandOpenApiSchema.properties.breakTemplates,
     reason: { type: "string", nullable: true, maxLength: 500 },
@@ -852,6 +856,159 @@ const projectReadinessMachineOptionSchema = {
     requiredJobRoleName: { type: "string", nullable: true },
     acceptsAnyJobRole: { type: "boolean" },
     available: { type: "boolean" },
+  },
+} as const;
+
+const projectMachineMobilizationOptionSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "id",
+    "label",
+    "type",
+    "manufacturer",
+    "model",
+    "version",
+    "meterType",
+    "identifiers",
+    "detail",
+    "readingId",
+    "requiresOperator",
+    "requiredJobRoleId",
+    "requiredJobRoleName",
+    "acceptsAnyJobRole",
+    "available",
+  ],
+  properties: {
+    id: uuid,
+    label: { type: "string" },
+    type: { enum: ["YELLOW_LINE", "WHITE_LINE"] },
+    manufacturer: { type: "string" },
+    model: { type: "string" },
+    version: { type: "string", nullable: true },
+    meterType: { enum: ["HOUR_METER", "ODOMETER"] },
+    identifiers: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["kind", "value"],
+        properties: {
+          kind: { enum: ["PLATE", "COMPANY_TAG"] },
+          value: { type: "string" },
+        },
+      },
+    },
+    detail: { type: "string", nullable: true },
+    readingId: { ...uuid, nullable: true },
+    requiresOperator: { type: "boolean" },
+    requiredJobRoleId: { ...uuid, nullable: true },
+    requiredJobRoleName: { type: "string", nullable: true },
+    acceptsAnyJobRole: { type: "boolean" },
+    available: { type: "boolean" },
+  },
+} as const;
+
+const projectMachineMobilizationOptionsPageSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["selected", "data", "facets", "pageInfo"],
+  properties: {
+    selected: { type: "array", items: projectMachineMobilizationOptionSchema },
+    data: { type: "array", items: projectMachineMobilizationOptionSchema },
+    facets: {
+      type: "object",
+      additionalProperties: false,
+      required: ["manufacturers", "models", "versions"],
+      properties: {
+        manufacturers: { type: "array", items: { type: "string" } },
+        models: { type: "array", items: { type: "string" } },
+        versions: { type: "array", items: { type: "string" } },
+      },
+    },
+    pageInfo: cursorPageInfoSchema,
+  },
+} as const;
+
+const projectMachineMobilizationMembersPageSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["data", "pageInfo"],
+  properties: {
+    data: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "id",
+          "machineId",
+          "name",
+          "type",
+          "manufacturer",
+          "model",
+          "version",
+          "meterType",
+          "identifiers",
+          "startMeterReading",
+          "requiresOperator",
+          "requiredJobRoleId",
+          "requiredJobRoleName",
+          "acceptsAnyJobRole",
+          "operatorAssignments",
+        ],
+        properties: {
+          id: uuid,
+          machineId: uuid,
+          name: { type: "string" },
+          type: { enum: ["YELLOW_LINE", "WHITE_LINE"] },
+          manufacturer: { type: "string" },
+          model: { type: "string" },
+          version: { type: "string", nullable: true },
+          meterType: { enum: ["HOUR_METER", "ODOMETER"] },
+          identifiers: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["kind", "value"],
+              properties: {
+                kind: { enum: ["PLATE", "COMPANY_TAG"] },
+                value: { type: "string" },
+              },
+            },
+          },
+          startMeterReading: {
+            type: "object",
+            nullable: true,
+            required: ["id", "value"],
+            properties: { id: uuid, value: { type: "string" } },
+          },
+          requiresOperator: { type: "boolean" },
+          requiredJobRoleId: { ...uuid, nullable: true },
+          requiredJobRoleName: { type: "string", nullable: true },
+          acceptsAnyJobRole: { type: "boolean" },
+          operatorAssignments: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["shift", "operator"],
+              properties: {
+                shift: { enum: ["day", "night"] },
+                operator: {
+                  type: "object",
+                  nullable: true,
+                  required: ["id", "name"],
+                  properties: { id: uuid, name: { type: "string" } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+    pageInfo: cursorPageInfoSchema,
   },
 } as const;
 
@@ -1398,6 +1555,123 @@ export async function v1ProjectsController(app: FastifyInstance) {
           data: await service.readinessOptions(
             scope(request),
             parsedParams.data.projectId,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.get<{ Params: { projectId: string } }>(
+    "/projects/:projectId/mobilization/machine-options",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "List paginated Machine mobilization options for one Project",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["projectId"],
+          properties: { projectId: uuid },
+        },
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 15, default: 15 },
+            cursor: { type: "string", maxLength: 2048 },
+            type: { enum: ["YELLOW_LINE", "WHITE_LINE"] },
+            manufacturer: { type: "string", maxLength: 120 },
+            model: { type: "string", maxLength: 120 },
+            version: { type: "string", maxLength: 120 },
+            search: { type: "string", maxLength: 120 },
+          },
+        },
+        response: {
+          200: successSchema(projectMachineMobilizationOptionsPageSchema),
+          400: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsedParams = projectParamsSchema.safeParse(request.params);
+      const parsedQuery =
+        projectMachineMobilizationOptionsQuerySchema.safeParse(request.query);
+      if (!parsedParams.success || !parsedQuery.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid Project Machine mobilization options query",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.machineMobilizationOptions(
+            scope(request),
+            parsedParams.data.projectId,
+            parsedQuery.data,
+          ),
+        });
+      } catch (error) {
+        return jsonResponse.fromError({ reply, error });
+      }
+    },
+  );
+
+  app.get<{
+    Params: { projectId: string };
+    Querystring: { limit?: number; cursor?: string; search?: string };
+  }>(
+    "/projects/:projectId/mobilization/machines",
+    {
+      preHandler: app.requireCompanyScope,
+      schema: {
+        tags: ["Projects"],
+        summary: "List paginated machines mobilized to one Project",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          required: ["projectId"],
+          properties: { projectId: uuid },
+        },
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 15, default: 15 },
+            cursor: { type: "string", maxLength: 2048 },
+            search: { type: "string", maxLength: 120 },
+          },
+        },
+        response: {
+          200: successSchema(projectMachineMobilizationMembersPageSchema),
+          400: errorSchema,
+          404: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const parsedParams = projectParamsSchema.safeParse(request.params);
+      const parsedQuery =
+        projectMachineMobilizationMembersQuerySchema.safeParse(request.query);
+      if (!parsedParams.success || !parsedQuery.success)
+        return jsonResponse.error({
+          reply,
+          statusCode: 400,
+          code: "VALIDATION_ERROR",
+          message: "Invalid Project Machine mobilization members query",
+        });
+      try {
+        return jsonResponse.success({
+          reply,
+          data: await service.machineMobilizationMembers(
+            scope(request),
+            parsedParams.data.projectId,
+            parsedQuery.data,
           ),
         });
       } catch (error) {
