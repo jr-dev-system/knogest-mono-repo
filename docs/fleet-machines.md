@@ -35,6 +35,16 @@ com unidade excluída do mesmo modelo, a criação responde
 `409 MACHINE_DELETED_IDENTIFIER_MATCH` com candidatos seguros. O cliente pode
 restaurar o mesmo ID (com nova leitura não inferior à última) ou criar uma nova
 unidade com as mesmas identificações.
+
+Modelos podem ser editados por `PATCH /machine-models/:machineModelId`. A
+alteração atualiza o catálogo e as projeções das unidades; mudanças na regra de
+operador continuam bloqueadas enquanto alguma unidade estiver mobilizada.
+`DELETE /machine-models/:machineModelId` arquiva apenas modelos sem nenhuma
+unidade ativa, registrando data e usuário da exclusão. O modelo deixa de
+aparecer no catálogo, mas unidades inativas e todo o histórico operacional
+permanecem intactos. A unicidade de fabricante/modelo/versão considera somente
+modelos ativos, permitindo um novo cadastro equivalente após o arquivamento.
+
 Na inclusão posterior, a confirmação usa o toast global transitório e atualiza
 o detalhe do modelo; uma falha permanece no formulário com a causa retornada
 para que o cadastro possa ser corrigido e reenviado.

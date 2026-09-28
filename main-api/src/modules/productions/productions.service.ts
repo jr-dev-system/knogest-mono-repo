@@ -1040,12 +1040,28 @@ export class ProductionsService {
     const front = options.fronts.find(
       (item) => item.id === normalized.workFrontId,
     );
+    const destinationFront =
+      command.kind === "material_movement"
+        ? options.fronts.find(
+            (item) =>
+              item.id === command.materialMovement.destinationWorkFrontId,
+          )
+        : null;
     const service = options.services.find(
       (item) =>
         item.id === normalized.workFrontServiceId &&
         item.workFrontId === normalized.workFrontId,
     );
     if (!front || !service) throw resourceUnavailable("work-front-service");
+    if (command.kind === "material_movement" && !destinationFront)
+      throw resourceUnavailable("destination-work-front");
+    if (
+      command.kind === "material_movement" &&
+      !command.materialMovement.components.some(
+        (component) => component.workFrontId === destinationFront!.id,
+      )
+    )
+      throw resourceUnavailable("destination-work-front-service");
     const assignments = options.assignments.filter(
       (item) => item.workFrontId === normalized.workFrontId,
     );
@@ -1157,11 +1173,8 @@ export class ProductionsService {
     const effectiveRoute =
       command.kind === "material_movement"
         ? {
-            origin:
-              routeRevision?.route.origin ?? command.materialMovement.origin,
-            destination:
-              routeRevision?.route.destination ??
-              command.materialMovement.destination,
+            origin: front.name,
+            destination: destinationFront!.name,
             loadedDistanceKm:
               routeRevision?.loadedDistanceKm.toFixed(3) ??
               command.materialMovement.dmtKm,
@@ -1357,8 +1370,8 @@ export class ProductionsService {
           ? {
               materialRevisionId: command.materialMovement.materialRevisionId,
               routeRevisionId: command.materialMovement.routeRevisionId,
-              origin: command.materialMovement.origin,
-              destination: command.materialMovement.destination,
+              origin: effectiveRoute!.origin,
+              destination: effectiveRoute!.destination,
               layer: command.materialMovement.layer,
               materialSnapshot: {
                 revisionId: command.materialMovement.materialRevisionId,
@@ -1932,7 +1945,6 @@ function validateApprovalData(
 ) {
   const missing: string[] = [];
   if (!data.responsibleEmploymentId) missing.push("responsible");
-  if (!data.startTime || !data.endTime) missing.push("activity-window");
   if (!data.equipment.length) missing.push("equipment");
   if (Number(metrics.operationalQuantity) <= 0) missing.push("quantity");
   if (isVolumetric(data.unitCodeSnapshot) && !data.volumeCondition)

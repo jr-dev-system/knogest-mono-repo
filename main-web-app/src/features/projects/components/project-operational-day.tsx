@@ -28,11 +28,14 @@ import {
   saveOperationalRdoAction,
   startOperationalShiftAction,
 } from "../operational-day.actions";
+import { getProjectProductionOptionsAction } from "../productions.actions";
 import type {
   OperationalDay,
   OperationalResult,
   OperationalShift,
 } from "../operational-day.types";
+import type { ProjectProductionOptions } from "../productions.types";
+import { ProjectProductionWizard } from "./project-production-wizard";
 
 const activityLabels = {
   earthworks: "Terraplanagem",
@@ -70,16 +73,25 @@ export function ProjectOperationalDay({
     shift: OperationalShift;
   } | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [production, setProduction] = React.useState<{
+    shift: OperationalShift;
+    responsibleEmploymentId: string;
+    options: ProjectProductionOptions;
+  } | null>(null);
   const refresh = React.useCallback(() => router.refresh(), [router]);
+  const refreshPaused = panel !== null || production !== null;
   React.useEffect(() => {
-    const id = window.setInterval(refresh, 30_000);
-    const focus = () => refresh();
+    const refreshWhenIdle = () => {
+      if (!refreshPaused) refresh();
+    };
+    const id = window.setInterval(refreshWhenIdle, 30_000);
+    const focus = () => refreshWhenIdle();
     window.addEventListener("focus", focus);
     return () => {
       window.clearInterval(id);
       window.removeEventListener("focus", focus);
     };
-  }, [refresh]);
+  }, [refresh, refreshPaused]);
   async function run(
     work: () => Promise<
       ReturnType<typeof startOperationalShiftAction> extends Promise<infer T>
@@ -98,6 +110,26 @@ export function ProjectOperationalDay({
     setDay(result.day);
     setPanel(null);
     toast.success(success);
+  }
+  async function openProduction(item: OperationalDay["shifts"][number]) {
+    if (!item.report || item.report.status !== "draft") return;
+    setBusy(true);
+    try {
+      const options = await getProjectProductionOptionsAction({
+        projectId,
+        productionDate: day.reportDate,
+        shift: item.shift,
+      });
+      setProduction({
+        shift: item.shift,
+        responsibleEmploymentId: item.report.supervisor.employmentId,
+        options,
+      });
+    } catch {
+      toast.error("Não foi possível abrir o lançamento de produção.");
+    } finally {
+      setBusy(false);
+    }
   }
   const formatted = new Intl.DateTimeFormat("pt-BR", {
     timeZone: "UTC",
@@ -143,11 +175,7 @@ export function ProjectOperationalDay({
               key={item.shift}
               item={item}
               onAction={(kind) => setPanel({ kind, shift: item.shift })}
-              onProduction={() =>
-                router.push(
-                  `/home/obras/${projectId}?section=production&date=${day.reportDate}&shift=${item.shift}`,
-                )
-              }
+              onProduction={() => void openProduction(item)}
             />
           ))}
         </div>
@@ -228,6 +256,30 @@ export function ProjectOperationalDay({
           busy={busy}
           close={() => setPanel(null)}
           run={run}
+        />
+      )}
+      {production && (
+        <ProjectProductionWizard
+          contextualEntry={{
+            productionDate: day.reportDate,
+            shift: production.shift,
+            responsibleEmploymentId: production.responsibleEmploymentId,
+          }}
+          detail={null}
+          onContextChange={(productionDate, shift) =>
+            getProjectProductionOptionsAction({
+              projectId,
+              productionDate,
+              shift,
+            })
+          }
+          onOpenChange={(open) => {
+            if (!open) setProduction(null);
+          }}
+          onSaved={() => refresh()}
+          open
+          options={production.options}
+          projectId={projectId}
         />
       )}
     </main>

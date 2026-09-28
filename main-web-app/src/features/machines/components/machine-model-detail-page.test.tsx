@@ -16,8 +16,9 @@ import type { MachineModelDetail } from "../machines.server";
 import { MachineModelDetailPage } from "./machine-model-detail-page";
 
 const refresh = vi.fn();
+const push = vi.fn();
 vi.mock("next/navigation", () => ({
-  useRouter: () => ({ refresh }),
+  useRouter: () => ({ push, refresh }),
 }));
 
 type AddUnitsAction = (
@@ -115,12 +116,26 @@ function renderPage(
     message: "Unidade criada.",
   }),
   currentModel: MachineModelDetail = model,
+  mutations: {
+    deleteAction?: () => Promise<MachineActionState>;
+    updateAction?: AddUnitsAction;
+  } = {},
 ) {
   return render(
     <>
       <MachineModelDetailPage
         model={currentModel}
         action={action}
+        deleteAction={
+          mutations.deleteAction ??
+          (async () => ({ ok: true, message: "Modelo excluído." }))
+        }
+        jobRoles={[
+          {
+            id: "00000000-0000-4000-8000-000000000002",
+            name: "Operador",
+          },
+        ]}
         loadProjectAction={async () => ({
           ok: true,
           project: {
@@ -154,6 +169,10 @@ function renderPage(
             pageInfo: { hasNextPage: false, nextCursor: null },
           },
         })}
+        updateAction={
+          mutations.updateAction ??
+          (async () => ({ ok: true, message: "Modelo atualizado." }))
+        }
       />
       <Toaster position="top-center" />
     </>,
@@ -202,6 +221,89 @@ describe("MachineModelDetailPage", () => {
         .getByRole("link", { name: "Ver unidade Unidade 01" })
         .getAttribute("href"),
     ).toBe("/home/maquinas/00000000-0000-4000-8000-000000000001");
+  });
+
+  it("prefills and submits the model editor", async () => {
+    const user = userEvent.setup();
+    const updateAction = vi.fn<AddUnitsAction>(async () => ({
+      ok: true,
+      message: "Modelo atualizado.",
+    }));
+    renderPage(undefined, model, { updateAction });
+
+    await user.click(screen.getByRole("button", { name: "Editar modelo" }));
+    expect((screen.getByLabelText("Fabricante") as HTMLInputElement).value).toBe(
+      "Caterpillar",
+    );
+    expect((screen.getByLabelText("Modelo") as HTMLInputElement).value).toBe(
+      "320 GC",
+    );
+    await user.clear(screen.getByLabelText("Descrição (opcional)"));
+    await user.type(
+      screen.getByLabelText("Descrição (opcional)"),
+      "Modelo revisado",
+    );
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(screen.getByRole("button", { name: "Avançar" }));
+    await user.click(
+      screen.getByRole("button", { name: "Salvar alterações" }),
+    );
+
+    await waitFor(() => expect(updateAction).toHaveBeenCalledTimes(1));
+    expect(updateAction.mock.calls[0][1].get("description")).toBe(
+      "Modelo revisado",
+    );
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("blocks model deletion while active units exist", () => {
+    renderPage();
+
+    const button = screen.getByRole("button", { name: "Excluir modelo" });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(
+      screen.getByText("Exclua as 3 unidades ativas antes de excluir o modelo."),
+    ).toBeTruthy();
+  });
+
+  it("confirms an eligible soft delete and navigates to the registry", async () => {
+    const user = userEvent.setup();
+    const deleteAction = vi.fn(async () => ({
+      ok: true,
+      message: "Modelo excluído.",
+    }));
+    renderPage(undefined, { ...model, unitCount: 0, units: [] }, { deleteAction });
+
+    await user.click(screen.getByRole("button", { name: "Excluir modelo" }));
+    expect(screen.getByText(/todo o histórico operacional/)).toBeTruthy();
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar exclusão" }),
+    );
+
+    await waitFor(() => expect(deleteAction).toHaveBeenCalledTimes(1));
+    expect(push).toHaveBeenCalledWith("/home/maquinas");
+  });
+
+  it("keeps the delete alert open when the server reports a conflict", async () => {
+    const user = userEvent.setup();
+    renderPage(undefined, { ...model, unitCount: 0, units: [] }, {
+      deleteAction: async () => ({
+        ok: false,
+        message: "Este modelo possui unidades ativas e não pode ser excluído.",
+      }),
+    });
+
+    await user.click(screen.getByRole("button", { name: "Excluir modelo" }));
+    await user.click(
+      screen.getByRole("button", { name: "Confirmar exclusão" }),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Este modelo possui unidades ativas e não pode ser excluído.",
+    );
+    expect(
+      screen.getByRole("button", { name: "Confirmar exclusão" }),
+    ).toBeTruthy();
   });
 
   it("filters units by text, availability and meter type and can clear filters", async () => {

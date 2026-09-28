@@ -108,6 +108,190 @@ describe("fleet Machine registry and meter readings", () => {
     };
   }
 
+  async function createMachineModel(
+    authorization: string,
+    suffix: string,
+    overrides: Record<string, unknown> = {},
+  ) {
+    const response = await app.inject({
+      method: "POST",
+      url: "/api/v1/machine-models",
+      headers: { authorization },
+      payload: {
+        type: "YELLOW_LINE",
+        manufacturer: "Synthetic",
+        model: `Archive ${suffix}`,
+        requiresOperator: false,
+        requiredJobRoleId: null,
+        ...overrides,
+      },
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    return response.json().data as { id: string };
+  }
+
+  async function createModelUnit(
+    authorization: string,
+    machineModelId: string,
+    suffix: string,
+  ) {
+    const response = await app.inject({
+      method: "POST",
+      url: `/api/v1/machine-models/${machineModelId}/units`,
+      headers: { authorization },
+      payload: {
+        companyTag: `ARCH-${suffix}`,
+        initialMeterReading: "0",
+        meterType: "HOUR_METER",
+        ownership: { kind: "OWNED" },
+      },
+    });
+    expect(response.statusCode, response.body).toBe(201);
+    return response.json().data.units[0] as { id: string };
+  }
+
+  it("updates, archives, hides, and permits recreating an empty Machine Model", async () => {
+    const pilot = await provision("model-archive");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+    const model = await createMachineModel(authorization, "One");
+
+    const updated = await app.inject({
+      method: "PATCH",
+      url: `/api/v1/machine-models/${model.id}`,
+      headers: { authorization },
+      payload: {
+        description: "Updated catalog model",
+        type: "YELLOW_LINE",
+        manufacturer: "Synthetic",
+        model: "Archive One",
+        version: "V2",
+        requiresOperator: false,
+        requiredJobRoleId: null,
+      },
+    });
+    expect(updated.statusCode, updated.body).toBe(200);
+    expect(updated.json().data).toMatchObject({
+      description: "Updated catalog model",
+      version: "V2",
+    });
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/machine-models/${model.id}`,
+      headers: { authorization },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(deleted.json().data).toMatchObject({
+      id: model.id,
+      deletedAt: expect.any(String),
+    });
+    const archived = await app.prisma.machineModel.findUniqueOrThrow({
+      where: { id: model.id },
+    });
+    expect(archived).toMatchObject({
+      isActive: false,
+      deletedAt: expect.any(Date),
+      deletedByUserId: pilot.administrator.id,
+    });
+
+    const detail = await app.inject({
+      method: "GET",
+      url: `/api/v1/machine-models/${model.id}`,
+      headers: { authorization },
+    });
+    expect(detail.statusCode).toBe(404);
+
+    const recreated = await app.inject({
+      method: "POST",
+      url: "/api/v1/machine-models",
+      headers: { authorization },
+      payload: {
+        type: "YELLOW_LINE",
+        manufacturer: "Synthetic",
+        model: "Archive One",
+        version: "V2",
+        requiresOperator: false,
+        requiredJobRoleId: null,
+      },
+    });
+    expect(recreated.statusCode, recreated.body).toBe(201);
+    expect(recreated.json().data.id).not.toBe(model.id);
+  });
+
+  it("blocks archiving a Machine Model with an active unit", async () => {
+    const pilot = await provision("model-blocked");
+    const authorization = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+    const model = await createMachineModel(authorization, "Blocked");
+    await createModelUnit(authorization, model.id, "BLOCKED");
+
+    const response = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/machine-models/${model.id}`,
+      headers: { authorization },
+    });
+
+    expect(response.statusCode).toBe(409);
+    expect(response.json()).toMatchObject({
+      code: "MACHINE_MODEL_DELETE_BLOCKED",
+    });
+    expect(
+      await app.prisma.machineModel.findUniqueOrThrow({
+        where: { id: model.id },
+        select: { isActive: true },
+      }),
+    ).toEqual({ isActive: true });
+  });
+
+  it("preserves inactive units and hides foreign-scope models during archiving", async () => {
+    const pilot = await provision("model-history");
+    const companyOne = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[0].id,
+    });
+    const companyTwo = await authFor({
+      corporationId: pilot.corporation.id,
+      userId: pilot.administrator.id,
+      companyId: pilot.companies[1].id,
+    });
+    const model = await createMachineModel(companyOne, "History");
+    const unit = await createModelUnit(companyOne, model.id, "HISTORY");
+
+    const unitDeleted = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/machines/${unit.id}`,
+      headers: { authorization: companyOne },
+    });
+    expect(unitDeleted.statusCode, unitDeleted.body).toBe(200);
+    const historicalUnitBefore =
+      await app.prisma.machine.findUniqueOrThrow({ where: { id: unit.id } });
+
+    const foreignDelete = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/machine-models/${model.id}`,
+      headers: { authorization: companyTwo },
+    });
+    expect(foreignDelete.statusCode).toBe(404);
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/machine-models/${model.id}`,
+      headers: { authorization: companyOne },
+    });
+    expect(deleted.statusCode, deleted.body).toBe(200);
+    expect(
+      await app.prisma.machine.findUniqueOrThrow({ where: { id: unit.id } }),
+    ).toEqual(historicalUnitBefore);
+  });
+
   it("creates Machine, ownership, identifier, and initial reading atomically", async () => {
     const pilot = await provision("create");
     const authorization = await authFor({

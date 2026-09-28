@@ -113,7 +113,7 @@ A distinção entre um card e outro ainda causa um certo peso cgnitivo, não é 
 -- Facial na entrada, entre intervalos e saída da empresa
 -- A partir dela confirmar todos os funcionários participantes no dia.
 
-## Relatórios de obra
+## Relatórios
 
 - RDO (PREENCHIDO AUTOMATICAMENTE AO INICIAR E FECHAR TURNO)
 - Relatório de frequência (preenchido automaticamente ao iniciar e fechar turno).
@@ -123,6 +123,12 @@ A distinção entre um card e outro ainda causa um certo peso cgnitivo, não é 
 -- Checklist dos funcionários (com biometria)
 -- assinatura DDS
 -- Checkslist das máquinas (todas marcadas, exceto em manutênção)
+
+## Para finalizar um turno
+
+-- Checklist dos funcionários, confirmação de horas extras, horários de saída e intervalos.
+-- Marcação final de todas as máquinas
+-- Confirmar todas as interferencias
 
 # OBS
 
@@ -179,3 +185,25 @@ A distinção entre um card e outro ainda causa um certo peso cgnitivo, não é 
 
 - O único turno que deve vir habilitado é diurno. Noturno não deve vir ativado por padrão. Deve ter um switch de ativação no modal de editar jornada.
   Ao vincular operador à máquina o turno noturno deve aparecer somente se ele estiver ativado. Todas as operações com turno noturno devem ficar desativadas caso esteja off. Mesmo desativado ele não deve perder nenhuma informação atrelado ao turno noturno.
+
+\*\* No modal de adcionar oferta de combustivel só deve trazer as categorias de combustiveis nao deve ter um select para mais
+
+\*\* Modal wizard de adcionar oferta de combustivel na obra não está seguindo o padrão ou existe mais de um padrão na aplicação?
+
+\*\* O início real da obra na verdade é a data do primeiro turno realizado.
+
+## Ajustes página da obra no calendário.
+
+[x] quando abre modal de produção ele vai para a tab de produção e depois não volta para a obra.
+[x] No modal de produção não precisa dessa descrição idiota "Janela autorizada pela API: 2026-09-24 a 2026-09-25 (America/Sao_Paulo).". Adcionar a documentação para não adcionar descrição inúteis para o usuário.
+[x] Para adcionar a produção direto pela página da obra não deve perguntar informações que já são explicitas na obra como por exemplo responsável, data, turno, etc... Para adcionar a produção não precisa de início e fim, ele faz parte do turno, idenpendente da hora que foi adcionado, é só mais uma informação para o apontador anotar e consumir tempo
+[] Remover os campos de material e cadastro de material. deixe somente a origem e destino neste card. e por enquanto, deixe somente oculto
+[] origem e destino devem ser as frentes ativas de serviço e podem ser usado o mesmo valor nos 2.
+
+-- Se o turno diuno que está iniciado o turno noturno não deve aparecer, principalmente se não tiver habilitado o turno noturno na obra. E se tiver habilitado para iniciar o turno deve ser um botão discreto e combinando com a interface. Se coincidir dos turnos estarem iniciados ao mesmo tempo. ooS 2 PAINEIS NÃO PODEM EM HIPOTESE ALGUMA APARECER AO MESMO TEMPO. Tem que ser um ou outro e o tiítulo de noturno ou diurno deve ser bem explicito, claro e visível para não causar confusão.
+
+-- Quando adcionar produção e não tiver nenhuma frente iniciada aparecer um alerta no formulário indicando isso.
+
+-- O modal de criar unidades para uma obra deve aparecer somente se tiver alguma obra em planejamento ou em andamento. Caso contrário o alert modal nem deve aparecer. A mesma coisa para a alocação na criação da unidade dentro da página da máquina.
+
+-- Na máquina não vai mais existir a propriedade se é alugada ou própria, em todos vai aparecer o campo opcional Valor/hora sugerido

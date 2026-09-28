@@ -8904,6 +8904,166 @@
           }
         }
       },
+      "delete": {
+        "summary": "Soft delete an empty Machine Model",
+        "tags": ["Fleet"],
+        "parameters": [
+          {
+            "schema": { "type": "string", "format": "uuid" },
+            "in": "path",
+            "name": "machineModelId",
+            "required": true
+          }
+        ],
+        "security": [{ "bearerAuth": [] }],
+        "responses": {
+          "200": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": ["success", "message", "data"],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [true] },
+                    "message": { "type": "string" },
+                    "data": {
+                      "type": "object",
+                      "required": ["id", "deletedAt"],
+                      "properties": {
+                        "id": { "type": "string", "format": "uuid" },
+                        "deletedAt": { "type": "string", "format": "date-time" }
+                      },
+                      "additionalProperties": false
+                    }
+                  },
+                  "additionalProperties": false
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Default Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "required": [
+                    "success",
+                    "code",
+                    "message",
+                    "details",
+                    "requestId"
+                  ],
+                  "properties": {
+                    "success": { "type": "boolean", "enum": [false] },
+                    "code": { "type": "string" },
+                    "message": { "type": "string" },
+                    "details": { "type": "object", "nullable": true },
+                    "requestId": { "type": "string", "format": "uuid" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "get": {
         "summary": "Get a Machine Model with its units",
         "tags": ["Fleet"],
@@ -29104,15 +29264,17 @@
                         "required": [
                           "workFrontId",
                           "workFrontServiceId",
-                          "materialName",
-                          "origin",
-                          "destination",
+                          "destinationWorkFrontId",
                           "dmtKm",
                           "components"
                         ],
                         "properties": {
                           "workFrontId": { "type": "string", "format": "uuid" },
                           "workFrontServiceId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "destinationWorkFrontId": {
                             "type": "string",
                             "format": "uuid"
                           },
@@ -29128,6 +29290,7 @@
                           },
                           "materialName": {
                             "type": "string",
+                            "nullable": true,
                             "minLength": 1,
                             "maxLength": 160
                           },
@@ -29153,11 +29316,13 @@
                           },
                           "origin": {
                             "type": "string",
+                            "nullable": true,
                             "minLength": 1,
                             "maxLength": 240
                           },
                           "destination": {
                             "type": "string",
+                            "nullable": true,
                             "minLength": 1,
                             "maxLength": 240
                           },
@@ -30918,15 +31083,17 @@
                         "required": [
                           "workFrontId",
                           "workFrontServiceId",
-                          "materialName",
-                          "origin",
-                          "destination",
+                          "destinationWorkFrontId",
                           "dmtKm",
                           "components"
                         ],
                         "properties": {
                           "workFrontId": { "type": "string", "format": "uuid" },
                           "workFrontServiceId": {
+                            "type": "string",
+                            "format": "uuid"
+                          },
+                          "destinationWorkFrontId": {
                             "type": "string",
                             "format": "uuid"
                           },
@@ -30942,6 +31109,7 @@
                           },
                           "materialName": {
                             "type": "string",
+                            "nullable": true,
                             "minLength": 1,
                             "maxLength": 160
                           },
@@ -30967,11 +31135,13 @@
                           },
                           "origin": {
                             "type": "string",
+                            "nullable": true,
                             "minLength": 1,
                             "maxLength": 240
                           },
                           "destination": {
                             "type": "string",
+                            "nullable": true,
                             "minLength": 1,
                             "maxLength": 240
                           },

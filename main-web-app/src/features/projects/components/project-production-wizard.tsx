@@ -3,6 +3,7 @@
 import * as React from "react";
 import { zodResolver } from "@hookform/resolvers/zod";
 import {
+  AlertTriangle,
   Check,
   ChevronLeft,
   ChevronRight,
@@ -16,14 +17,12 @@ import { z } from "zod";
 
 import { FormErrorDeclaration } from "@/components/forms/form-error-declaration";
 import { Button } from "@/components/ui/button";
-import { FieldHelpPopover } from "@/components/ui/field-help-popover";
 import { FormSection } from "@/components/ui/form-section";
 import { FormWizardProgress } from "@/components/ui/form-wizard-progress";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
 
 import {
-  createEarthworkMaterialAction,
   createHaulRouteAction,
   getEarthworkCatalogOptionsAction,
   saveProjectProductionAction,
@@ -105,7 +104,7 @@ const activitySteps = [
 ];
 const movementSteps = [
   { title: "Tipo e turno" },
-  { title: "Origem e material" },
+  { title: "Origem e destino" },
   { title: "Composição e rota" },
   { title: "Caminhões" },
   { title: "Equipamentos" },
@@ -128,7 +127,7 @@ const controlClass =
   "h-11 w-full rounded-md border border-input bg-background px-3 text-sm font-semibold outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-60";
 
 export function ProjectProductionWizard({
-  contextLocked = false,
+  contextualEntry,
   detail,
   onContextChange,
   onOpenChange,
@@ -138,7 +137,11 @@ export function ProjectProductionWizard({
   projectId,
   workflowActions,
 }: {
-  contextLocked?: boolean;
+  contextualEntry?: {
+    productionDate: string;
+    shift: "day" | "night";
+    responsibleEmploymentId: string;
+  };
   detail: ProjectProductionDetail | null;
   onContextChange: (
     productionDate: string,
@@ -158,9 +161,10 @@ export function ProjectProductionWizard({
     [],
   );
   const [routes, setRoutes] = React.useState<HaulRouteOption[]>([]);
+  const initializedForOpenRef = React.useRef(false);
   const form = useForm<WizardValues>({
     resolver: zodResolver(wizardSchema),
-    defaultValues: valuesFrom(detail, options),
+    defaultValues: valuesFrom(detail, options, contextualEntry),
   });
   // React Hook Form owns the subscription and returns the complete initialized snapshot.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -177,10 +181,17 @@ export function ProjectProductionWizard({
     (service) => service.id === values.workFrontServiceId,
   );
   const editable = !detail || detail.status === "draft";
+  const missingActiveWorkFrontForNewProduction =
+    !detail && options.workFronts.length === 0;
 
   React.useEffect(() => {
-    if (!open) return;
-    form.reset(valuesFrom(detail, options));
+    if (!open) {
+      initializedForOpenRef.current = false;
+      return;
+    }
+    if (initializedForOpenRef.current) return;
+    initializedForOpenRef.current = true;
+    form.reset(valuesFrom(detail, options, contextualEntry));
     setCurrentStep(0);
     setIssues([]);
     void getEarthworkCatalogOptionsAction({ projectId })
@@ -203,7 +214,7 @@ export function ProjectProductionWizard({
         setMaterials([]);
         setRoutes([]);
       });
-  }, [detail, form, open, options, projectId]);
+  }, [contextualEntry, detail, form, open, options, projectId]);
 
   function requestClose() {
     if (
@@ -226,7 +237,7 @@ export function ProjectProductionWizard({
     setBusy(true);
     try {
       const next = await onContextChange(productionDate, shift);
-      form.reset(valuesFrom(null, next));
+      form.reset(valuesFrom(null, next, contextualEntry));
       setCurrentStep(0);
     } catch {
       toast.error("O contexto operacional não está disponível.");
@@ -244,12 +255,24 @@ export function ProjectProductionWizard({
       )
     )
       return;
-    form.reset({ ...valuesFrom(null, options), kind });
+    form.reset({ ...valuesFrom(null, options, contextualEntry), kind });
     setCurrentStep(0);
   }
 
   async function next() {
-    const stepIssues = editable ? validateStep(values, currentStep) : [];
+    if (missingActiveWorkFrontForNewProduction) {
+      setIssues([
+        {
+          field: "Frentes de serviço",
+          message:
+            "Inicie uma frente de serviço antes de registrar produção.",
+        },
+      ]);
+      return;
+    }
+    const stepIssues = editable
+      ? validateStep(values, currentStep, Boolean(contextualEntry))
+      : [];
     if (stepIssues.length) {
       setIssues(stepIssues);
       return;
@@ -259,7 +282,7 @@ export function ProjectProductionWizard({
   }
 
   async function save(submitNow: boolean) {
-    const allIssues = validateReview(values);
+    const allIssues = validateReview(values, Boolean(contextualEntry));
     if (allIssues.length) {
       setIssues(allIssues);
       return;
@@ -296,7 +319,7 @@ export function ProjectProductionWizard({
         setIssues([{ message: translateError(result.code) }]);
         return;
       }
-      form.reset(valuesFrom(result.production, options));
+      form.reset(valuesFrom(result.production, options, contextualEntry));
       onSaved(result.production);
       toast.success(submitNow ? "Produção enviada." : "Rascunho salvo.");
       onOpenChange(false);
@@ -315,20 +338,8 @@ export function ProjectProductionWizard({
   async function persistInlineCatalogs(values: WizardValues) {
     if (values.kind !== "material_movement")
       return { materialRevisionId: null, routeRevisionId: null };
-    let material = materials.find((item) => item.id === values.materialId);
     let route = routes.find((item) => item.id === values.routeId);
     const effectiveFrom = `${values.productionDate}T03:00:00.000Z`;
-    if (!material && values.newMaterialCode)
-      material = await createEarthworkMaterialAction({
-        projectId,
-        code: values.newMaterialCode,
-        name: values.materialName,
-        category: blank(values.materialCategory),
-        densityTPerM3: canonical(values.densityTPerM3),
-        swellFactor: canonical(values.swellFactor),
-        looseToCompactedFactor: canonical(values.looseToCompactedFactor),
-        effectiveFrom,
-      });
     if (!route && values.newRouteCode)
       route = await createHaulRouteAction({
         projectId,
@@ -342,7 +353,9 @@ export function ProjectProductionWizard({
         effectiveFrom,
       });
     return {
-      materialRevisionId: material?.revision?.id ?? null,
+      materialRevisionId:
+        materials.find((item) => item.id === values.materialId)?.revision?.id ??
+        null,
       routeRevisionId: route?.revision?.id ?? null,
     };
   }
@@ -398,7 +411,11 @@ export function ProjectProductionWizard({
               </>
             )}
             {currentStep < steps.length - 1 && (
-              <Button type="button" onClick={() => void next()} disabled={busy}>
+              <Button
+                type="button"
+                onClick={() => void next()}
+                disabled={busy || missingActiveWorkFrontForNewProduction}
+              >
                 Avançar <ChevronRight />
               </Button>
             )}
@@ -413,13 +430,25 @@ export function ProjectProductionWizard({
         aria-busy={busy}
       >
         <FormWizardProgress currentStep={currentStep} steps={steps} />
+        {missingActiveWorkFrontForNewProduction && (
+          <div
+            role="alert"
+            className="flex items-start gap-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm font-medium text-amber-950 dark:text-amber-100"
+          >
+            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+            <p>
+              Não há frente de serviço iniciada nesta obra. Inicie uma frente
+              antes de registrar produção.
+            </p>
+          </div>
+        )}
         <FormErrorDeclaration
           issues={issues}
           title="Revise os dados desta etapa."
         />
         {currentStep === 0 && (
           <ContextStep
-            contextLocked={contextLocked}
+            contextual={Boolean(contextualEntry)}
             values={values}
             editable={editable}
             options={options}
@@ -459,7 +488,6 @@ export function ProjectProductionWizard({
               <ReviewStep
                 values={values}
                 options={options}
-                materials={materials}
                 routes={routes}
                 onEdit={setCurrentStep}
               />
@@ -468,16 +496,15 @@ export function ProjectProductionWizard({
         ) : (
           <>
             {currentStep === 1 && (
-              <MovementMaterialStep
+              <MovementEndpointsStep
                 form={form}
-                materials={materials}
+                options={options}
                 editable={editable}
               />
             )}
             {currentStep === 2 && (
               <MovementRouteStep
                 form={form}
-                options={options}
                 selectedFront={selectedFront}
                 destinationFront={destinationFront}
                 routes={routes}
@@ -505,7 +532,6 @@ export function ProjectProductionWizard({
               <ReviewStep
                 values={values}
                 options={options}
-                materials={materials}
                 routes={routes}
                 onEdit={setCurrentStep}
               />
@@ -520,7 +546,7 @@ export function ProjectProductionWizard({
 type FormApi = ReturnType<typeof useForm<WizardValues>>;
 
 function ContextStep({
-  contextLocked,
+  contextual,
   values,
   editable,
   options,
@@ -528,7 +554,7 @@ function ContextStep({
   changeContext,
   changeKind,
 }: {
-  contextLocked: boolean;
+  contextual: boolean;
   values: WizardValues;
   editable: boolean;
   options: ProjectProductionOptions;
@@ -538,8 +564,7 @@ function ContextStep({
 }) {
   return (
     <FormSection
-      title="Tipo, data e turno"
-      description={`Janela autorizada pela API: ${options.dateLimits.minimum} a ${options.dateLimits.maximum} (${options.dateLimits.timeZone}).`}
+      title={contextual ? "Tipo de lançamento" : "Tipo, data e turno"}
     >
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Tipo de lançamento">
@@ -555,62 +580,66 @@ function ContextStep({
             <option value="material_movement">Movimentação de material</option>
           </select>
         </Field>
-        <Field label="Responsável">
-          <select
-            className={controlClass}
-            disabled={!editable}
-            {...form.register("responsibleEmploymentId")}
-          >
-            <option value="">Selecione</option>
-            {options.responsibleOptions.map((person) => (
-              <option key={person.id} value={person.id}>
-                {person.name} · {person.jobRole}
-              </option>
-            ))}
-          </select>
-        </Field>
-        <Field label="Data">
-          <Input
-            type="date"
-            min={options.dateLimits.minimum}
-            max={options.dateLimits.maximum}
-            value={values.productionDate}
-            disabled={!editable || contextLocked}
-            onChange={(event) =>
-              void changeContext(event.target.value, values.shift)
-            }
-          />
-        </Field>
-        <Field label="Turno">
-          <select
-            className={controlClass}
-            value={values.shift}
-            disabled={!editable || contextLocked}
-            onChange={(event) =>
-              void changeContext(
-                values.productionDate,
-                event.target.value as "day" | "night",
-              )
-            }
-          >
-            <option value="day">Diurno</option>
-            <option value="night">Noturno</option>
-          </select>
-        </Field>
-        <Field label="Início">
-          <Input
-            type="time"
-            disabled={!editable}
-            {...form.register("startTime")}
-          />
-        </Field>
-        <Field label="Fim">
-          <Input
-            type="time"
-            disabled={!editable}
-            {...form.register("endTime")}
-          />
-        </Field>
+        {!contextual && (
+          <>
+            <Field label="Responsável">
+              <select
+                className={controlClass}
+                disabled={!editable}
+                {...form.register("responsibleEmploymentId")}
+              >
+                <option value="">Selecione</option>
+                {options.responsibleOptions.map((person) => (
+                  <option key={person.id} value={person.id}>
+                    {person.name} · {person.jobRole}
+                  </option>
+                ))}
+              </select>
+            </Field>
+            <Field label="Data">
+              <Input
+                type="date"
+                min={options.dateLimits.minimum}
+                max={options.dateLimits.maximum}
+                value={values.productionDate}
+                disabled={!editable}
+                onChange={(event) =>
+                  void changeContext(event.target.value, values.shift)
+                }
+              />
+            </Field>
+            <Field label="Turno">
+              <select
+                className={controlClass}
+                value={values.shift}
+                disabled={!editable}
+                onChange={(event) =>
+                  void changeContext(
+                    values.productionDate,
+                    event.target.value as "day" | "night",
+                  )
+                }
+              >
+                <option value="day">Diurno</option>
+                <option value="night">Noturno</option>
+              </select>
+            </Field>
+            <Field label="Início">
+              <Input
+                type="time"
+                disabled={!editable}
+                {...form.register("startTime")}
+              />
+            </Field>
+            <Field label="Fim">
+              <Input
+                type="time"
+                disabled={!editable}
+                {...form.register("endTime")}
+              />
+            </Field>
+          </>
+        )}
       </div>
     </FormSection>
   );
@@ -782,126 +811,81 @@ function IndividualQuantityStep({
   );
 }
 
-function MovementMaterialStep({
+function MovementEndpointsStep({
   form,
-  materials,
+  options,
   editable,
 }: {
   form: FormApi;
-  materials: EarthworkMaterialOption[];
+  options: ProjectProductionOptions;
   editable: boolean;
 }) {
   return (
-    <div className="grid gap-4">
-      <FormSection title="Origem, destino e material">
-        <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Origem">
-            <Input disabled={!editable} {...form.register("origin")} />
-          </Field>
-          <Field label="Destino">
-            <Input disabled={!editable} {...form.register("destination")} />
-          </Field>
-          <Field label="Material cadastrado">
-            <select
-              className={controlClass}
-              disabled={!editable}
-              {...form.register("materialId", {
-                onChange: (event) => {
-                  const material = materials.find(
-                    (item) => item.id === event.target.value,
-                  );
-                  if (!material) return;
-                  form.setValue("materialName", material.name);
-                  form.setValue("materialCategory", material.category ?? "");
-                  form.setValue(
-                    "densityTPerM3",
-                    material.revision?.densityTPerM3 ?? "",
-                  );
-                  form.setValue(
-                    "swellFactor",
-                    material.revision?.swellFactor ?? "",
-                  );
-                  form.setValue(
-                    "looseToCompactedFactor",
-                    material.revision?.looseToCompactedFactor ?? "",
-                  );
-                },
-              })}
-            >
-              <option value="">Cadastrar/usar avulso</option>
-              {materials.map((material) => (
-                <option key={material.id} value={material.id}>
-                  {material.code} · {material.name}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Nome do material">
-            <Input
-              disabled={!editable || Boolean(form.watch("materialId"))}
-              {...form.register("materialName")}
-            />
-          </Field>
-          <Field label="Código para cadastro inline">
-            <Input
-              placeholder="Ex.: solo-1 (opcional)"
-              disabled={!editable || Boolean(form.watch("materialId"))}
-              {...form.register("newMaterialCode")}
-            />
-          </Field>
-          <Field label="Categoria">
-            <Input
-              disabled={!editable}
-              {...form.register("materialCategory")}
-            />
-          </Field>
-        </div>
-      </FormSection>
-      <FormSection title="Fatores vigentes">
-        <div className="grid gap-3 sm:grid-cols-3">
-          <ProductionFactorField
-            description="Relaciona a massa e o volume do material. Quando existe peso real de balança, permite estimar o volume correspondente."
+    <FormSection title="Origem e destino">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Field label="Origem">
+          <select
+            className={controlClass}
             disabled={!editable}
-            example="18 t ÷ 1,8 t/m³ = 10 m³."
-            form={form}
-            formula="Volume estimado = peso ÷ densidade"
-            label="Densidade t/m³"
-            name="densityTPerM3"
-          />
-          <ProductionFactorField
-            description="Representa o aumento de volume depois que o material é escavado e fica solto."
+            {...form.register("workFrontId", {
+              onChange: (event) => {
+                const front = options.workFronts.find(
+                  (item) => item.id === event.target.value,
+                );
+                form.setValue(
+                  "workFrontServiceId",
+                  front?.services[0]?.id ?? "",
+                );
+                form.setValue("origin", front?.name ?? "");
+                form.setValue("selectedEquipmentIds", []);
+                form.setValue("selectedTruckIds", []);
+              },
+            })}
+          >
+            {options.workFronts.map((front) => (
+              <option key={front.id} value={front.id}>
+                {front.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+        <Field label="Destino">
+          <select
+            className={controlClass}
             disabled={!editable}
-            example="fator 1,25 indica que 1 m³ no corte gera 1,25 m³ solto."
-            form={form}
-            formula="Volume em banco = volume solto ÷ empolamento"
-            label="Empolamento"
-            name="swellFactor"
-          />
-          <ProductionFactorField
-            description="Representa a parcela do volume solto que permanece depois da compactação."
-            disabled={!editable}
-            example="fator 0,80 indica que 10 m³ soltos resultam em 8 m³ compactados."
-            form={form}
-            formula="Volume compactado = volume solto × fator"
-            label="Solto → compactado"
-            name="looseToCompactedFactor"
-          />
-        </div>
-      </FormSection>
-    </div>
+            {...form.register("destinationWorkFrontId", {
+              onChange: (event) => {
+                const front = options.workFronts.find(
+                  (item) => item.id === event.target.value,
+                );
+                form.setValue(
+                  "destinationWorkFrontServiceId",
+                  front?.services[0]?.id ?? "",
+                );
+                form.setValue("destination", front?.name ?? "");
+              },
+            })}
+          >
+            {options.workFronts.map((front) => (
+              <option key={front.id} value={front.id}>
+                {front.name}
+              </option>
+            ))}
+          </select>
+        </Field>
+      </div>
+    </FormSection>
   );
 }
 
 function MovementRouteStep({
   form,
-  options,
   selectedFront,
   destinationFront,
   routes,
   editable,
 }: {
   form: FormApi;
-  options: ProjectProductionOptions;
   selectedFront: ProjectProductionOptions["workFronts"][number] | undefined;
   destinationFront: ProjectProductionOptions["workFronts"][number] | undefined;
   routes: HaulRouteOption[];
@@ -911,29 +895,6 @@ function MovementRouteStep({
     <div className="grid gap-4">
       <FormSection title="Composição">
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Frente de origem">
-            <select
-              className={controlClass}
-              disabled={!editable}
-              {...form.register("workFrontId", {
-                onChange: (event) => {
-                  const front = options.workFronts.find(
-                    (item) => item.id === event.target.value,
-                  );
-                  form.setValue(
-                    "workFrontServiceId",
-                    front?.services[0]?.id ?? "",
-                  );
-                },
-              })}
-            >
-              {options.workFronts.map((front) => (
-                <option key={front.id} value={front.id}>
-                  {front.name}
-                </option>
-              ))}
-            </select>
-          </Field>
           <Field label="Serviço de origem">
             <select
               className={controlClass}
@@ -943,29 +904,6 @@ function MovementRouteStep({
               {selectedFront?.services.map((service) => (
                 <option key={service.id} value={service.id}>
                   {serviceLabel(service.serviceCode)}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Frente de destino">
-            <select
-              className={controlClass}
-              disabled={!editable}
-              {...form.register("destinationWorkFrontId", {
-                onChange: (event) => {
-                  const front = options.workFronts.find(
-                    (item) => item.id === event.target.value,
-                  );
-                  form.setValue(
-                    "destinationWorkFrontServiceId",
-                    front?.services[0]?.id ?? "",
-                  );
-                },
-              })}
-            >
-              {options.workFronts.map((front) => (
-                <option key={front.id} value={front.id}>
-                  {front.name}
                 </option>
               ))}
             </select>
@@ -997,8 +935,6 @@ function MovementRouteStep({
                     (item) => item.id === event.target.value,
                   );
                   if (!route) return;
-                  form.setValue("origin", route.origin);
-                  form.setValue("destination", route.destination);
                   form.setValue(
                     "dmtKm",
                     route.revision?.loadedDistanceKm ?? "",
@@ -1384,13 +1320,11 @@ function QualityStep({
 function ReviewStep({
   values,
   options,
-  materials,
   routes,
   onEdit,
 }: {
   values: WizardValues;
   options: ProjectProductionOptions;
-  materials: EarthworkMaterialOption[];
   routes: HaulRouteOption[];
   onEdit: (step: number) => void;
 }) {
@@ -1432,9 +1366,8 @@ function ReviewStep({
             0,
           ],
           [
-            "Material",
-            materials.find((item) => item.id === values.materialId)?.name ??
-              values.materialName,
+            "Origem e destino",
+            `${front?.name ?? "—"} → ${options.workFronts.find((item) => item.id === values.destinationWorkFrontId)?.name ?? "—"}`,
             1,
           ],
           [
@@ -1485,6 +1418,11 @@ function ReviewStep({
 function valuesFrom(
   detail: ProjectProductionDetail | null,
   options: ProjectProductionOptions,
+  contextualEntry?: {
+    productionDate: string;
+    shift: "day" | "night";
+    responsibleEmploymentId: string;
+  },
 ): WizardValues {
   const front =
     options.workFronts.find((item) => item.id === detail?.workFrontId) ??
@@ -1508,14 +1446,18 @@ function valuesFrom(
     );
   return {
     kind: detail?.kind ?? "individual_activity",
-    productionDate: detail?.productionDate ?? options.defaults.productionDate,
-    shift: detail?.shift ?? options.defaults.shift,
+    productionDate:
+      detail?.productionDate ??
+      contextualEntry?.productionDate ??
+      options.defaults.productionDate,
+    shift: detail?.shift ?? contextualEntry?.shift ?? options.defaults.shift,
     responsibleEmploymentId:
       detail?.responsible?.employmentId ??
+      contextualEntry?.responsibleEmploymentId ??
       options.responsibleOptions[0]?.id ??
       "",
-    startTime: detail?.startTime ?? "07:00",
-    endTime: detail?.endTime ?? "17:00",
+    startTime: detail?.startTime ?? (contextualEntry ? "" : "07:00"),
+    endTime: detail?.endTime ?? (contextualEntry ? "" : "17:00"),
     workFrontId: front?.id ?? "",
     workFrontServiceId:
       detail?.workFrontServiceId ?? front?.services[0]?.id ?? "",
@@ -1539,8 +1481,8 @@ function valuesFrom(
     volumeCondition:
       detail?.volumeCondition ?? volumeConditionForService(initialService),
     operationalQuantity: detail?.directQuantity ?? "",
-    origin: detail?.origin ?? "",
-    destination: detail?.destination ?? "",
+    origin: detail?.origin ?? front?.name ?? "",
+    destination: detail?.destination ?? destinationFront?.name ?? "",
     routeId: "",
     dmtKm: detail?.dmtKm ?? "",
     contractualDmtKm: snapshotString(
@@ -1589,7 +1531,11 @@ function valuesFrom(
   };
 }
 
-function validateStep(values: WizardValues, step: number): WizardIssue[] {
+function validateStep(
+  values: WizardValues,
+  step: number,
+  contextual: boolean,
+): WizardIssue[] {
   const issues: WizardIssue[] = [];
   if (step === 0) {
     if (!values.responsibleEmploymentId)
@@ -1597,7 +1543,7 @@ function validateStep(values: WizardValues, step: number): WizardIssue[] {
         field: "Responsável",
         message: "Selecione o responsável.",
       });
-    if (!values.startTime || !values.endTime)
+    if (!contextual && (!values.startTime || !values.endTime))
       issues.push({ field: "Horário", message: "Informe início e fim." });
   }
   if (values.kind === "individual_activity") {
@@ -1618,42 +1564,10 @@ function validateStep(values: WizardValues, step: number): WizardIssue[] {
       });
     if (step === 4) issues.push(...urlIssues(values));
   } else {
-    if (
-      step === 1 &&
-      (!values.origin || !values.destination || !values.materialName)
-    )
+    if (step === 1 && (!values.workFrontId || !values.destinationWorkFrontId))
       issues.push({
         field: "Movimentação",
-        message: "Informe origem, destino e material.",
-      });
-    if (step === 1 && !values.materialId && !values.newMaterialCode)
-      issues.push({
-        field: "Material",
-        message:
-          "Selecione um material técnico ou informe um código para cadastrá-lo nesta etapa.",
-      });
-    if (step === 1) {
-      const factors = [
-        ["Densidade t/m³", values.densityTPerM3],
-        ["Empolamento", values.swellFactor],
-        ["Solto → compactado", values.looseToCompactedFactor],
-      ] as const;
-      for (const [field, value] of factors) {
-        if (value && (!decimal.test(value) || !/[1-9]/u.test(value)))
-          issues.push({
-            field,
-            message: "Informe um decimal positivo com até 6 casas.",
-          });
-      }
-    }
-    if (
-      step === 1 &&
-      values.origin.trim().toLowerCase() ===
-        values.destination.trim().toLowerCase()
-    )
-      issues.push({
-        field: "Destino",
-        message: "Origem e destino devem ser diferentes.",
+        message: "Selecione origem e destino.",
       });
     if (
       step === 2 &&
@@ -1697,10 +1611,10 @@ function validateStep(values: WizardValues, step: number): WizardIssue[] {
   return issues;
 }
 
-function validateReview(values: WizardValues) {
+function validateReview(values: WizardValues, contextual: boolean) {
   return Array.from(
     { length: values.kind === "individual_activity" ? 5 : 6 },
-    (_, step) => validateStep(values, step),
+    (_, step) => validateStep(values, step, contextual),
   ).flat();
 }
 
@@ -1801,15 +1715,16 @@ function toCommand(
     materialMovement: {
       workFrontId: values.workFrontId,
       workFrontServiceId: values.workFrontServiceId,
+      destinationWorkFrontId: destinationFront.id,
       materialRevisionId: catalogs.materialRevisionId,
       routeRevisionId: catalogs.routeRevisionId,
-      materialName: values.materialName,
+      materialName: blank(values.materialName) ?? null,
       materialCategory: blank(values.materialCategory),
       densityTPerM3: canonical(values.densityTPerM3),
       swellFactor: canonical(values.swellFactor),
       looseToCompactedFactor: canonical(values.looseToCompactedFactor),
-      origin: values.origin,
-      destination: values.destination,
+      origin: front.name,
+      destination: destinationFront.name,
       dmtKm: canonical(values.dmtKm)!,
       contractualDmtKm: canonical(values.contractualDmtKm),
       contractualBand: blank(values.contractualBand),
@@ -1878,93 +1793,6 @@ function Field({
       {children}
     </label>
   );
-}
-
-type ProductionFactorName =
-  | "densityTPerM3"
-  | "swellFactor"
-  | "looseToCompactedFactor";
-
-function ProductionFactorField({
-  description,
-  disabled,
-  example,
-  form,
-  formula,
-  label,
-  name,
-}: {
-  description: string;
-  disabled: boolean;
-  example: string;
-  form: FormApi;
-  formula: string;
-  label: string;
-  name: ProductionFactorName;
-}) {
-  const inputId = React.useId();
-  const registration = form.register(name);
-
-  return (
-    <div className="grid gap-1.5 text-sm font-bold">
-      <div className="flex min-h-8 items-center gap-1.5">
-        <label htmlFor={inputId}>{label}</label>
-        <FieldHelpPopover
-          description={description}
-          example={example}
-          formula={formula}
-          title={label}
-        />
-      </div>
-      <Input
-        {...registration}
-        id={inputId}
-        type="text"
-        inputMode="decimal"
-        autoComplete="off"
-        maxLength={19}
-        pattern="[0-9]+([.,][0-9]{1,6})?"
-        disabled={disabled}
-        onBeforeInput={(event) => {
-          const inserted = (event.nativeEvent as InputEvent).data;
-          if (inserted?.length === 1 && !/[0-9.,]/u.test(inserted))
-            event.preventDefault();
-        }}
-        onKeyDown={(event) => {
-          if (
-            !event.ctrlKey &&
-            !event.metaKey &&
-            !event.altKey &&
-            event.key.length === 1 &&
-            !/[0-9.,]/u.test(event.key)
-          )
-            event.preventDefault();
-        }}
-        onChange={(event) => {
-          event.currentTarget.value = sanitizeProductionFactor(
-            event.currentTarget.value,
-          );
-          void registration.onChange(event);
-        }}
-      />
-    </div>
-  );
-}
-
-function sanitizeProductionFactor(value: string) {
-  const permitted = value.replace(/[^0-9.,]/gu, "");
-  const separatorIndex = permitted.search(/[.,]/u);
-  if (separatorIndex < 0) return permitted.slice(0, 12);
-
-  const separator = permitted[separatorIndex];
-  const whole =
-    permitted.slice(0, separatorIndex).replace(/[.,]/gu, "").slice(0, 12) ||
-    "0";
-  const fraction = permitted
-    .slice(separatorIndex + 1)
-    .replace(/[.,]/gu, "")
-    .slice(0, 6);
-  return `${whole}${separator}${fraction}`;
 }
 
 function TextAreaField({

@@ -7,12 +7,25 @@ import {
   ArrowLeft,
   Eye,
   Gauge,
+  Loader2,
   Tag,
+  Trash2,
   Truck,
   type LucideIcon,
 } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 
 import { Button, buttonVariants } from "@/components/ui/button";
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { OperationsTable } from "@/components/ui/operations-table";
 import { cn } from "@/lib/utils";
 import type {
@@ -24,12 +37,14 @@ import type { MachineModelDetail } from "../machines.server";
 import { formatLoadCapacity } from "../capacity-format";
 import { formatMeterReading, meterTypeLabel } from "../meter-format";
 import { MachineUnitCreationWizard } from "./machine-unit-creation-wizard";
+import { MachineModelEditWizard } from "./machine-model-creation-wizard";
 
 type MachineAction = (
   state: MachineActionState,
   formData: FormData,
 ) => Promise<MachineActionState>;
 type MachineUnit = MachineModelDetail["units"][number];
+type DeleteModelAction = () => Promise<MachineActionState>;
 type AvailabilityFilter = "" | MachineUnit["availability"]["state"];
 type MeterFilter = "" | MachineUnit["meterType"];
 
@@ -41,6 +56,9 @@ export function MachineModelDetailPage({
   action,
   loadProjectAction,
   searchProjectsAction,
+  deleteAction,
+  jobRoles,
+  updateAction,
 }: {
   model: MachineModelDetail;
   action: MachineAction;
@@ -51,6 +69,9 @@ export function MachineModelDetailPage({
     cursor?: string | null;
     search?: string;
   }) => Promise<MachineAllocationProjectsResult>;
+  deleteAction: DeleteModelAction;
+  jobRoles: { id: string; name: string }[];
+  updateAction: MachineAction;
 }) {
   const [search, setSearch] = React.useState("");
   const [availability, setAvailability] =
@@ -174,11 +195,25 @@ export function MachineModelDetailPage({
                 {model.description ?? "Nenhuma descrição informada."}
               </p>
             </div>
-            <span className="inline-flex min-h-9 shrink-0 items-center self-start rounded-full border border-border bg-background px-3 text-sm font-bold text-foreground">
-              {model.requiresOperator
-                ? `Exige ${model.requiredJobRole?.name ?? "operador"}`
-                : "Dispensa operador"}
-            </span>
+            <div className="flex shrink-0 flex-col items-start gap-2 lg:items-end">
+              <span className="inline-flex min-h-9 items-center rounded-full border border-border bg-background px-3 text-sm font-bold text-foreground">
+                {model.requiresOperator
+                  ? `Exige ${model.requiredJobRole?.name ?? "operador"}`
+                  : "Dispensa operador"}
+              </span>
+              <div className="flex flex-wrap gap-2">
+                <MachineModelEditWizard
+                  action={updateAction}
+                  jobRoles={jobRoles}
+                  model={model}
+                />
+                <MachineModelDeleteControl
+                  action={deleteAction}
+                  modelName={displayName}
+                  unitCount={model.unitCount}
+                />
+              </div>
+            </div>
           </div>
         </div>
 
@@ -287,6 +322,89 @@ export function MachineModelDetailPage({
           />
         }
       />
+    </div>
+  );
+}
+
+function MachineModelDeleteControl({
+  action,
+  modelName,
+  unitCount,
+}: {
+  action: DeleteModelAction;
+  modelName: string;
+  unitCount: number;
+}) {
+  const router = useRouter();
+  const [open, setOpen] = React.useState(false);
+  const [pending, setPending] = React.useState(false);
+  const [error, setError] = React.useState("");
+  const blocked = unitCount > 0;
+
+  const remove = async () => {
+    if (pending) return;
+    setPending(true);
+    setError("");
+    const result = await action();
+    setPending(false);
+    if (!result.ok) {
+      setError(result.message);
+      return;
+    }
+    setOpen(false);
+    toast.success(result.message);
+    router.push("/home/maquinas");
+    router.refresh();
+  };
+
+  return (
+    <div className="grid justify-items-start gap-1 lg:justify-items-end">
+      <Button
+        type="button"
+        variant="destructive"
+        disabled={blocked}
+        onClick={() => {
+          setError("");
+          setOpen(true);
+        }}
+      >
+        <Trash2 className="size-4" />
+        Excluir modelo
+      </Button>
+      {blocked && (
+        <p className="max-w-64 text-xs text-muted-foreground lg:text-right">
+          Exclua as {unitCount} unidades ativas antes de excluir o modelo.
+        </p>
+      )}
+      <AlertDialog open={open} onOpenChange={(next) => !pending && setOpen(next)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Excluir o modelo {modelName}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Não há unidades ativas neste modelo. O modelo será arquivado e
+              deixará de aparecer no catálogo; unidades inativas e todo o
+              histórico operacional serão preservados.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          {error && (
+            <p role="alert" className="text-sm font-semibold text-destructive">
+              {error}
+            </p>
+          )}
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={pending}>Cancelar</AlertDialogCancel>
+            <Button
+              type="button"
+              variant="destructive"
+              disabled={pending}
+              onClick={() => void remove()}
+            >
+              {pending && <Loader2 className="size-4 animate-spin" />}
+              Confirmar exclusão
+            </Button>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

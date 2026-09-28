@@ -37,6 +37,7 @@ import {
   findDeletedMachineMatchesHandler,
   restoreMachineHandler,
   softDeleteMachineHandler,
+  softDeleteMachineModelHandler,
   type MachineRecord,
 } from "./handlers/fleet.handler";
 import {
@@ -588,6 +589,18 @@ export class FleetService {
             : undefined,
         }),
       ),
+    );
+  }
+
+  async softDeleteModel(
+    scope: AuthenticatedCompanyScope,
+    machineModelId: string,
+  ) {
+    return this.context.transaction((transactionContext) =>
+      softDeleteMachineModelHandler(transactionContext, {
+        ...scope,
+        machineModelId,
+      }),
     );
   }
 

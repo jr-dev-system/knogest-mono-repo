@@ -2,7 +2,8 @@
 
 import * as React from "react";
 import type { UseFormReturn } from "react-hook-form";
-import { Plus, Truck } from "lucide-react";
+import { Pencil, Plus, Truck } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { z } from "zod";
 
@@ -33,6 +34,7 @@ import type {
   MachineUnitBatchDraft,
 } from "../machine-unit-batch.types";
 import type { MachineActionState } from "../machines-action-state";
+import type { MachineModelDetail } from "../machines.server";
 import { MachineUnitBatchWizard } from "./machine-unit-batch-wizard";
 
 type JobRole = { id: string; name: string };
@@ -347,8 +349,8 @@ function ReviewStep({
   return (
     <section aria-label="Revisão do modelo" className="space-y-1">
       <p className="pb-2 text-sm leading-6 text-muted-foreground">
-        Revise o catálogo antes de criar. Nenhuma solicitação é enviada ao
-        chegar nesta etapa.
+        Revise os dados do modelo. Nenhuma solicitação é enviada ao chegar
+        nesta etapa.
       </p>
       {rows.map((row) => (
         <div
@@ -550,5 +552,108 @@ export function MachineModelCreationWizard({
         />
       )}
     </>
+  );
+}
+
+export function MachineModelEditWizard({
+  action,
+  jobRoles,
+  model,
+}: {
+  action: MachineAction;
+  jobRoles: JobRole[];
+  model: MachineModelDetail;
+}) {
+  const router = useRouter();
+  const [selectedType, setSelectedType] =
+    React.useState<Values["type"]>(model.type);
+  const isWhiteLine = selectedType === "WHITE_LINE";
+  const defaultValues = React.useMemo<Values>(
+    () => ({
+      description: model.description ?? "",
+      manufacturer: model.manufacturer,
+      model: model.model,
+      version: model.version ?? "",
+      type: model.type,
+      loadCapacity: model.loadCapacity ?? "",
+      loadCapacityUnitCode:
+        model.loadCapacityUnitCode ?? "M3_LOOSE",
+      maxSupportedWeightT: model.maxSupportedWeightT ?? "",
+      requiresOperator: model.requiresOperator,
+      requiredJobRoleId: model.requiredJobRole?.id ?? "",
+    }),
+    [model],
+  );
+  const steps = React.useMemo<WizardStep<Values>[]>(() => {
+    const result: WizardStep<Values>[] = [
+      {
+        title: "Modelo",
+        fields: ["type", "manufacturer", "model", "version", "description"],
+        fieldLabels,
+        component: (form) => (
+          <CatalogStep form={form} onTypeChange={setSelectedType} />
+        ),
+      },
+    ];
+    if (isWhiteLine)
+      result.push({
+        title: "Capacidade",
+        fields: ["loadCapacity", "loadCapacityUnitCode", "maxSupportedWeightT"],
+        fieldLabels,
+        component: (form) => <CapacityStep form={form} />,
+      });
+    result.push(
+      {
+        title: "Operador",
+        fields: ["requiresOperator", "requiredJobRoleId"],
+        fieldLabels,
+        component: (form) => <OperatorStep form={form} jobRoles={jobRoles} />,
+      },
+      {
+        title: "Revisão",
+        fields: [],
+        fieldLabels,
+        component: (form, helpers) => (
+          <ReviewStep
+            form={form}
+            helpers={helpers}
+            isWhiteLine={isWhiteLine}
+            jobRoles={jobRoles}
+          />
+        ),
+      },
+    );
+    return result;
+  }, [isWhiteLine, jobRoles]);
+
+  return (
+    <BaseFormModal<Values>
+      title="Editar modelo"
+      description="Atualize o catálogo e a regra aplicada às unidades deste modelo."
+      icon={Pencil}
+      size="lg"
+      schema={schema}
+      defaultValues={defaultValues}
+      fieldLabels={fieldLabels}
+      steps={steps}
+      submitLabel="Salvar alterações"
+      onSessionStart={() => setSelectedType(model.type)}
+      onSubmit={async (values) => {
+        const result = await action(
+          { ok: false, message: "" },
+          toFormData(values),
+        );
+        if (!result.ok)
+          throw new Error(result.message || "Não foi possível editar o modelo.");
+        toast.success(result.message);
+        router.refresh();
+      }}
+      trigger={
+        <Button type="button" variant="outline">
+          <Pencil className="size-4" />
+          Editar modelo
+        </Button>
+      }
+    />
   );
 }

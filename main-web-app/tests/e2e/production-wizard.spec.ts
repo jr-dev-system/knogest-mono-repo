@@ -56,7 +56,7 @@ test.describe.serial("guided earthwork production", () => {
     await expect(page.getByText(/125,750 M3_BANK/)).toBeVisible();
   });
 
-  test("submits the movement branch with inline catalogs and truck summary", async ({
+  test("submits the movement branch with active fronts and truck summary", async ({
     page,
   }) => {
     await openProductionWizard(page);
@@ -66,10 +66,9 @@ test.describe.serial("guided earthwork production", () => {
     await expect(page.getByText("Caminhões", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: /Avançar/ }).click();
-    await page.getByLabel("Origem").fill("Corte E2E");
-    await page.getByLabel("Destino").fill("Aterro E2E");
-    await page.getByLabel("Nome do material").fill("Solo argiloso E2E");
-    await page.getByLabel("Código para cadastro inline").fill("solo-e2e");
+    await page.getByLabel("Origem").selectOption({ label: "A - Corte E2E" });
+    await page.getByLabel("Destino").selectOption({ label: "B - Aterro E2E" });
+    await expect(page.getByLabel("Nome do material")).toHaveCount(0);
     await page.getByRole("button", { name: /Avançar/ }).click();
     await page
       .getByLabel("Código para cadastro inline")
@@ -89,7 +88,9 @@ test.describe.serial("guided earthwork production", () => {
         .last(),
     ).toBeVisible();
     await page.getByRole("button", { name: /Avançar/ }).click();
-    await expect(page.getByText("Corte E2E → Aterro E2E")).toBeVisible();
+    await expect(
+      page.getByText("A - Corte E2E → B - Aterro E2E"),
+    ).toBeVisible();
     await expect(page.getByText("1 selecionado(s)").first()).toBeVisible();
     await page.getByRole("button", { name: "Enviar produção" }).click();
 

@@ -2073,7 +2073,6 @@ export function ProjectDetail({
   initialDailyReports,
   initialSection,
   initialTeamShift = "day",
-  initialProductionContext,
   initialProductions,
   lookupSuppliedItemOfferSuppliersAction,
   lookupSuppliedItemOffersAction,
@@ -2085,7 +2084,6 @@ export function ProjectDetail({
   initialDailyReports?: ProjectDailyReportsPage;
   initialSection?: string;
   initialTeamShift?: "day" | "night";
-  initialProductionContext?: { date: string; shift: "day" | "night" };
   initialProductions?: ProjectProductionsPage;
   lookupSuppliedItemOfferSuppliersAction: LookupSuppliedItemOfferSuppliersAction;
   lookupSuppliedItemOffersAction: LookupSuppliedItemOffersAction;
@@ -4519,7 +4517,6 @@ export function ProjectDetail({
               >
                 <ProjectProductions
                   projectId={project.id}
-                  initialContext={initialProductionContext}
                   initialPage={
                     initialProductions ?? {
                       data: [],

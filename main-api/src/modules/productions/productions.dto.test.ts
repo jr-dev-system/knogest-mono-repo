@@ -47,6 +47,43 @@ describe("production command", () => {
     ).toThrow();
   });
 
+  it("accepts a movement without material and with the same active front at both endpoints", () => {
+    const result = productionCommandSchema.parse({
+      kind: "material_movement",
+      productionDate: "2026-07-28",
+      shift: "day",
+      materialMovement: {
+        workFrontId: frontId,
+        workFrontServiceId: serviceId,
+        destinationWorkFrontId: frontId,
+        dmtKm: "0",
+        components: [
+          {
+            workFrontId: frontId,
+            workFrontServiceId: serviceId,
+            type: "transport",
+            unitCode: "M3_LOOSE",
+            volumeCondition: "loose",
+          },
+        ],
+      },
+      truckSummaries: [
+        {
+          machineId,
+          acceptedTrips: 1,
+        },
+      ],
+    });
+
+    if (result.kind !== "material_movement") throw new Error("Unexpected kind");
+    expect(result.materialMovement).toMatchObject({
+      destinationWorkFrontId: frontId,
+      materialName: null,
+      origin: null,
+      destination: null,
+    });
+  });
+
   it("rejects duplicate machines and decreasing meter readings", () => {
     const result = productionCommandSchema.safeParse({
       kind: "individual_activity",

@@ -27,9 +27,10 @@ presentes e a leitura inicial das máquinas de forma automática.
 
 Com o turno aberto, a central atualiza a cada 30 segundos e ao retomar foco.
 Ela permite completar as perguntas obrigatórias do RDO, abrir o lançamento de
-produção já preso à data e ao turno, registrar e confirmar interferências e
-revisar o encerramento. Manutenção e abastecimento aparecem como ações táteis,
-mas ainda não persistem dados nesta versão.
+produção em modal sem sair da Central, registrar e confirmar interferências e
+revisar o encerramento. A produção herda data, turno e supervisor do RDO e não
+solicita uma janela de horas própria. Manutenção e abastecimento aparecem como
+ações táteis, mas ainda não persistem dados nesta versão.
 
 Interferências registram categoria, descrição, impacto, início e fim opcional.
 Cada registro precisa ser confirmado individualmente antes do fechamento.

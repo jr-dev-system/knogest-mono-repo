@@ -69,6 +69,10 @@ Com `Status da estilização: Oficial`, a fonte de verdade registrada acima pass
 - Não explicite "da empresa" quando a empresa ativa já define o escopo da tela.
 - Use subtítulos apenas para comunicar uma ação, estado ou consequência útil à tarefa atual.
 - Não use copy para explicar detalhes de implementação, navegação ou permissões que a interface já torna implícitos.
+- Não exponha janelas, fusos, códigos, limites ou autoridades da API em textos
+  auxiliares quando os próprios controles já aplicam essas regras. Uma
+  descrição só deve existir quando acrescenta contexto que muda a decisão ou a
+  próxima ação do usuário.
 
 ## Formulários Operacionais
 

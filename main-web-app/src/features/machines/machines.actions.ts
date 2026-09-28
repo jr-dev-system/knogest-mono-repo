@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 
 import { postApiV1MachineModels } from "@/generated/clients/postApiV1MachineModels";
+import { patchApiV1MachineModelsMachinemodelid } from "@/generated/clients/patchApiV1MachineModelsMachinemodelid";
+import { deleteApiV1MachineModelsMachinemodelid } from "@/generated/clients/deleteApiV1MachineModelsMachinemodelid";
 import { postApiV1MachineModelsMachinemodelidUnits } from "@/generated/clients/postApiV1MachineModelsMachinemodelidUnits";
 import { postApiV1MachineModelsMachinemodelidUnitsBatch } from "@/generated/clients/postApiV1MachineModelsMachinemodelidUnitsBatch";
 import { patchApiV1MachinesMachineidLoadSpecification } from "@/generated/clients/patchApiV1MachinesMachineidLoadSpecification";
@@ -95,6 +97,9 @@ function failureMessage(error: unknown) {
     }
     if (error.code === "MACHINE_OPERATOR_NOT_ALLOWED") {
       return "Este modelo não permite vincular operador.";
+    }
+    if (error.code === "MACHINE_MODEL_DELETE_BLOCKED") {
+      return "Este modelo possui unidades ativas e não pode ser excluído.";
     }
     if (error.status === 404) {
       return "A obra selecionada não está mais disponível para mobilização.";
@@ -227,6 +232,36 @@ export async function createMachineModelAction(
         requiredJobRoleName: response.data.requiredJobRole?.name ?? null,
       },
     };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function updateMachineModelAction(
+  machineModelId: string,
+  _state: MachineActionState,
+  formData: FormData,
+): Promise<MachineActionState> {
+  try {
+    await patchApiV1MachineModelsMachinemodelid({
+      machineModelId,
+      data: payload(formData),
+    });
+    revalidatePath(`/home/maquinas/modelos/${machineModelId}`);
+    revalidatePath("/home/maquinas");
+    return { ok: true, message: "Modelo atualizado." };
+  } catch (error) {
+    return { ok: false, message: failureMessage(error) };
+  }
+}
+
+export async function deleteMachineModelAction(
+  machineModelId: string,
+): Promise<MachineActionState> {
+  try {
+    await deleteApiV1MachineModelsMachinemodelid({ machineModelId });
+    revalidatePath("/home/maquinas");
+    return { ok: true, message: "Modelo excluído." };
   } catch (error) {
     return { ok: false, message: failureMessage(error) };
   }

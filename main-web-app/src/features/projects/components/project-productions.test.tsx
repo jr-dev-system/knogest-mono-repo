@@ -5,7 +5,6 @@ import userEvent from "@testing-library/user-event";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("../productions.actions", () => ({
-  createEarthworkMaterialAction: vi.fn(),
   createHaulRouteAction: vi.fn(),
   getEarthworkCatalogOptionsAction: vi.fn(),
   getMoreProjectProductionsAction: vi.fn(),
@@ -19,7 +18,6 @@ vi.mock("../productions.actions", () => ({
 }));
 
 import {
-  createEarthworkMaterialAction,
   createHaulRouteAction,
   getEarthworkCatalogOptionsAction,
   getProjectProductionOptionsAction,
@@ -132,21 +130,6 @@ describe("ProjectProductions", () => {
       },
       routes: { data: [], pageInfo: { hasNextPage: false, nextCursor: null } },
     });
-    vi.mocked(createEarthworkMaterialAction).mockResolvedValue({
-      id: "99999999-9999-4999-8999-999999999999",
-      code: "solo-argiloso",
-      name: "Solo argiloso",
-      classification: null,
-      category: null,
-      isActive: true,
-      revision: {
-        id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
-        revision: 1,
-        densityTPerM3: null,
-        swellFactor: null,
-        looseToCompactedFactor: null,
-      },
-    });
     vi.mocked(createHaulRouteAction).mockResolvedValue({
       id: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb",
       code: "corte-a-aterro-b",
@@ -179,7 +162,7 @@ describe("ProjectProductions", () => {
       screen.getByRole("button", { name: "Adicionar produção" }),
     );
     expect(await screen.findByText("Tipo, data e turno")).toBeTruthy();
-    expect(screen.getByText(/America\/Sao_Paulo/u)).toBeTruthy();
+    expect(screen.queryByText(/America\/Sao_Paulo/u)).toBeNull();
 
     await user.click(screen.getByRole("button", { name: /Avançar/u }));
     expect((screen.getByLabelText("Frente") as HTMLSelectElement).value).toBe(
@@ -211,7 +194,30 @@ describe("ProjectProductions", () => {
     );
   });
 
-  it("uses summary by truck as the primary material movement capture", async () => {
+  it("blocks a new production until a work front is started", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getProjectProductionOptionsAction).mockResolvedValue({
+      ...options,
+      workFronts: [],
+    });
+    render(<ProjectProductions projectId={projectId} initialPage={page} />);
+
+    await user.click(
+      screen.getByRole("button", { name: "Adicionar produção" }),
+    );
+
+    expect((await screen.findByRole("alert")).textContent).toContain(
+      "Não há frente de serviço iniciada nesta obra. Inicie uma frente antes de registrar produção.",
+    );
+    expect(
+      (screen.getByRole("button", {
+        name: "Avançar",
+      }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+    expect(screen.queryByLabelText("Frente")).toBeNull();
+  });
+
+  it("uses active fronts and accepts the same front as movement endpoints", async () => {
     const user = userEvent.setup();
     vi.mocked(saveProjectProductionAction).mockResolvedValue({
       kind: "success",
@@ -227,13 +233,13 @@ describe("ProjectProductions", () => {
       "material_movement",
     );
     await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.type(screen.getByLabelText("Origem"), "Corte A");
-    await user.type(screen.getByLabelText("Destino"), "Aterro B");
-    await user.type(screen.getByLabelText("Nome do material"), "Solo argiloso");
-    await user.type(
-      screen.getByLabelText("Código para cadastro inline"),
-      "solo-argiloso",
+    expect((screen.getByLabelText("Origem") as HTMLSelectElement).value).toBe(
+      frontId,
     );
+    expect((screen.getByLabelText("Destino") as HTMLSelectElement).value).toBe(
+      frontId,
+    );
+    expect(screen.queryByLabelText("Nome do material")).toBeNull();
     await user.click(screen.getByRole("button", { name: /Avançar/u }));
     await user.type(screen.getByLabelText("Distância carregada (km)"), "2,4");
     await user.type(
@@ -259,8 +265,10 @@ describe("ProjectProductions", () => {
             kind: "material_movement",
             entryMode: "truck_summary",
             materialMovement: expect.objectContaining({
-              origin: "Corte A",
-              destination: "Aterro B",
+              destinationWorkFrontId: frontId,
+              materialName: null,
+              origin: "Frente Norte",
+              destination: "Frente Norte",
               dmtKm: "2.4",
             }),
             truckSummaries: [
@@ -275,7 +283,7 @@ describe("ProjectProductions", () => {
     );
   });
 
-  it("explains the current material factors and keeps their input decimal-only", async () => {
+  it("keeps material fields hidden from movement capture", async () => {
     const user = userEvent.setup();
     render(<ProjectProductions projectId={projectId} initialPage={page} />);
 
@@ -287,72 +295,10 @@ describe("ProjectProductions", () => {
       "material_movement",
     );
     await user.click(screen.getByRole("button", { name: /Avançar/u }));
-
-    const densityHelp = screen.getByRole("button", {
-      name: "Ajuda sobre Densidade t/m³",
-    });
-    const swellHelp = screen.getByRole("button", {
-      name: "Ajuda sobre Empolamento",
-    });
-    expect(
-      screen.getByRole("button", {
-        name: "Ajuda sobre Solto → compactado",
-      }),
-    ).toBeTruthy();
-
-    await user.hover(densityHelp);
-    expect(
-      await screen.findByText("Volume estimado = peso ÷ densidade"),
-    ).toBeTruthy();
-    await user.unhover(densityHelp);
-    await waitFor(() =>
-      expect(
-        screen.queryByText("Volume estimado = peso ÷ densidade"),
-      ).toBeNull(),
-    );
-
-    await user.click(swellHelp);
-    expect(
-      await screen.findByText("Volume em banco = volume solto ÷ empolamento"),
-    ).toBeTruthy();
-    await user.unhover(swellHelp);
-    expect(
-      screen.getByText("Volume em banco = volume solto ÷ empolamento"),
-    ).toBeTruthy();
-    await user.keyboard("{Escape}");
-    await waitFor(() =>
-      expect(
-        screen.queryByText("Volume em banco = volume solto ÷ empolamento"),
-      ).toBeNull(),
-    );
-
-    const density = screen.getByLabelText("Densidade t/m³");
-    await user.type(density, "abc1,8def");
-    expect((density as HTMLInputElement).value).toBe("1,8");
-
-    const swell = screen.getByLabelText("Empolamento");
-    await user.click(swell);
-    await user.paste("fator 1.250000 kg");
-    expect((swell as HTMLInputElement).value).toBe("1.250000");
-
-    const compacted = screen.getByLabelText("Solto → compactado");
-    await user.type(compacted, "1.800000");
-    expect((compacted as HTMLInputElement).value).toBe("1.800000");
-    await user.clear(compacted);
-    expect((compacted as HTMLInputElement).value).toBe("");
-
-    await user.click(density);
-    await user.tab({ shift: true });
-    expect(document.activeElement).toBe(densityHelp);
-    expect(
-      await screen.findByText("Volume estimado = peso ÷ densidade"),
-    ).toBeTruthy();
-    await user.tab();
-    await waitFor(() =>
-      expect(
-        screen.queryByText("Volume estimado = peso ÷ densidade"),
-      ).toBeNull(),
-    );
+    expect(screen.getAllByText("Origem e destino").length).toBeGreaterThan(0);
+    expect(screen.queryByLabelText("Material cadastrado")).toBeNull();
+    expect(screen.queryByLabelText("Nome do material")).toBeNull();
+    expect(screen.queryByLabelText("Densidade t/m³")).toBeNull();
   });
 });
 

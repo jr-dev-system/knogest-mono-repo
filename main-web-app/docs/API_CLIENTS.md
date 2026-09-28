@@ -65,11 +65,11 @@ valida UUID/data, chama exclusivamente o cliente Kubb e recarrega o retrato do
 dia devolvido ao componente. A tela também chama `router.refresh()` a cada 30
 segundos e ao recuperar foco.
 
-O CTA de produção navega para a seção existente com `date` e `shift` na query.
-Esses parâmetros abrem o assistente já existente e bloqueiam a troca do
-contexto operacional; não criam uma segunda implementação de produção. Os
-CTAs de manutenção e abastecimento são deliberadamente locais nesta versão e
-apenas informam indisponibilidade, sem requisição HTTP.
+O CTA de produção abre o assistente compartilhado sobre a própria Central e
+consulta as opções para a data e o turno do RDO. O comando recebe o supervisor
+como responsável e omite início e fim; fechar ou salvar não navega para a aba
+Produção. Os CTAs de manutenção e abastecimento são deliberadamente locais
+nesta versão e apenas informam indisponibilidade, sem requisição HTTP.
 
 O fluxo de produção usa os clientes gerados para opções do turno, listagem,
 detalhe, comando discriminado, catálogos, workflow, qualidade, histórico e
@@ -77,11 +77,16 @@ viagens legadas. `productions.actions.ts` é a fronteira server-only;
 componentes não repetem tipos de transporte gerados. O wizard envia
 `individualActivity` ou `materialMovement`, nunca `officialQuantity`.
 
-Materiais e rotas criados inline passam primeiro pelas rotas versionadas do
-catálogo e o comando de produção recebe os IDs das revisões retornadas. O
+Rotas criadas inline passam primeiro pelas rotas versionadas do catálogo e o
+comando de produção recebe o ID da revisão retornada. Material e seu cadastro
+inline permanecem ocultos, e `materialName` pode ser `null`. O
 resumo por caminhão é salvo junto ao agregado; a capacidade efetiva vem das
 opções da API e é somente leitura. A prévia decimal é apresentação local, mas o
 snapshot devolvido pela API sempre substitui o estado do componente.
+
+Movimentações enviam os IDs das frentes de origem e destino, inclusive quando
+são iguais. A API valida as duas frentes como ativas e deriva seus nomes; dados
+de origem e destino existentes na rota não substituem essa escolha.
 
 No modo compatível de eventos, o componente nunca incrementa viagens apenas em
 estado local: cada toque envia UUID de idempotência e substitui o detalhe pela
@@ -191,6 +196,14 @@ linha branca. A etapa de capacidade é condicional e a revisão final é uma eta
 de navegação real: entrar nela não chama a Server Action. O resultado da criação
 devolve o ID e a regra de operador para o alerta pós-sucesso e para o fluxo de
 unidades, sem importar o cliente gerado no componente.
+
+O detalhe do modelo reutiliza os mesmos campos e validações para chamar `PATCH
+/machine-models/:machineModelId`. A exclusão usa `DELETE
+/machine-models/:machineModelId`: a ação fica desabilitada enquanto o detalhe
+informar unidades ativas e, quando elegível, exige confirmação em
+`AlertDialog`. Um conflito concorrente permanece visível no diálogo. Após o
+soft delete, a Server Action revalida o catálogo e a interface retorna para
+`/home/maquinas`; unidades históricas não são alteradas.
 
 Depois da saída animada do formulário de modelo, uma confirmação compacta pode
 iniciar `POST

@@ -798,6 +798,8 @@ describe("project daily reports", () => {
       payload: {
         ...commonProduction,
         kind: "individual_activity",
+        startTime: null,
+        endTime: null,
         submitNow: true,
         entryMode: "direct_total",
         individualActivity: {
@@ -832,25 +834,11 @@ describe("project daily reports", () => {
       status: "submitted",
       unitCode: "M3_BANK",
       operationalRevision: 1,
+      startTime: null,
+      endTime: null,
     });
     expect(direct.json().data.metrics.officialQuantity).toBe("100.125");
 
-    const material = await app.inject({
-      method: "POST",
-      url: `/api/v1/projects/${scope.projectId}/earthwork-materials`,
-      headers: { authorization: scope.authorization },
-      payload: {
-        code: "solo-1",
-        name: "Solo de 1ª categoria",
-        classification: "Solo argiloso",
-        category: "Material comum",
-        densityTPerM3: "1.800000",
-        swellFactor: "1.250000",
-        looseToCompactedFactor: "0.800000",
-        effectiveFrom: `${scope.reportDate}T00:00:00-03:00`,
-      },
-    });
-    expect(material.statusCode, material.body).toBe(201);
     const route = await app.inject({
       method: "POST",
       url: `/api/v1/projects/${scope.projectId}/haul-routes`,
@@ -881,13 +869,8 @@ describe("project daily reports", () => {
         materialMovement: {
           workFrontId: front.id,
           workFrontServiceId: service.id,
-          materialRevisionId: material.json().data.revision.id,
+          destinationWorkFrontId: front.id,
           routeRevisionId: route.json().data.revision.id,
-          materialName: "Solo de 1ª categoria",
-          materialCategory: "Material comum",
-          densityTPerM3: "1.800000",
-          swellFactor: "1.250000",
-          looseToCompactedFactor: "0.800000",
           origin: "Corte A",
           destination: "Aterro B",
           dmtKm: "5.000",
@@ -936,6 +919,13 @@ describe("project daily reports", () => {
     });
     expect(draft.statusCode, draft.body).toBe(201);
     expect(draft.json().data.equipment[0].defaultTripCapacityM3).toBe("10.000");
+    expect(draft.json().data).toMatchObject({
+      materialName: null,
+      origin: front.name,
+      destination: front.name,
+      startTime: "07:00",
+      endTime: "18:00",
+    });
     const draftId = draft.json().data.id as string;
     const productionEquipmentId = draft.json().data.equipment[0].id as string;
     const idempotencyKey = "00000000-0000-4000-8000-000000002999";

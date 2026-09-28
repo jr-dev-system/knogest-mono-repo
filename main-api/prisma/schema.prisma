@@ -414,14 +414,15 @@ model User {
   machineMeterReadingCorrections        MachineMeterReadingCorrection[]      @relation("MachineMeterReadingCorrectionActor")
   createdProjectDailyReports            ProjectDailyReport[]                 @relation("ProjectDailyReportCreatedBy")
   finalizedProjectDailyReports          ProjectDailyReport[]                 @relation("ProjectDailyReportFinalizedBy")
-  confirmedDailyReportInterferences     ProjectDailyReportInterference[]      @relation("ProjectDailyReportInterferenceConfirmedBy")
+  confirmedDailyReportInterferences     ProjectDailyReportInterference[]     @relation("ProjectDailyReportInterferenceConfirmedBy")
   createdProjectEmployeeAllocations     ProjectEmployeeAllocation[]          @relation("ProjectEmployeeAllocationCreatedBy")
   endedProjectEmployeeAllocations       ProjectEmployeeAllocation[]          @relation("ProjectEmployeeAllocationEndedBy")
   createdProjectMachineAllocations      ProjectMachineAllocation[]           @relation("ProjectMachineAllocationCreatedBy")
   endedProjectMachineAllocations        ProjectMachineAllocation[]           @relation("ProjectMachineAllocationEndedBy")
   createdProjectMachineShiftAssignments ProjectMachineShiftAssignment[]      @relation("ProjectMachineShiftAssignmentCreatedBy")
   endedProjectMachineShiftAssignments   ProjectMachineShiftAssignment[]      @relation("ProjectMachineShiftAssignmentEndedBy")
-  deletedMachines                        Machine[]                            @relation("MachineDeletedBy")
+  deletedMachines                       Machine[]                            @relation("MachineDeletedBy")
+  deletedMachineModels                  MachineModel[]                       @relation("MachineModelDeletedBy")
   createdWorkFrontEmployeeAssignments   ProjectWorkFrontEmployeeAssignment[] @relation("WorkFrontEmployeeAssignmentCreatedBy")
   endedWorkFrontEmployeeAssignments     ProjectWorkFrontEmployeeAssignment[] @relation("WorkFrontEmployeeAssignmentEndedBy")
   createdWorkFrontMachineAssignments    ProjectWorkFrontMachineAssignment[]  @relation("WorkFrontMachineAssignmentCreatedBy")
@@ -746,32 +747,35 @@ model JobRole {
 }
 
 model MachineModel {
-  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId       String           @map("corporation_id") @db.Uuid
-  companyId           String           @map("company_id") @db.Uuid
-  description         String?          @db.VarChar(500)
-  type                MachineType
-  manufacturer        String           @db.VarChar(120)
-  model               String           @db.VarChar(120)
-  version             String?          @db.VarChar(120)
-  normalizedManufacturer String         @map("normalized_manufacturer") @db.VarChar(120)
-  normalizedModel        String         @map("normalized_model") @db.VarChar(120)
-  normalizedVersion      String         @default("") @map("normalized_version") @db.VarChar(120)
+  id                     String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId          String            @map("corporation_id") @db.Uuid
+  companyId              String            @map("company_id") @db.Uuid
+  description            String?           @db.VarChar(500)
+  type                   MachineType
+  manufacturer           String            @db.VarChar(120)
+  model                  String            @db.VarChar(120)
+  version                String?           @db.VarChar(120)
+  normalizedManufacturer String            @map("normalized_manufacturer") @db.VarChar(120)
+  normalizedModel        String            @map("normalized_model") @db.VarChar(120)
+  normalizedVersion      String            @default("") @map("normalized_version") @db.VarChar(120)
   /// Legacy migration value. The public catalog and all new writes use the unit meter type.
-  meterType           MachineMeterType? @map("meter_type")
-  loadCapacity        Decimal?         @map("load_capacity") @db.Decimal(12, 3)
-  loadCapacityUnitCode String?         @map("load_capacity_unit_code") @db.VarChar(32)
-  loadVolumeM3        Decimal?         @map("load_volume_m3") @db.Decimal(10, 3)
-  maxSupportedWeightT Decimal?         @map("max_supported_weight_t") @db.Decimal(10, 3)
-  requiresOperator    Boolean          @default(true) @map("requires_operator")
-  requiredJobRoleId   String?          @map("required_job_role_id") @db.Uuid
-  isActive            Boolean          @default(true) @map("is_active")
-  createdAt           DateTime         @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt           DateTime         @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation         Corporation      @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company             Company          @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  requiredJobRole     JobRole?         @relation("MachineModelRequiredJobRole", fields: [requiredJobRoleId], references: [id], onDelete: Restrict)
-  machines            Machine[]
+  meterType              MachineMeterType? @map("meter_type")
+  loadCapacity           Decimal?          @map("load_capacity") @db.Decimal(12, 3)
+  loadCapacityUnitCode   String?           @map("load_capacity_unit_code") @db.VarChar(32)
+  loadVolumeM3           Decimal?          @map("load_volume_m3") @db.Decimal(10, 3)
+  maxSupportedWeightT    Decimal?          @map("max_supported_weight_t") @db.Decimal(10, 3)
+  requiresOperator       Boolean           @default(true) @map("requires_operator")
+  requiredJobRoleId      String?           @map("required_job_role_id") @db.Uuid
+  isActive               Boolean           @default(true) @map("is_active")
+  deletedAt              DateTime?         @map("deleted_at") @db.Timestamptz(3)
+  deletedByUserId        String?           @map("deleted_by_user_id") @db.Uuid
+  createdAt              DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt              DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation            Corporation       @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company                Company           @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  requiredJobRole        JobRole?          @relation("MachineModelRequiredJobRole", fields: [requiredJobRoleId], references: [id], onDelete: Restrict)
+  deletedBy              User?             @relation("MachineModelDeletedBy", fields: [corporationId, deletedByUserId], references: [corporationId, id], onDelete: Restrict)
+  machines               Machine[]
 
   @@index([corporationId, companyId, manufacturer, model, version, id])
   @@index([corporationId, companyId, requiredJobRoleId])
@@ -856,20 +860,20 @@ model Machine {
 }
 
 model MachineOwnershipPeriod {
-  id                String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId     String               @map("corporation_id") @db.Uuid
-  companyId         String               @map("company_id") @db.Uuid
-  machineId         String               @map("machine_id") @db.Uuid
-  effectiveFrom     DateTime             @default(now()) @map("effective_from") @db.Timestamptz(3)
-  effectiveTo       DateTime?            @map("effective_to") @db.Timestamptz(3)
-  ownershipKind     MachineOwnershipKind @default(OWNED) @map("ownership_kind")
-  externalOwnerName String?              @map("external_owner_name") @db.VarChar(180)
-  suggestedHourlyRate Decimal?           @map("suggested_hourly_rate") @db.Decimal(18, 2)
-  createdAt         DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation       Corporation          @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company           Company              @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  machine           Machine              @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
+  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId       String               @map("corporation_id") @db.Uuid
+  companyId           String               @map("company_id") @db.Uuid
+  machineId           String               @map("machine_id") @db.Uuid
+  effectiveFrom       DateTime             @default(now()) @map("effective_from") @db.Timestamptz(3)
+  effectiveTo         DateTime?            @map("effective_to") @db.Timestamptz(3)
+  ownershipKind       MachineOwnershipKind @default(OWNED) @map("ownership_kind")
+  externalOwnerName   String?              @map("external_owner_name") @db.VarChar(180)
+  suggestedHourlyRate Decimal?             @map("suggested_hourly_rate") @db.Decimal(18, 2)
+  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
+  corporation         Corporation          @relation(fields: [corporationId], references: [id], onDelete: Restrict)
+  company             Company              @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
+  machine             Machine              @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
 
   @@index([corporationId, companyId, machineId])
   @@index([corporationId, companyId, effectiveFrom, id])
@@ -1624,24 +1628,24 @@ model ProjectDailyReportTechnicalResponsibility {
 }
 
 model ProjectDailyReportEmployee {
-  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId        String             @map("corporation_id") @db.Uuid
-  companyId            String             @map("company_id") @db.Uuid
-  projectId            String             @map("project_id") @db.Uuid
-  dailyReportId        String             @map("daily_report_id") @db.Uuid
-  employmentId         String             @map("employment_id") @db.Uuid
-  employeeNameSnapshot String             @map("employee_name_snapshot") @db.VarChar(180)
-  jobRoleSnapshot      String             @map("job_role_snapshot") @db.VarChar(120)
-  completedFullShift   Boolean            @map("completed_full_shift")
-  regularWorkedMinutes Int                @map("regular_worked_minutes")
-  overtimeMinutes      Int                @default(0) @map("overtime_minutes")
+  id                   String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId        String                             @map("corporation_id") @db.Uuid
+  companyId            String                             @map("company_id") @db.Uuid
+  projectId            String                             @map("project_id") @db.Uuid
+  dailyReportId        String                             @map("daily_report_id") @db.Uuid
+  employmentId         String                             @map("employment_id") @db.Uuid
+  employeeNameSnapshot String                             @map("employee_name_snapshot") @db.VarChar(180)
+  jobRoleSnapshot      String                             @map("job_role_snapshot") @db.VarChar(120)
+  completedFullShift   Boolean                            @map("completed_full_shift")
+  regularWorkedMinutes Int                                @map("regular_worked_minutes")
+  overtimeMinutes      Int                                @default(0) @map("overtime_minutes")
   attendanceStatus     ProjectDailyReportAttendanceStatus @default(PRESENT) @map("attendance_status")
-  absenceReason        String?            @map("absence_reason") @db.VarChar(500)
-  checkInAt            DateTime?          @map("check_in_at") @db.Timestamptz(3)
-  checkOutAt           DateTime?          @map("check_out_at") @db.Timestamptz(3)
-  overtimeConfirmed    Boolean            @default(false) @map("overtime_confirmed")
-  dailyReport          ProjectDailyReport @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdre_report_fkey")
-  employment           Employment         @relation("ProjectDailyReportEmployeeEmployment", fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdre_employment_fkey")
+  absenceReason        String?                            @map("absence_reason") @db.VarChar(500)
+  checkInAt            DateTime?                          @map("check_in_at") @db.Timestamptz(3)
+  checkOutAt           DateTime?                          @map("check_out_at") @db.Timestamptz(3)
+  overtimeConfirmed    Boolean                            @default(false) @map("overtime_confirmed")
+  dailyReport          ProjectDailyReport                 @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdre_report_fkey")
+  employment           Employment                         @relation("ProjectDailyReportEmployeeEmployment", fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdre_employment_fkey")
   breaks               ProjectDailyReportEmployeeBreak[]
 
   @@unique([dailyReportId, employmentId], map: "project_daily_report_employees_report_employment_key")
@@ -1650,28 +1654,28 @@ model ProjectDailyReportEmployee {
 }
 
 model ProjectDailyReportMachine {
-  id                      String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId           String                 @map("corporation_id") @db.Uuid
-  companyId               String                 @map("company_id") @db.Uuid
-  projectId               String                 @map("project_id") @db.Uuid
-  dailyReportId           String                 @map("daily_report_id") @db.Uuid
-  machineId               String                 @map("machine_id") @db.Uuid
-  machineNameSnapshot     String                 @map("machine_name_snapshot") @db.VarChar(160)
-  manufacturerSnapshot    String                 @map("manufacturer_snapshot") @db.VarChar(120)
-  modelSnapshot           String                 @map("model_snapshot") @db.VarChar(120)
-  meterTypeSnapshot       MachineMeterType       @map("meter_type_snapshot")
-  identifierKindSnapshot  MachineIdentifierKind? @map("identifier_kind_snapshot")
-  identifierValueSnapshot String?                @map("identifier_value_snapshot") @db.VarChar(80)
-  startMeterReadingId     String                 @map("start_meter_reading_id") @db.Uuid
-  startMeterReadingValue  Decimal                @map("start_meter_reading_value") @db.Decimal(14, 2)
-  endMeterReadingId       String?                @map("end_meter_reading_id") @db.Uuid
-  endMeterReadingValue    Decimal                @map("end_meter_reading_value") @db.Decimal(14, 2)
+  id                      String                             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId           String                             @map("corporation_id") @db.Uuid
+  companyId               String                             @map("company_id") @db.Uuid
+  projectId               String                             @map("project_id") @db.Uuid
+  dailyReportId           String                             @map("daily_report_id") @db.Uuid
+  machineId               String                             @map("machine_id") @db.Uuid
+  machineNameSnapshot     String                             @map("machine_name_snapshot") @db.VarChar(160)
+  manufacturerSnapshot    String                             @map("manufacturer_snapshot") @db.VarChar(120)
+  modelSnapshot           String                             @map("model_snapshot") @db.VarChar(120)
+  meterTypeSnapshot       MachineMeterType                   @map("meter_type_snapshot")
+  identifierKindSnapshot  MachineIdentifierKind?             @map("identifier_kind_snapshot")
+  identifierValueSnapshot String?                            @map("identifier_value_snapshot") @db.VarChar(80)
+  startMeterReadingId     String                             @map("start_meter_reading_id") @db.Uuid
+  startMeterReadingValue  Decimal                            @map("start_meter_reading_value") @db.Decimal(14, 2)
+  endMeterReadingId       String?                            @map("end_meter_reading_id") @db.Uuid
+  endMeterReadingValue    Decimal                            @map("end_meter_reading_value") @db.Decimal(14, 2)
   operationalCondition    ProjectDailyReportMachineCondition @default(FIT) @map("operational_condition")
-  conditionNote           String?                @map("condition_note") @db.VarChar(500)
-  dailyReport             ProjectDailyReport     @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdrm_report_fkey")
-  machine                 Machine                @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict, map: "pdrm_machine_fkey")
-  startMeterReading       MachineMeterReading    @relation("ProjectDailyReportMachineStartReading", fields: [corporationId, companyId, machineId, startMeterReadingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "pdrm_start_reading_fkey")
-  endMeterReading         MachineMeterReading?   @relation("ProjectDailyReportMachineEndReading", fields: [corporationId, companyId, machineId, endMeterReadingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "pdrm_end_reading_fkey")
+  conditionNote           String?                            @map("condition_note") @db.VarChar(500)
+  dailyReport             ProjectDailyReport                 @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdrm_report_fkey")
+  machine                 Machine                            @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict, map: "pdrm_machine_fkey")
+  startMeterReading       MachineMeterReading                @relation("ProjectDailyReportMachineStartReading", fields: [corporationId, companyId, machineId, startMeterReadingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "pdrm_start_reading_fkey")
+  endMeterReading         MachineMeterReading?               @relation("ProjectDailyReportMachineEndReading", fields: [corporationId, companyId, machineId, endMeterReadingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "pdrm_end_reading_fkey")
 
   @@unique([dailyReportId, machineId], map: "project_daily_report_machines_report_machine_key")
   @@index([corporationId, companyId, projectId, machineId, dailyReportId], map: "project_daily_report_machines_scope_idx")
@@ -1679,16 +1683,16 @@ model ProjectDailyReportMachine {
 }
 
 model ProjectDailyReportEmployeeBreak {
-  id             String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId  String                    @map("corporation_id") @db.Uuid
-  companyId      String                    @map("company_id") @db.Uuid
-  projectId      String                    @map("project_id") @db.Uuid
-  dailyReportId  String                    @map("daily_report_id") @db.Uuid
-  employeeEntryId String                   @map("employee_entry_id") @db.Uuid
-  position       Int
-  startAt        DateTime                  @map("start_at") @db.Timestamptz(3)
-  endAt          DateTime                  @map("end_at") @db.Timestamptz(3)
-  employeeEntry  ProjectDailyReportEmployee @relation(fields: [employeeEntryId], references: [id], onDelete: Cascade)
+  id              String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId   String                     @map("corporation_id") @db.Uuid
+  companyId       String                     @map("company_id") @db.Uuid
+  projectId       String                     @map("project_id") @db.Uuid
+  dailyReportId   String                     @map("daily_report_id") @db.Uuid
+  employeeEntryId String                     @map("employee_entry_id") @db.Uuid
+  position        Int
+  startAt         DateTime                   @map("start_at") @db.Timestamptz(3)
+  endAt           DateTime                   @map("end_at") @db.Timestamptz(3)
+  employeeEntry   ProjectDailyReportEmployee @relation(fields: [employeeEntryId], references: [id], onDelete: Cascade)
 
   @@unique([employeeEntryId, position], map: "pdreb_entry_position_uq")
   @@index([corporationId, companyId, projectId, dailyReportId], map: "pdreb_scope_idx")
@@ -1696,22 +1700,22 @@ model ProjectDailyReportEmployeeBreak {
 }
 
 model ProjectDailyReportInterference {
-  id                String                                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId     String                                  @map("corporation_id") @db.Uuid
-  companyId         String                                  @map("company_id") @db.Uuid
-  projectId         String                                  @map("project_id") @db.Uuid
-  dailyReportId     String                                  @map("daily_report_id") @db.Uuid
+  id                String                                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId     String                                 @map("corporation_id") @db.Uuid
+  companyId         String                                 @map("company_id") @db.Uuid
+  projectId         String                                 @map("project_id") @db.Uuid
+  dailyReportId     String                                 @map("daily_report_id") @db.Uuid
   category          ProjectDailyReportInterferenceCategory
-  description       String                                  @db.Text
-  impact            String                                  @db.Text
-  startedAt         DateTime                                @map("started_at") @db.Timestamptz(3)
-  endedAt           DateTime?                               @map("ended_at") @db.Timestamptz(3)
-  confirmedAt       DateTime?                               @map("confirmed_at") @db.Timestamptz(3)
-  confirmedByUserId String?                                 @map("confirmed_by_user_id") @db.Uuid
-  createdAt         DateTime                                @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt         DateTime                                @updatedAt @map("updated_at") @db.Timestamptz(3)
-  dailyReport       ProjectDailyReport                      @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdri_report_fkey")
-  confirmedBy       User?                                   @relation("ProjectDailyReportInterferenceConfirmedBy", fields: [corporationId, confirmedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pdri_confirmed_by_fkey")
+  description       String                                 @db.Text
+  impact            String                                 @db.Text
+  startedAt         DateTime                               @map("started_at") @db.Timestamptz(3)
+  endedAt           DateTime?                              @map("ended_at") @db.Timestamptz(3)
+  confirmedAt       DateTime?                              @map("confirmed_at") @db.Timestamptz(3)
+  confirmedByUserId String?                                @map("confirmed_by_user_id") @db.Uuid
+  createdAt         DateTime                               @default(now()) @map("created_at") @db.Timestamptz(3)
+  updatedAt         DateTime                               @updatedAt @map("updated_at") @db.Timestamptz(3)
+  dailyReport       ProjectDailyReport                     @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdri_report_fkey")
+  confirmedBy       User?                                  @relation("ProjectDailyReportInterferenceConfirmedBy", fields: [corporationId, confirmedByUserId], references: [corporationId, id], onDelete: Restrict, map: "pdri_confirmed_by_fkey")
 
   @@index([corporationId, companyId, projectId, dailyReportId, startedAt, id], map: "pdri_scope_started_idx")
   @@map("project_daily_report_interferences")

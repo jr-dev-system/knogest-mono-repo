@@ -18,6 +18,20 @@ function normalizedJobRoleName(value: string) {
     .trim();
 }
 
+async function lockMachineModel(
+  context: HandlerContext,
+  input: { corporationId: string; companyId: string; machineModelId: string },
+) {
+  await context.prisma.$queryRaw`
+    SELECT id
+    FROM "machine_models"
+    WHERE "corporation_id" = ${input.corporationId}::uuid
+      AND "company_id" = ${input.companyId}::uuid
+      AND id = ${input.machineModelId}::uuid
+    FOR UPDATE
+  `;
+}
+
 export interface MachineRecord {
   id: string;
   corporationId: string;
@@ -746,6 +760,7 @@ export async function addMachineModelUnitsHandler(
     };
   },
 ) {
+  await lockMachineModel(context, input);
   const model = await findMachineModelDetailHandler(context, input);
   return createMachineHandler(context, {
     ...input,
@@ -995,6 +1010,7 @@ export async function updateMachineModelHandler(
     requiredJobRoleId: string | null;
   },
 ) {
+  await lockMachineModel(context, input);
   const current = await findMachineModelDetailHandler(context, input);
   const operatorRuleChanged =
     current.requiresOperator !== input.requiresOperator ||
@@ -1017,27 +1033,39 @@ export async function updateMachineModelHandler(
         statusCode: 409,
       });
   }
-  await context.prisma.machineModel.update({
-    where: { id: input.machineModelId },
-    data: {
-      description: input.description,
-      type: input.type,
-      manufacturer: input.manufacturer,
-      model: input.model,
-      version: input.version,
-      normalizedManufacturer: input.manufacturer
-        .trim()
-        .toLocaleLowerCase("pt-BR"),
-      normalizedModel: input.model.trim().toLocaleLowerCase("pt-BR"),
-      normalizedVersion: input.version?.trim().toLocaleLowerCase("pt-BR") ?? "",
-      loadCapacity: input.loadCapacity,
-      loadCapacityUnitCode: input.loadCapacityUnitCode,
-      loadVolumeM3: input.loadVolumeM3,
-      maxSupportedWeightT: input.maxSupportedWeightT,
-      requiresOperator: input.requiresOperator,
-      requiredJobRoleId: input.requiredJobRoleId,
-    },
-  });
+  try {
+    await context.prisma.machineModel.update({
+      where: { id: input.machineModelId },
+      data: {
+        description: input.description,
+        type: input.type,
+        manufacturer: input.manufacturer,
+        model: input.model,
+        version: input.version,
+        normalizedManufacturer: input.manufacturer
+          .trim()
+          .toLocaleLowerCase("pt-BR"),
+        normalizedModel: input.model.trim().toLocaleLowerCase("pt-BR"),
+        normalizedVersion:
+          input.version?.trim().toLocaleLowerCase("pt-BR") ?? "",
+        loadCapacity: input.loadCapacity,
+        loadCapacityUnitCode: input.loadCapacityUnitCode,
+        loadVolumeM3: input.loadVolumeM3,
+        maxSupportedWeightT: input.maxSupportedWeightT,
+        requiresOperator: input.requiresOperator,
+        requiredJobRoleId: input.requiredJobRoleId,
+      },
+    });
+  } catch (error) {
+    if (isUniqueError(error))
+      throw new AppError({
+        code: "MACHINE_MODEL_ALREADY_EXISTS",
+        message:
+          "A Machine Model with this manufacturer, model and version already exists",
+        statusCode: 409,
+      });
+    throw error;
+  }
   await context.prisma.machine.updateMany({
     where: { machineModelId: input.machineModelId },
     data: {
@@ -1078,6 +1106,54 @@ export async function updateMachineModelHandler(
     });
   }
   return findMachineModelDetailHandler(context, input);
+}
+
+export async function softDeleteMachineModelHandler(
+  context: HandlerContext,
+  input: {
+    corporationId: string;
+    companyId: string;
+    actorUserId: string;
+    machineModelId: string;
+  },
+) {
+  await lockMachineModel(context, input);
+  const model = await context.prisma.machineModel.findFirst({
+    where: {
+      id: input.machineModelId,
+      corporationId: input.corporationId,
+      companyId: input.companyId,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+  if (!model) throw notFoundError();
+
+  const activeUnit = await context.prisma.machine.findFirst({
+    where: {
+      corporationId: input.corporationId,
+      machineModelId: input.machineModelId,
+      isActive: true,
+    },
+    select: { id: true },
+  });
+  if (activeUnit)
+    throw new AppError({
+      code: "MACHINE_MODEL_DELETE_BLOCKED",
+      message: "Machine Model has active units",
+      statusCode: 409,
+    });
+
+  const now = new Date();
+  await context.prisma.machineModel.update({
+    where: { id: input.machineModelId },
+    data: {
+      isActive: false,
+      deletedAt: now,
+      deletedByUserId: input.actorUserId,
+    },
+  });
+  return { id: input.machineModelId, deletedAt: now.toISOString() };
 }
 
 export async function findDeletedMachineMatchesHandler(

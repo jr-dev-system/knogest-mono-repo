@@ -438,6 +438,25 @@ const machineModelDetailResponseSchema = {
   },
 } as const;
 
+const softDeleteResponseSchema = {
+  type: "object",
+  required: ["success", "message", "data"],
+  properties: {
+    success: { type: "boolean", const: true },
+    message: { type: "string" },
+    data: {
+      type: "object",
+      required: ["id", "deletedAt"],
+      properties: {
+        id: { type: "string", format: "uuid" },
+        deletedAt: { type: "string", format: "date-time" },
+      },
+      additionalProperties: false,
+    },
+  },
+  additionalProperties: false,
+} as const;
+
 const machineModelListResponseSchema = {
   type: "object",
   required: ["success", "message", "data"],
@@ -688,6 +707,42 @@ export const v1FleetController = async (app: FastifyInstance) => {
           scopeFromRequest(request),
           machineModelId,
           request.body as z.infer<typeof updateMachineModelSchema>,
+        ),
+      });
+    },
+  );
+
+  app.delete(
+    "/machine-models/:machineModelId",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(machineModelParamsSchema),
+      ],
+      schema: {
+        tags: ["Fleet"],
+        summary: "Soft delete an empty Machine Model",
+        security: [{ bearerAuth: [] }],
+        params: machineModelParamsOpenApiSchema,
+        response: {
+          200: softDeleteResponseSchema,
+          400: errorSchema,
+          401: errorSchema,
+          403: errorSchema,
+          404: errorSchema,
+          409: errorSchema,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { machineModelId } = request.params as z.infer<
+        typeof machineModelParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        data: await fleetService.softDeleteModel(
+          scopeFromRequest(request),
+          machineModelId,
         ),
       });
     },

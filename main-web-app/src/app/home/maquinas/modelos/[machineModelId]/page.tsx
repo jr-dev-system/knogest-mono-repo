@@ -3,10 +3,13 @@ import { requireCompanyWorkspace } from "@/features/company-selection/company-se
 import { MachineModelDetailPage } from "@/features/machines/components/machine-model-detail-page";
 import {
   addMachineModelUnitsAction,
+  deleteMachineModelAction,
   getMachineAllocationProjectContextAction,
   searchMachineAllocationProjectsAction,
+  updateMachineModelAction,
 } from "@/features/machines/machines.actions";
 import { getMachineModelDetail } from "@/features/machines/machines.server";
+import { getJobRoles } from "@/features/employees/employees.server";
 
 export default async function Page({
   params,
@@ -15,7 +18,10 @@ export default async function Page({
 }) {
   const { companies, selectedCompany } = await requireCompanyWorkspace();
   const { machineModelId } = await params;
-  const model = await getMachineModelDetail(machineModelId);
+  const [model, jobRoles] = await Promise.all([
+    getMachineModelDetail(machineModelId),
+    getJobRoles(),
+  ]);
   return (
     <AppShell
       companies={companies}
@@ -25,8 +31,11 @@ export default async function Page({
       <MachineModelDetailPage
         model={model}
         action={addMachineModelUnitsAction.bind(null, machineModelId)}
+        deleteAction={deleteMachineModelAction.bind(null, machineModelId)}
+        jobRoles={(jobRoles ?? []).filter((role) => role.isActive)}
         loadProjectAction={getMachineAllocationProjectContextAction}
         searchProjectsAction={searchMachineAllocationProjectsAction}
+        updateAction={updateMachineModelAction.bind(null, machineModelId)}
       />
     </AppShell>
   );

@@ -7,9 +7,14 @@ sete dias civis anteriores, limitado também pelo início real da obra. Datas
 futuras são proibidas. Os limites calculados pela API são devolvidos em
 `dateLimits`; a interface não usa o relógio do navegador como autoridade.
 
-O turno precisa estar habilitado. Frente, serviço, responsável, material,
-rota, máquinas, operadores e caminhões são revalidados no servidor no instante
-do comando e sempre no escopo autenticado de corporação, empresa e obra.
+O turno precisa estar habilitado. Frente, serviço, responsável, rota,
+máquinas, operadores e caminhões são revalidados no servidor no instante do
+comando e sempre no escopo autenticado de corporação, empresa e obra. Material
+é opcional na movimentação; referências antigas e catálogos continuam válidos.
+
+Quando o lançamento nasce na Central operacional, data, turno e responsável
+são herdados do RDO aberto, usando seu supervisor. A produção pertence ao
+turno completo: não recebe início ou fim próprios nesse fluxo.
 
 ## Agregado e tipos de lançamento
 
@@ -18,7 +23,8 @@ do comando e sempre no escopo autenticado de corporação, empresa e obra.
 
 - `INDIVIDUAL_ACTIVITY`: uma atividade sem transporte agregado, com local,
   serviço, método e quantidade operacional;
-- `MATERIAL_MOVEMENT`: um lote com origem, destino, material, rota, camada,
+- `MATERIAL_MOVEMENT`: um lote com origem e destino derivados de frentes
+  ativas, material opcional, rota, camada,
   composição, caminhões e quantidades derivadas.
 
 Uma movimentação contém componentes ordenados de corte, carga, transporte,
@@ -32,20 +38,27 @@ contratualmente medida editável.
 
 ## Wizard
 
-A aba **Produção** abre um único modal operacional `xl`, com React Hook Form,
+A aba **Produção** e a Central operacional compartilham um único modal
+operacional `xl`, com React Hook Form,
 Zod, `FormWizardProgress`, `FormSection` e `FormErrorDeclaration`. O assistente
 valida apenas a etapa visível ao avançar, preserva os dados ao voltar e valida
 o comando completo na revisão. Cada grupo da revisão oferece **Editar**.
 
 - Atividade individual: **Tipo e turno → Frente e serviço → Local e
   quantidade → Equipamentos → Qualidade → Revisão**.
-- Movimentação: **Tipo e turno → Origem e material → Composição e rota →
+- Movimentação: **Tipo e turno → Origem e destino → Composição e rota →
   Caminhões → Equipamentos → Recebimento → Revisão**.
 
-Fechar com mudanças, trocar tipo, data ou turno exige confirmação. Material e
-rota podem ser cadastrados dentro da própria etapa, sem modal aninhado. O
-cadastro inline cria o catálogo antes de enviar o agregado; falha em qualquer
-parte mantém o formulário aberto e apresenta erro formal.
+Na Central, a primeira etapa mostra apenas o tipo porque o restante do contexto
+já está definido pelo turno; fechar ou salvar mantém o usuário na Central.
+Enquanto o modal estiver aberto, a Central pausa as atualizações automáticas
+por foco e intervalo. Trocar de aplicativo e voltar ao navegador preserva a
+etapa e os dados já preenchidos.
+Um novo lançamento exige ao menos uma frente de serviço ativa: sem frente
+iniciada, o modal informa o bloqueio e não permite avançar.
+Fechar com mudanças, trocar tipo, data ou turno exige confirmação. A rota pode
+ser cadastrada na própria etapa, sem modal aninhado. Material e cadastro de
+material permanecem ocultos nesta versão.
 
 Serviços cúbicos são gravados com condição explícita: `M3_BANK`, `M3_LOOSE`,
 `M3_COMPACTED` ou `M3_PLACED`. Acabamento permanece `M2`. Aterro e compactação
@@ -61,7 +74,7 @@ definições iniciais de corte, aterro, acabamento, topsoil, remoção de solo
 impróprio e aterro de substituição sem alterar os IDs dos serviços já
 distribuídos nas frentes.
 
-Materiais técnicos e rotas são catálogos por obra com listagem por cursor,
+Materiais técnicos e rotas continuam como catálogos por obra com listagem por cursor,
 metadados ativos/inativos e revisões sem sobreposição de vigência:
 
 - material: classificação, categoria, densidade, empolamento e fator
@@ -69,12 +82,16 @@ metadados ativos/inativos e revisões sem sobreposição de vigência:
 - rota: origem, destino, distância carregada, retorno vazio, DMT e faixa
   contratual.
 
-Ao selecionar uma revisão, a API confirma obra, vigência e estado ativo e usa
+Ao selecionar uma revisão existente, a API confirma obra, vigência e estado ativo e usa
 os valores persistidos, não os valores repetidos pelo cliente. Material,
 fatores, rota e distâncias são copiados para snapshots do lote. Alterar
 material/revisão, origem, destino, rota/revisão, camada ou composição produz
 outro fingerprint. Um lote equivalente retorna
 `409 PRODUCTION_DUPLICATE_BATCH` e o ID existente.
+
+Origem e destino são IDs de frentes ativas e podem apontar para a mesma frente.
+A API deriva os nomes persistidos dessas frentes; uma rota selecionada fornece
+distâncias e condições contratuais, mas não substitui os extremos escolhidos.
 
 ## Equipamentos, caminhões e viagens
 
@@ -127,10 +144,9 @@ Com balança, o peso real é a quantidade operacional em toneladas. Conversão
 por densidade, empolamento ou fator solto–compactado gera somente quantidade
 `ESTIMATED`. Sem densidade não há conversão volumétrica inferida.
 
-Na etapa **Origem e material**, os três fatores vigentes oferecem ajuda
-contextual pelo botão `?`, disponível por hover, foco de teclado ou clique. As
-entradas aceitam apenas decimais positivos, com ponto ou vírgula e até seis
-casas; caracteres alfabéticos também são removidos de conteúdo colado.
+Quando um registro legado ou outro cliente informa fatores de material, a API
+continua aplicando os cálculos abaixo. Esses fatores não são solicitados pelo
+wizard enquanto o material estiver oculto.
 
 - corte estimado: `Vb = Vs / fatorEmpolamento`;
 - aterro estimado: `Vc = Vs × fatorSoltoCompactado`;

@@ -193,15 +193,16 @@ const materialMovementSchema = z
   .object({
     workFrontId: uuid,
     workFrontServiceId: uuid,
+    destinationWorkFrontId: uuid,
     materialRevisionId: uuid.nullable().default(null),
     routeRevisionId: uuid.nullable().default(null),
-    materialName: z.string().trim().min(1).max(160),
+    materialName: z.string().trim().min(1).max(160).nullable().default(null),
     materialCategory: z.string().trim().max(120).nullable().default(null),
     densityTPerM3: positiveDecimal.nullable().default(null),
     swellFactor: positiveDecimal.nullable().default(null),
     looseToCompactedFactor: positiveDecimal.nullable().default(null),
-    origin: z.string().trim().min(1).max(240),
-    destination: z.string().trim().min(1).max(240),
+    origin: z.string().trim().min(1).max(240).nullable().default(null),
+    destination: z.string().trim().min(1).max(240).nullable().default(null),
     dmtKm: decimal,
     contractualDmtKm: decimal.nullable().default(null),
     contractualBand: z.string().trim().max(80).nullable().default(null),
@@ -212,19 +213,7 @@ const materialMovementSchema = z
     moistureCondition: z.string().trim().max(120).nullable().default(null),
     components: z.array(movementComponentSchema).min(1).max(12),
   })
-  .strict()
-  .superRefine((value, context) => {
-    if (
-      value.origin.localeCompare(value.destination, undefined, {
-        sensitivity: "base",
-      }) === 0
-    )
-      context.addIssue({
-        code: "custom",
-        path: ["destination"],
-        message: "Origin and destination must be different",
-      });
-  });
+  .strict();
 
 const truckSummarySchema = z
   .object({

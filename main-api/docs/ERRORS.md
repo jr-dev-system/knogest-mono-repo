@@ -129,6 +129,10 @@ categorias seguras.
   `MACHINE_RENTAL_ACTIVE` protect history and active rental terms. Operator
   compatibility during unit creation uses `MACHINE_OPERATOR_REQUIRED`,
   `MACHINE_OPERATOR_NOT_ALLOWED`, or `MACHINE_OPERATOR_INVALID`.
+- `MACHINE_MODEL_DELETE_BLOCKED` retorna `409` quando um modelo ainda possui
+  qualquer unidade com `isActive = true`. O cliente deve remover essas unidades
+  antes de tentar arquivar o modelo novamente; unidades históricas inativas não
+  bloqueiam nem são alteradas pela operação.
 - Em `POST /machine-models/:machineModelId/units`, erros da alocação inicial
   pertencem ao mesmo comando da criação. Qualquer `4xx` desfaz unidade,
   identificadores, leitura, propriedade/locação e mobilização; o cliente pode
