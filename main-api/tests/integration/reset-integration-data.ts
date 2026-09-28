@@ -8,7 +8,6 @@ export async function resetIntegrationData(prisma: PrismaClient) {
   await prisma.machineMeterReadingCorrection.deleteMany();
   await prisma.machineMeterReading.deleteMany();
   await prisma.machineIdentifier.deleteMany();
-  await prisma.machineOwnershipPeriod.deleteMany();
   await prisma.machine.deleteMany();
   await prisma.machineModel.deleteMany();
   await prisma.employmentJobRolePeriod.deleteMany();

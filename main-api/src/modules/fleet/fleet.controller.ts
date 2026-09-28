@@ -68,6 +68,7 @@ const machineSchema = {
     "model",
     "version",
     "meterType",
+    "hourlyRate",
     "loadCapacity",
     "loadCapacityUnitCode",
     "loadVolumeM3",
@@ -88,6 +89,7 @@ const machineSchema = {
     model: { type: "string" },
     version: { type: "string", nullable: true },
     meterType: { type: "string", enum: ["HOUR_METER", "ODOMETER"] },
+    hourlyRate: { type: "string", nullable: true },
     loadCapacity: { type: "string", nullable: true },
     loadCapacityUnitCode: {
       type: "string",
@@ -145,7 +147,7 @@ const machineSchema = {
       properties: {
         state: {
           type: "string",
-          enum: ["available", "unavailable", "without_rental"],
+          enum: ["available", "unavailable"],
         },
         hasOpenAllocation: { type: "boolean" },
       },
@@ -166,10 +168,6 @@ const machineModelSchema = {
     "manufacturer",
     "model",
     "version",
-    "loadCapacity",
-    "loadCapacityUnitCode",
-    "loadVolumeM3",
-    "maxSupportedWeightT",
     "requiresOperator",
     "requiredJobRole",
     "unitCount",
@@ -184,14 +182,6 @@ const machineModelSchema = {
     manufacturer: { type: "string" },
     model: { type: "string" },
     version: { type: "string", nullable: true },
-    loadCapacity: { type: "string", nullable: true },
-    loadCapacityUnitCode: {
-      type: "string",
-      enum: loadCapacityUnitCodes,
-      nullable: true,
-    },
-    loadVolumeM3: { type: "string", nullable: true },
-    maxSupportedWeightT: { type: "string", nullable: true },
     requiresOperator: { type: "boolean" },
     requiredJobRole: {
       type: "object",
@@ -214,7 +204,7 @@ const machineModelSchema = {
 const machineUnitBodySchema = {
   type: "object",
   additionalProperties: false,
-  required: ["meterType", "initialMeterReading", "ownership"],
+  required: ["meterType", "initialMeterReading"],
   anyOf: [{ required: ["plate"] }, { required: ["companyTag"] }],
   properties: {
     name: { type: "string", minLength: 1, maxLength: 160 },
@@ -229,28 +219,18 @@ const machineUnitBodySchema = {
       type: "string",
       pattern: decimalStringOpenApiPattern,
     },
-    ownership: {
-      oneOf: [
-        {
-          type: "object",
-          required: ["kind"],
-          properties: { kind: { const: "OWNED" } },
-          additionalProperties: false,
-        },
-        {
-          type: "object",
-          required: ["kind", "lessorName", "suggestedHourlyRate"],
-          properties: {
-            kind: { const: "RENTED" },
-            lessorName: { type: "string", minLength: 1, maxLength: 180 },
-            suggestedHourlyRate: {
-              type: "string",
-              pattern: "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$",
-            },
-          },
-          additionalProperties: false,
-        },
-      ],
+    hourlyRate: {
+      type: "string",
+      pattern: "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$",
+    },
+    loadCapacity: {
+      type: "string",
+      pattern: positiveSpecificationDecimalOpenApiPattern,
+    },
+    loadCapacityUnitCode: { type: "string", enum: loadCapacityUnitCodes },
+    maxSupportedWeightT: {
+      type: "string",
+      pattern: positiveSpecificationDecimalOpenApiPattern,
     },
     allocation: {
       type: "object",
@@ -258,11 +238,6 @@ const machineUnitBodySchema = {
       required: ["projectId", "operatorAssignments"],
       properties: {
         projectId: { type: "string", format: "uuid" },
-        confirmedHourlyRate: {
-          type: "string",
-          pattern: "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$",
-        },
-        monthlyHours: { type: "integer", minimum: 1, maximum: 744 },
         operatorAssignments: {
           type: "array",
           maxItems: 2,
@@ -300,19 +275,6 @@ const createMachineModelBodySchema = {
     manufacturer: { type: "string", minLength: 1, maxLength: 120 },
     model: { type: "string", minLength: 1, maxLength: 120 },
     version: { type: "string", maxLength: 120 },
-    loadCapacity: {
-      type: "string",
-      pattern: positiveSpecificationDecimalOpenApiPattern,
-    },
-    loadCapacityUnitCode: { type: "string", enum: loadCapacityUnitCodes },
-    loadVolumeM3: {
-      type: "string",
-      pattern: positiveSpecificationDecimalOpenApiPattern,
-    },
-    maxSupportedWeightT: {
-      type: "string",
-      pattern: positiveSpecificationDecimalOpenApiPattern,
-    },
     requiresOperator: { type: "boolean" },
     requiredJobRoleId: { type: "string", format: "uuid", nullable: true },
   },
@@ -328,19 +290,6 @@ const updateMachineModelBodySchema = {
     manufacturer: { type: "string", minLength: 1, maxLength: 120 },
     model: { type: "string", minLength: 1, maxLength: 120 },
     version: { type: "string", maxLength: 120 },
-    loadCapacity: {
-      type: "string",
-      pattern: positiveSpecificationDecimalOpenApiPattern,
-    },
-    loadCapacityUnitCode: { type: "string", enum: loadCapacityUnitCodes },
-    loadVolumeM3: {
-      type: "string",
-      pattern: positiveSpecificationDecimalOpenApiPattern,
-    },
-    maxSupportedWeightT: {
-      type: "string",
-      pattern: positiveSpecificationDecimalOpenApiPattern,
-    },
     requiresOperator: { type: "boolean" },
     requiredJobRoleId: { type: "string", format: "uuid", nullable: true },
   },
@@ -483,34 +432,7 @@ const machineModelListResponseSchema = {
   },
 } as const;
 
-const machineDetailSchema = {
-  ...machineSchema,
-  required: [...machineSchema.required, "ownership"],
-  properties: {
-    ...machineSchema.properties,
-    ownership: {
-      type: "object",
-      nullable: true,
-      required: [
-        "companyId",
-        "kind",
-        "lessorName",
-        "suggestedHourlyRate",
-        "effectiveFrom",
-        "effectiveTo",
-      ],
-      properties: {
-        companyId: { type: "string", format: "uuid" },
-        kind: { type: "string", enum: ["OWNED", "RENTED", "THIRD_PARTY"] },
-        lessorName: { type: "string", nullable: true },
-        suggestedHourlyRate: { type: "string", nullable: true },
-        effectiveFrom: { type: "string", format: "date-time" },
-        effectiveTo: { type: "string", format: "date-time", nullable: true },
-      },
-      additionalProperties: false,
-    },
-  },
-} as const;
+const machineDetailSchema = machineSchema;
 
 const detailResponseSchema = {
   type: "object",
@@ -551,12 +473,21 @@ const listResponseSchema = {
 const updateMachineLoadSpecificationBodySchema = {
   type: "object",
   additionalProperties: false,
-  required: ["loadVolumeM3", "maxSupportedWeightT"],
+  required: [
+    "loadCapacity",
+    "loadCapacityUnitCode",
+    "maxSupportedWeightT",
+  ],
   properties: {
-    loadVolumeM3: {
+    loadCapacity: {
       type: "string",
       nullable: true,
       pattern: positiveSpecificationDecimalOpenApiPattern,
+    },
+    loadCapacityUnitCode: {
+      type: "string",
+      enum: loadCapacityUnitCodes,
+      nullable: true,
     },
     maxSupportedWeightT: {
       type: "string",

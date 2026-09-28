@@ -322,14 +322,6 @@ enum ProjectProductionApprovalDecision {
   @@map("project_production_approval_decision")
 }
 
-enum MachineOwnershipKind {
-  OWNED
-  RENTED
-  THIRD_PARTY
-
-  @@map("machine_ownership_kind")
-}
-
 model Corporation {
   id        String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name      String   @db.VarChar(160)
@@ -349,7 +341,6 @@ model Corporation {
   jobRoles                       JobRole[]
   machineModels                  MachineModel[]
   machines                       Machine[]
-  machineOwnershipPeriods        MachineOwnershipPeriod[]
   machineIdentifiers             MachineIdentifier[]
   machineMeterReadings           MachineMeterReading[]
   machineMeterReadingCorrections MachineMeterReadingCorrection[]
@@ -386,7 +377,6 @@ model Company {
   employments                    Employment[]
   jobRoles                       JobRole[]
   machineModels                  MachineModel[]
-  machineOwnershipPeriods        MachineOwnershipPeriod[]
   machineIdentifiers             MachineIdentifier[]
   machineMeterReadings           MachineMeterReading[]
   machineMeterReadingCorrections MachineMeterReadingCorrection[]
@@ -760,10 +750,6 @@ model MachineModel {
   normalizedVersion      String            @default("") @map("normalized_version") @db.VarChar(120)
   /// Legacy migration value. The public catalog and all new writes use the unit meter type.
   meterType              MachineMeterType? @map("meter_type")
-  loadCapacity           Decimal?          @map("load_capacity") @db.Decimal(12, 3)
-  loadCapacityUnitCode   String?           @map("load_capacity_unit_code") @db.VarChar(32)
-  loadVolumeM3           Decimal?          @map("load_volume_m3") @db.Decimal(10, 3)
-  maxSupportedWeightT    Decimal?          @map("max_supported_weight_t") @db.Decimal(10, 3)
   requiresOperator       Boolean           @default(true) @map("requires_operator")
   requiredJobRoleId      String?           @map("required_job_role_id") @db.Uuid
   isActive               Boolean           @default(true) @map("is_active")
@@ -835,6 +821,9 @@ model Machine {
   model                  String                              @db.VarChar(120)
   version                String?                             @db.VarChar(120)
   meterType              MachineMeterType                    @map("meter_type")
+  hourlyRate             Decimal?                            @map("hourly_rate") @db.Decimal(18, 2)
+  loadCapacity           Decimal?                            @map("load_capacity") @db.Decimal(12, 3)
+  loadCapacityUnitCode   String?                             @map("load_capacity_unit_code") @db.VarChar(32)
   loadVolumeM3           Decimal?                            @map("load_volume_m3") @db.Decimal(10, 3)
   maxSupportedWeightT    Decimal?                            @map("max_supported_weight_t") @db.Decimal(10, 3)
   isActive               Boolean                             @default(true) @map("is_active")
@@ -845,7 +834,6 @@ model Machine {
   corporation            Corporation                         @relation(fields: [corporationId], references: [id], onDelete: Restrict)
   machineModel           MachineModel                        @relation(fields: [machineModelId], references: [id], onDelete: Restrict)
   deletedBy              User?                               @relation("MachineDeletedBy", fields: [corporationId, deletedByUserId], references: [corporationId, id], onDelete: Restrict)
-  ownershipPeriods       MachineOwnershipPeriod[]
   identifiers            MachineIdentifier[]
   meterReadings          MachineMeterReading[]
   workFrontAssignments   ProjectWorkFrontMachineAssignment[]
@@ -857,27 +845,6 @@ model Machine {
   @@index([corporationId, createdAt, id])
   @@index([corporationId, name, id])
   @@map("machines")
-}
-
-model MachineOwnershipPeriod {
-  id                  String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  corporationId       String               @map("corporation_id") @db.Uuid
-  companyId           String               @map("company_id") @db.Uuid
-  machineId           String               @map("machine_id") @db.Uuid
-  effectiveFrom       DateTime             @default(now()) @map("effective_from") @db.Timestamptz(3)
-  effectiveTo         DateTime?            @map("effective_to") @db.Timestamptz(3)
-  ownershipKind       MachineOwnershipKind @default(OWNED) @map("ownership_kind")
-  externalOwnerName   String?              @map("external_owner_name") @db.VarChar(180)
-  suggestedHourlyRate Decimal?             @map("suggested_hourly_rate") @db.Decimal(18, 2)
-  createdAt           DateTime             @default(now()) @map("created_at") @db.Timestamptz(3)
-  updatedAt           DateTime             @updatedAt @map("updated_at") @db.Timestamptz(3)
-  corporation         Corporation          @relation(fields: [corporationId], references: [id], onDelete: Restrict)
-  company             Company              @relation(fields: [corporationId, companyId], references: [corporationId, id], onDelete: Restrict)
-  machine             Machine              @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict)
-
-  @@index([corporationId, companyId, machineId])
-  @@index([corporationId, companyId, effectiveFrom, id])
-  @@map("machine_ownership_periods")
 }
 
 model MachineTransportSpecification {
@@ -1154,9 +1121,6 @@ model ProjectMachineAllocation {
   machineId            String                          @map("machine_id") @db.Uuid
   startMeterReadingId  String                          @map("start_meter_reading_id") @db.Uuid
   operatorEmploymentId String?                         @map("operator_employment_id") @db.Uuid
-  lessorNameSnapshot   String?                         @map("lessor_name_snapshot") @db.VarChar(180)
-  hourlyRateSnapshot   Decimal?                        @map("hourly_rate_snapshot") @db.Decimal(18, 2)
-  monthlyHours         Int?                            @map("monthly_hours")
   effectiveFrom        DateTime                        @map("effective_from") @db.Timestamptz(3)
   effectiveTo          DateTime?                       @map("effective_to") @db.Timestamptz(3)
   createdByUserId      String?                         @map("created_by_user_id") @db.Uuid

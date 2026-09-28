@@ -329,9 +329,6 @@ async function validateResources(
         },
         corporationId: scope.corporationId,
         isActive: true,
-        ownershipPeriods: {
-          some: { companyId: scope.companyId, effectiveTo: null },
-        },
       },
       select: {
         id: true,
@@ -340,15 +337,6 @@ async function validateResources(
           orderBy: { readingSequence: "desc" },
           take: 1,
           select: { id: true },
-        },
-        ownershipPeriods: {
-          where: { companyId: scope.companyId, effectiveTo: null },
-          select: {
-            ownershipKind: true,
-            externalOwnerName: true,
-            suggestedHourlyRate: true,
-          },
-          take: 1,
         },
       },
     }),
@@ -1177,44 +1165,116 @@ async function replaceProjectOffers(
 
   const scopeWhere = projectScopeWhere(scope, projectId);
   const currentOffers = await tx.prisma.projectSupplierOffer.findMany({
-    where: { ...scopeWhere, usageKind },
-    select: { id: true },
+    where: { ...scopeWhere, usageKind, effectiveTo: null },
+    select: {
+      id: true,
+      sourceOfferId: true,
+      supplierId: true,
+      itemId: true,
+      purchaseUnitId: true,
+      conversionToBase: true,
+      price: true,
+    },
   });
-  if (currentOffers.length)
-    await tx.prisma.projectSupplierOfferPrice.deleteMany({
+  const offerKey = (offer: {
+    sourceOfferId: string | null;
+    supplierId: string;
+    itemId: string;
+    purchaseUnitId: string;
+  }) =>
+    offer.sourceOfferId
+      ? `source:${offer.sourceOfferId}`
+      : `project:${offer.supplierId}:${offer.itemId}:${offer.purchaseUnitId}`;
+  const currentByKey = new Map(
+    currentOffers.map((offer) => [offerKey(offer), offer]),
+  );
+  const retainedOfferIds = new Set<string>();
+
+  for (const offer of normalizedOffers) {
+    const existing = currentByKey.get(offerKey(offer));
+    if (!existing) {
+      const created = await tx.prisma.projectSupplierOffer.create({
+        data: {
+          ...scopeWhere,
+          usageKind,
+          supplierId: offer.supplierId,
+          itemId: offer.itemId,
+          sourceOfferId: offer.sourceOfferId,
+          purchaseUnitId: offer.purchaseUnitId,
+          conversionToBase: offer.conversionToBase,
+          price: offer.price,
+          effectiveFrom: now,
+        },
+        select: { id: true },
+      });
+      await tx.prisma.projectSupplierOfferPrice.create({
+        data: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          projectOfferId: created.id,
+          price: offer.price,
+          effectiveFrom: now,
+        },
+      });
+      continue;
+    }
+
+    retainedOfferIds.add(existing.id);
+    const priceChanged = existing.price.toFixed(4) !== offer.price;
+    const conversionChanged =
+      existing.conversionToBase.toFixed(6) !==
+      decimalString(offer.conversionToBase, 6);
+    if (priceChanged || conversionChanged) {
+      await tx.prisma.projectSupplierOffer.update({
+        where: { id: existing.id },
+        data: {
+          conversionToBase: offer.conversionToBase,
+          price: offer.price,
+        },
+      });
+    }
+    if (!priceChanged) continue;
+
+    await tx.prisma.projectSupplierOfferPrice.updateMany({
       where: {
         corporationId: scope.corporationId,
         companyId: scope.companyId,
-        projectOfferId: { in: currentOffers.map((offer) => offer.id) },
+        projectOfferId: existing.id,
+        effectiveTo: null,
       },
-    });
-  await tx.prisma.projectSupplierOffer.deleteMany({
-    where: { ...scopeWhere, usageKind },
-  });
-
-  for (const offer of normalizedOffers) {
-    const row = await tx.prisma.projectSupplierOffer.create({
-      data: {
-        ...scopeWhere,
-        usageKind,
-        supplierId: offer.supplierId,
-        itemId: offer.itemId,
-        sourceOfferId: offer.sourceOfferId,
-        purchaseUnitId: offer.purchaseUnitId,
-        conversionToBase: offer.conversionToBase,
-        price: offer.price,
-        effectiveFrom: now,
-      },
-      select: { id: true },
+      data: { effectiveTo: now },
     });
     await tx.prisma.projectSupplierOfferPrice.create({
       data: {
         corporationId: scope.corporationId,
         companyId: scope.companyId,
-        projectOfferId: row.id,
+        projectOfferId: existing.id,
         price: offer.price,
         effectiveFrom: now,
       },
+    });
+  }
+
+  const removedOfferIds = currentOffers
+    .filter((offer) => !retainedOfferIds.has(offer.id))
+    .map((offer) => offer.id);
+  if (removedOfferIds.length) {
+    await tx.prisma.projectSupplierOffer.updateMany({
+      where: {
+        ...scopeWhere,
+        id: { in: removedOfferIds },
+        effectiveTo: null,
+      },
+      data: { effectiveTo: now },
+    });
+    await tx.prisma.projectSupplierOfferPrice.updateMany({
+      where: {
+        corporationId: scope.corporationId,
+        companyId: scope.companyId,
+        projectOfferId: { in: removedOfferIds },
+        effectiveTo: null,
+      },
+      data: { effectiveTo: now },
     });
   }
 }
@@ -1649,9 +1709,6 @@ async function replaceMachineAllocations(
         machineId: true,
         startMeterReadingId: true,
         operatorEmploymentId: true,
-        lessorNameSnapshot: true,
-        hourlyRateSnapshot: true,
-        monthlyHours: true,
         shiftAssignments: {
           where: { effectiveTo: null },
           select: { shift: true, operatorEmploymentId: true },
@@ -1735,15 +1792,6 @@ async function replaceMachineAllocations(
           take: 1,
           select: { id: true },
         },
-        ownershipPeriods: {
-          where: { companyId: scope.companyId, effectiveTo: null },
-          select: {
-            ownershipKind: true,
-            externalOwnerName: true,
-            suggestedHourlyRate: true,
-          },
-          take: 1,
-        },
       },
     }),
     tx.prisma.projectMachineAllocation.findMany({
@@ -1771,25 +1819,6 @@ async function replaceMachineAllocations(
     const machine = machineMap.get(allocation.machineId);
     if (!machine)
       throw conflict([resource("machine", allocation.machineId, "machines")]);
-    const ownership = machine.ownershipPeriods[0] ?? null;
-    if (ownership?.ownershipKind === "RENTED" && !allocation.rental)
-      validationError(
-        "machineAllocations",
-        "rental-terms-required",
-        "Rented Machine allocation requires rental terms",
-      );
-    if (ownership?.ownershipKind === "OWNED" && allocation.rental)
-      validationError(
-        "machineAllocations",
-        "rental-terms-not-applicable",
-        "Owned Machine allocation cannot include rental terms",
-      );
-    if (!ownership && !allocation.rental)
-      validationError(
-        "machineAllocations",
-        "rental-terms-required",
-        "A Machine without rental requires new rental terms",
-      );
     if (machine.meterReadings[0]?.id !== allocation.startMeterReadingId)
       throw conflict([
         resource(
@@ -1876,10 +1905,6 @@ async function replaceMachineAllocations(
         !desired ||
         desired.startMeterReadingId !== item.startMeterReadingId ||
         desired.operatorEmploymentId !== item.operatorEmploymentId ||
-        (desired.rental?.lessorName ?? null) !== item.lessorNameSnapshot ||
-        (desired.rental?.hourlyRate ?? null) !==
-          (item.hourlyRateSnapshot?.toFixed(2) ?? null) ||
-        (desired.rental?.monthlyHours ?? null) !== item.monthlyHours ||
         JSON.stringify(
           desired.operatorAssignments
             .map((assignment) => ({
@@ -1938,56 +1963,11 @@ async function replaceMachineAllocations(
       },
     });
   }
-  const removedMachineIds = current
-    .filter((item) => !desiredByMachine.has(item.machineId))
-    .map((item) => item.machineId);
-  if (removedMachineIds.length)
-    await tx.prisma.machineOwnershipPeriod.updateMany({
-      where: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        machineId: { in: removedMachineIds },
-        ownershipKind: "RENTED",
-        effectiveTo: null,
-      },
-      data: { effectiveTo: now },
-    });
-
   for (const allocation of effectiveAllocations.filter(
     (allocation) =>
       !currentByMachine.has(allocation.machineId) ||
       changedMachineIds.includes(allocation.machineId),
   )) {
-    const machine = machineMap.get(allocation.machineId)!;
-    const currentOwnership = machine.ownershipPeriods[0] ?? null;
-    const rentalTermsChanged =
-      currentOwnership?.ownershipKind === "RENTED" &&
-      allocation.rental &&
-      (currentOwnership.externalOwnerName !== allocation.rental.lessorName ||
-        currentOwnership.suggestedHourlyRate?.toFixed(2) !==
-          allocation.rental.hourlyRate);
-    if (rentalTermsChanged)
-      await tx.prisma.machineOwnershipPeriod.updateMany({
-        where: {
-          corporationId: scope.corporationId,
-          companyId: scope.companyId,
-          machineId: allocation.machineId,
-          effectiveTo: null,
-        },
-        data: { effectiveTo: now },
-      });
-    if ((!currentOwnership || rentalTermsChanged) && allocation.rental)
-      await tx.prisma.machineOwnershipPeriod.create({
-        data: {
-          corporationId: scope.corporationId,
-          companyId: scope.companyId,
-          machineId: allocation.machineId,
-          ownershipKind: "RENTED",
-          externalOwnerName: allocation.rental.lessorName,
-          suggestedHourlyRate: allocation.rental.hourlyRate,
-          effectiveFrom: now,
-        },
-      });
     const row = await tx.prisma.projectMachineAllocation.create({
       data: {
         ...scopeWhere,
@@ -1996,9 +1976,6 @@ async function replaceMachineAllocations(
         machineId: allocation.machineId,
         startMeterReadingId: allocation.startMeterReadingId,
         operatorEmploymentId: allocation.operatorEmploymentId,
-        lessorNameSnapshot: allocation.rental?.lessorName,
-        hourlyRateSnapshot: allocation.rental?.hourlyRate,
-        monthlyHours: allocation.rental?.monthlyHours,
       },
       select: { id: true },
     });
@@ -2174,15 +2151,6 @@ async function buildProjectReadinessOptions(
           orderBy: { readingSequence: "desc" },
           take: 1,
           select: { id: true, value: true },
-        },
-        ownershipPeriods: {
-          where: { companyId: scope.companyId, effectiveTo: null },
-          select: {
-            ownershipKind: true,
-            externalOwnerName: true,
-            suggestedHourlyRate: true,
-          },
-          take: 1,
         },
       },
     }),
@@ -2443,14 +2411,7 @@ async function buildProjectReadinessOptions(
         available:
           !unavailableMachineIds.has(machine.id) ||
           currentMachineIds.has(machine.id),
-        availabilityState: machine.ownershipPeriods[0]
-          ? "available"
-          : "without_rental",
-        ownershipKind: machine.ownershipPeriods[0]?.ownershipKind ?? null,
-        lessorName: machine.ownershipPeriods[0]?.externalOwnerName ?? null,
-        suggestedHourlyRate: machine.ownershipPeriods[0]?.suggestedHourlyRate
-          ? decimalString(machine.ownershipPeriods[0].suggestedHourlyRate, 2)
-          : null,
+        availabilityState: "available",
       })),
     jobRoles: jobRoles.map((role) => ({ id: role.id, label: role.name })),
     suppliers: suppliers.map((supplier) => ({
@@ -3637,8 +3598,23 @@ export class ProjectsHandler {
         select: { id: true, status: true },
       });
       if (!project) projectNotFound();
-      if (project.status !== "PLANNED")
-        projectLifecycleConflict("Only planned Projects can update readiness");
+      const onlyFuelOffers =
+        command.fuelOffers !== undefined &&
+        command.plannedStartDate === undefined &&
+        command.plannedEndDate === undefined &&
+        command.productionMetricTargets === undefined &&
+        command.materialOffers === undefined &&
+        command.accountability === undefined &&
+        command.employeeAllocations === undefined &&
+        command.machineAllocations === undefined &&
+        command.compensationPaymentTerms === undefined;
+      if (
+        project.status !== "PLANNED" &&
+        !(project.status === "ACTIVE" && onlyFuelOffers)
+      )
+        projectLifecycleConflict(
+          "Only planned Projects can update readiness; active Projects can update fuel offers only",
+        );
 
       const now = new Date();
       const scopeWhere = projectScopeWhere(scope, projectId);
@@ -5879,9 +5855,6 @@ export class ProjectsHandler {
     const availableWhere: Prisma.MachineWhereInput = {
       corporationId: scope.corporationId,
       isActive: true,
-      ownershipPeriods: {
-        some: { companyId: scope.companyId, effectiveTo: null },
-      },
       meterReadings: { some: { status: "CONFIRMED" } },
       ...(unavailableMachineIds.length
         ? { id: { notIn: unavailableMachineIds } }

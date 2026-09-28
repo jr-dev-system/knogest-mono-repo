@@ -211,14 +211,6 @@ describe("project daily reports", () => {
         capacityUnitCode: "M3_LOOSE",
       },
     });
-    await app.prisma.machineOwnershipPeriod.create({
-      data: {
-        corporationId: pilot.corporation.id,
-        companyId,
-        machineId: machine.id,
-        effectiveFrom: new Date(`${reportDate}T00:00:00-03:00`),
-      },
-    });
     const initialReading = await app.prisma.machineMeterReading.create({
       data: {
         corporationId: pilot.corporation.id,

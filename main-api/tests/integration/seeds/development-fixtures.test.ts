@@ -26,7 +26,7 @@ describe("development fixtures", () => {
     await closePool();
   });
 
-  it("creates two operational companies and one completely empty company", async () => {
+  it("creates operational companies and one completely empty company", async () => {
     const seeded = await seedEpicOneDevelopmentData(prisma);
 
     expect(await prisma.corporation.count()).toBe(1);
@@ -44,9 +44,6 @@ describe("development fixtures", () => {
       prisma.jobRole.count({ where: { companyId: emptyCompanyId } }),
       prisma.client.count({ where: { companyId: emptyCompanyId } }),
       prisma.fuelSupplier.count({ where: { companyId: emptyCompanyId } }),
-      prisma.machineOwnershipPeriod.count({
-        where: { companyId: emptyCompanyId },
-      }),
       prisma.machineIdentifier.count({ where: { companyId: emptyCompanyId } }),
       prisma.machineMeterReading.count({
         where: { companyId: emptyCompanyId },
@@ -67,9 +64,34 @@ describe("development fixtures", () => {
     ]);
     expect(emptyCounts).toEqual(Array(emptyCounts.length).fill(0));
 
+    const expectedByCompany = {
+      "Terraplanagem Norte": {
+        projects: 2,
+        employees: 3,
+        machines: 2,
+        clients: 2,
+        suppliers: 2,
+        employeeAllocations: 0,
+        machineAllocations: 0,
+        fuelAgreements: 0,
+      },
+      "Mineração Serra Azul": {
+        projects: 1,
+        employees: 15,
+        machines: 9,
+        clients: 1,
+        suppliers: 1,
+        employeeAllocations: 15,
+        machineAllocations: 9,
+        fuelAgreements: 1,
+      },
+    } as const;
+
     for (const company of seeded.pilot.companies.filter(
       (company) => company.id !== emptyCompanyId,
     )) {
+      const expected =
+        expectedByCompany[company.name as keyof typeof expectedByCompany];
       const projects = await prisma.project.findMany({
         where: { companyId: company.id },
         select: { id: true },
@@ -92,8 +114,8 @@ describe("development fixtures", () => {
         fuelAgreementCount,
       ] = await Promise.all([
         prisma.employment.count({ where: { companyId: company.id } }),
-        prisma.machineOwnershipPeriod.count({
-          where: { companyId: company.id, effectiveTo: null },
+        prisma.machine.count({
+          where: { machineModel: { companyId: company.id }, isActive: true },
         }),
         prisma.client.count({ where: { companyId: company.id } }),
         prisma.fuelSupplier.count({ where: { companyId: company.id } }),
@@ -129,22 +151,132 @@ describe("development fixtures", () => {
         }),
       ]);
 
-      expect(projects).toHaveLength(2);
-      expect(employmentCount).toBe(3);
-      expect(machineCount).toBe(2);
-      expect(clientCount).toBe(2);
-      expect(supplierCount).toBe(2);
-      expect(baselineCount).toBe(2);
-      expect(clientPeriodCount).toBe(2);
-      expect(managerCount).toBe(2);
-      expect(responsibilityCount).toBe(2);
-      expect(scheduleCount).toBe(2);
-      expect(scheduleDaysCount).toBe(14);
-      expect(breakCount).toBe(2);
-      expect(employeeAllocationCount).toBe(0);
-      expect(machineAllocationCount).toBe(0);
-      expect(fuelAgreementCount).toBe(0);
+      expect(projects).toHaveLength(expected.projects);
+      expect(employmentCount).toBe(expected.employees);
+      expect(machineCount).toBe(expected.machines);
+      expect(clientCount).toBe(expected.clients);
+      expect(supplierCount).toBe(expected.suppliers);
+      expect(baselineCount).toBe(expected.projects);
+      expect(clientPeriodCount).toBe(expected.projects);
+      expect(managerCount).toBe(expected.projects);
+      expect(responsibilityCount).toBe(expected.projects);
+      expect(scheduleCount).toBe(expected.projects);
+      expect(scheduleDaysCount).toBe(expected.projects * 7);
+      expect(breakCount).toBe(expected.projects);
+      expect(employeeAllocationCount).toBe(expected.employeeAllocations);
+      expect(machineAllocationCount).toBe(expected.machineAllocations);
+      expect(fuelAgreementCount).toBe(expected.fuelAgreements);
     }
+
+    const serraAzul = seeded.pilot.companies.find(
+      (company) => company.name === "Mineração Serra Azul",
+    )!;
+    const patio = await prisma.project.findFirstOrThrow({
+      where: { companyId: serraAzul.id, name: "Pátio de Estocagem Serra" },
+      select: { id: true, status: true },
+    });
+    expect(patio.status).toBe("ACTIVE");
+    await expect(
+      prisma.client.findFirstOrThrow({
+        where: { companyId: serraAzul.id },
+        select: { displayName: true, entityType: true },
+      }),
+    ).resolves.toEqual({
+      displayName: "Construtora Quatro Rodas Ltda.",
+      entityType: "LEGAL_ENTITY",
+    });
+    await expect(
+      prisma.fuelSupplier.findFirstOrThrow({
+        where: { companyId: serraAzul.id },
+        select: { displayName: true, entityType: true },
+      }),
+    ).resolves.toEqual({
+      displayName: "Posto 4 Rodas Ltda.",
+      entityType: "LEGAL_ENTITY",
+    });
+
+    const machines = await prisma.machine.findMany({
+      where: { machineModel: { companyId: serraAzul.id } },
+      include: { identifiers: true, transportSpecification: true },
+      orderBy: { name: "asc" },
+    });
+    expect(machines).toHaveLength(9);
+    expect(
+      new Set(
+        machines.flatMap((machine) =>
+          machine.identifiers.map((id) => id.value),
+        ),
+      ).size,
+    ).toBe(9);
+    expect(
+      machines
+        .filter((machine) => machine.name.startsWith("Caminhão Basculante"))
+        .map((machine) => ({
+          type: machine.type,
+          capacity: machine.loadCapacity?.toFixed(3),
+          unit: machine.loadCapacityUnitCode,
+          volume: machine.loadVolumeM3?.toFixed(3),
+        })),
+    ).toEqual(
+      Array.from({ length: 3 }, () => ({
+        type: "WHITE_LINE",
+        capacity: "16.000",
+        unit: "M3_LOOSE",
+        volume: "16.000",
+      })),
+    );
+    expect(
+      machines
+        .filter((machine) => machine.name.startsWith("Caminhão-Pipa"))
+        .map((machine) => ({
+          type: machine.type,
+          capacity: machine.loadCapacity?.toFixed(3),
+          unit: machine.loadCapacityUnitCode,
+        })),
+    ).toEqual(
+      Array.from({ length: 2 }, () => ({
+        type: "WHITE_LINE",
+        capacity: "8000.000",
+        unit: "LITER",
+      })),
+    );
+    const employeeTerms = await prisma.projectEmployeeAllocation.findMany({
+      where: { projectId: patio.id },
+      select: { compensationValue: true, overtimeRate: true },
+      orderBy: { employmentId: "asc" },
+    });
+    expect(
+      employeeTerms.map((terms) => ({
+        compensationValue: terms.compensationValue.toFixed(2),
+        overtimeRate: terms.overtimeRate.toFixed(2),
+      })),
+    ).toEqual([
+      { compensationValue: "0.00", overtimeRate: "0.00" },
+      { compensationValue: "7000.00", overtimeRate: "47.73" },
+      { compensationValue: "3502.40", overtimeRate: "23.88" },
+      { compensationValue: "2840.20", overtimeRate: "19.37" },
+      { compensationValue: "2840.20", overtimeRate: "19.37" },
+      { compensationValue: "2840.20", overtimeRate: "19.37" },
+      { compensationValue: "3502.40", overtimeRate: "23.88" },
+      { compensationValue: "2840.20", overtimeRate: "19.37" },
+      { compensationValue: "1661.00", overtimeRate: "11.33" },
+      { compensationValue: "3714.60", overtimeRate: "25.33" },
+      { compensationValue: "2840.20", overtimeRate: "19.37" },
+      { compensationValue: "2434.00", overtimeRate: "16.60" },
+      { compensationValue: "1854.00", overtimeRate: "12.64" },
+      { compensationValue: "1661.00", overtimeRate: "11.33" },
+      { compensationValue: "2840.20", overtimeRate: "19.37" },
+    ]);
+    const fuelAgreement = await prisma.projectFuelAgreement.findFirstOrThrow({
+      where: { projectId: patio.id },
+      select: { id: true },
+    });
+    const fuelPrice = await prisma.projectFuelPrice.findFirstOrThrow({
+      where: { agreementId: fuelAgreement.id },
+      select: { fuelTypeId: true, pricePerLiter: true },
+    });
+    expect(fuelPrice.fuelTypeId).toBe("diesel-s10");
+    expect(fuelPrice.pricePerLiter.toFixed(4)).toBe("6.8900");
   });
 
   it("is idempotent for the deterministic development data", async () => {
@@ -152,11 +284,11 @@ describe("development fixtures", () => {
     await seedEpicOneDevelopmentData(prisma);
 
     expect(await prisma.company.count()).toBe(3);
-    expect(await prisma.employment.count()).toBe(6);
-    expect(await prisma.machine.count()).toBe(4);
-    expect(await prisma.client.count()).toBe(4);
-    expect(await prisma.fuelSupplier.count()).toBe(4);
-    expect(await prisma.project.count()).toBe(4);
+    expect(await prisma.employment.count()).toBe(18);
+    expect(await prisma.machine.count()).toBe(11);
+    expect(await prisma.client.count()).toBe(3);
+    expect(await prisma.fuelSupplier.count()).toBe(3);
+    expect(await prisma.project.count()).toBe(3);
   });
 
   it("reconciles reference units inserted by migrations with generated IDs", async () => {

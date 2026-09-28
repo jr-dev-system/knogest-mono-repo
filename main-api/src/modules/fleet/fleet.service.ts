@@ -137,29 +137,12 @@ function latestReading(record: MachineRecord) {
   };
 }
 
-function ownershipDto(record: MachineRecord) {
-  const ownership = record.ownershipPeriods[0] ?? null;
-  return ownership
-    ? {
-        companyId: ownership.companyId,
-        kind: ownership.ownershipKind,
-        lessorName: ownership.externalOwnerName,
-        suggestedHourlyRate: ownership.suggestedHourlyRate?.toFixed(2) ?? null,
-        effectiveFrom: ownership.effectiveFrom.toISOString(),
-        effectiveTo: ownership.effectiveTo?.toISOString() ?? null,
-      }
-    : null;
-}
-
 function availabilityDto(record: MachineRecord, hasOpenAllocation = false) {
-  const ownership = record.ownershipPeriods[0] ?? null;
   return {
     state:
       !record.isActive || hasOpenAllocation
         ? ("unavailable" as const)
-        : ownership
-          ? ("available" as const)
-          : ("without_rental" as const),
+        : ("available" as const),
     hasOpenAllocation,
   };
 }
@@ -178,10 +161,9 @@ function toMachineDto(
     manufacturer: record.manufacturer,
     model: record.model,
     version: record.version,
-    loadCapacity:
-      record.transportSpecification?.nominalCapacity.toFixed(3) ?? null,
-    loadCapacityUnitCode:
-      record.transportSpecification?.capacityUnitCode ?? null,
+    hourlyRate: record.hourlyRate?.toFixed(2) ?? null,
+    loadCapacity: record.loadCapacity?.toFixed(3) ?? null,
+    loadCapacityUnitCode: record.loadCapacityUnitCode,
     meterType: record.meterType,
     loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
     maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
@@ -218,10 +200,6 @@ function toMachineModelDto(
     manufacturer: record.manufacturer,
     model: record.model,
     version: record.version,
-    loadCapacity: record.loadCapacity?.toFixed(3) ?? null,
-    loadCapacityUnitCode: record.loadCapacityUnitCode,
-    loadVolumeM3: record.loadVolumeM3?.toFixed(3) ?? null,
-    maxSupportedWeightT: record.maxSupportedWeightT?.toFixed(3) ?? null,
     requiresOperator: record.requiresOperator,
     requiredJobRole: record.requiredJobRole,
     unitCount: record.machines.length,
@@ -232,10 +210,7 @@ function toMachineModelDto(
 }
 
 function toMachineDetailDto(record: MachineRecord) {
-  return {
-    ...toMachineDto(record),
-    ownership: ownershipDto(record),
-  };
+  return toMachineDto(record);
 }
 
 function identifiersFromInput(input: CreateMachineInput) {
@@ -350,16 +325,11 @@ export class FleetService {
     input: CreateMachineModelInput,
   ) {
     const requiredJobRoleId = await this.validateRequiredJobRole(scope, input);
-    const loadSpecification = canonicalLoadSpecification(input);
     return this.context.transaction(async (transactionContext) => {
       const record = await createMachineModelHandler(transactionContext, {
         ...scope,
         ...input,
         requiredJobRoleId,
-        ...loadSpecification,
-        maxSupportedWeightT: input.maxSupportedWeightT
-          ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
-          : undefined,
       });
       return toMachineModelDto(record);
     });
@@ -425,6 +395,18 @@ export class FleetService {
     input: AddMachineModelUnitsInput,
   ) {
     return this.context.transaction(async (transactionContext) => {
+      const model = await findMachineModelDetailHandler(transactionContext, {
+        ...scope,
+        machineModelId,
+      });
+      if (
+        model.type !== "WHITE_LINE" &&
+        (input.loadCapacity ||
+          input.loadCapacityUnitCode ||
+          input.maxSupportedWeightT)
+      )
+        loadSpecificationNotApplicable();
+      const loadSpecification = canonicalLoadSpecification(input);
       const identifiers = identifiersFromUnit(input);
       const matches = await findDeletedMachineMatchesHandler(
         transactionContext,
@@ -467,15 +449,13 @@ export class FleetService {
               name: input.name,
               identifiers,
               initialMeterReading: normalizeDecimal(input.initialMeterReading),
-              ownershipKind: input.ownership.kind,
-              externalOwnerName:
-                input.ownership.kind === "RENTED"
-                  ? input.ownership.lessorName
-                  : undefined,
-              suggestedHourlyRate:
-                input.ownership.kind === "RENTED"
-                  ? normalizeDecimal(input.ownership.suggestedHourlyRate)
-                  : undefined,
+              hourlyRate: input.hourlyRate
+                ? normalizeDecimal(input.hourlyRate)
+                : undefined,
+              ...loadSpecification,
+              maxSupportedWeightT: input.maxSupportedWeightT
+                ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
+                : undefined,
             })
           : await addMachineModelUnitsHandler(transactionContext, {
               ...scope,
@@ -483,15 +463,13 @@ export class FleetService {
               unit: {
                 name: input.name,
                 meterType: input.meterType,
-                ownershipKind: input.ownership.kind,
-                externalOwnerName:
-                  input.ownership.kind === "RENTED"
-                    ? input.ownership.lessorName
-                    : undefined,
-                suggestedHourlyRate:
-                  input.ownership.kind === "RENTED"
-                    ? input.ownership.suggestedHourlyRate
-                    : undefined,
+                hourlyRate: input.hourlyRate
+                  ? normalizeDecimal(input.hourlyRate)
+                  : undefined,
+                ...loadSpecification,
+                maxSupportedWeightT: input.maxSupportedWeightT
+                  ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
+                  : undefined,
                 identifiers,
                 initialMeterReading: normalizeDecimal(
                   input.initialMeterReading,
@@ -575,7 +553,6 @@ export class FleetService {
     input: import("./fleet.dto").UpdateMachineModelInput,
   ) {
     const requiredJobRoleId = await this.validateRequiredJobRole(scope, input);
-    const loadSpecification = canonicalLoadSpecification(input);
     return this.context.transaction(async (transactionContext) =>
       toMachineModelDto(
         await updateMachineModelHandler(transactionContext, {
@@ -583,10 +560,6 @@ export class FleetService {
           ...input,
           machineModelId,
           requiredJobRoleId,
-          ...loadSpecification,
-          maxSupportedWeightT: input.maxSupportedWeightT
-            ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
-            : undefined,
         }),
       ),
     );
@@ -673,12 +646,16 @@ export class FleetService {
       machineId,
     });
     if (current.type !== "WHITE_LINE") loadSpecificationNotApplicable();
+    const loadSpecification = canonicalLoadSpecification({
+      loadCapacity: input.loadCapacity ?? undefined,
+      loadCapacityUnitCode: input.loadCapacityUnitCode ?? undefined,
+    });
     const record = await updateMachineLoadSpecificationHandler(this.context, {
       ...scope,
       machineId,
-      loadVolumeM3: input.loadVolumeM3
-        ? normalizeSpecificationDecimal(input.loadVolumeM3)
-        : null,
+      loadCapacity: loadSpecification.loadCapacity ?? null,
+      loadCapacityUnitCode: loadSpecification.loadCapacityUnitCode ?? null,
+      loadVolumeM3: loadSpecification.loadVolumeM3 ?? null,
       maxSupportedWeightT: input.maxSupportedWeightT
         ? normalizeSpecificationDecimal(input.maxSupportedWeightT)
         : null,

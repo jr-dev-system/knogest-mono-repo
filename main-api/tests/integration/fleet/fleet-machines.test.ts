@@ -292,7 +292,7 @@ describe("fleet Machine registry and meter readings", () => {
     ).toEqual(historicalUnitBefore);
   });
 
-  it("creates Machine, ownership, identifier, and initial reading atomically", async () => {
+  it("creates Machine, identifier, and initial reading atomically", async () => {
     const pilot = await provision("create");
     const authorization = await authFor({
       corporationId: pilot.corporation.id,
@@ -314,7 +314,6 @@ describe("fleet Machine registry and meter readings", () => {
       meterType: "HOUR_METER",
     });
     expect(await app.prisma.machine.count()).toBe(1);
-    expect(await app.prisma.machineOwnershipPeriod.count()).toBe(1);
     expect(await app.prisma.machineIdentifier.count()).toBe(1);
     expect(await app.prisma.machineMeterReading.count()).toBe(1);
   });
@@ -436,7 +435,6 @@ describe("fleet Machine registry and meter readings", () => {
       code: "MACHINE_IDENTIFIER_CONFLICT",
     });
     expect(await app.prisma.machine.count()).toBe(1);
-    expect(await app.prisma.machineOwnershipPeriod.count()).toBe(1);
     expect(await app.prisma.machineIdentifier.count()).toBe(1);
     expect(await app.prisma.machineMeterReading.count()).toBe(1);
 
@@ -722,26 +720,6 @@ describe("fleet Machine registry and meter readings", () => {
       "MCH001",
     );
     expect(detail.json().data.latestMeterReading.value).toBe("10.25");
-  });
-
-  it("enforces one open ownership period per Machine across Companies", async () => {
-    const pilot = await provision("ownership");
-    const authorization = await authFor({
-      corporationId: pilot.corporation.id,
-      userId: pilot.administrator.id,
-      companyId: pilot.companies[0].id,
-    });
-    const created = await createMachine(authorization);
-
-    await expect(
-      app.prisma.machineOwnershipPeriod.create({
-        data: {
-          corporationId: pilot.corporation.id,
-          companyId: pilot.companies[1].id,
-          machineId: created.id,
-        },
-      }),
-    ).rejects.toMatchObject({ code: "P2002" });
   });
 
   it("traverses pagination and rejects stale or foreign-scope cursors", async () => {

@@ -302,19 +302,6 @@ const projectCommandOpenApiSchema = {
               },
             },
           },
-          rental: {
-            type: "object",
-            additionalProperties: false,
-            required: ["lessorName", "hourlyRate", "monthlyHours"],
-            properties: {
-              lessorName: { type: "string", minLength: 1, maxLength: 180 },
-              hourlyRate: {
-                type: "string",
-                pattern: "^(?:0|[1-9]\\d{0,13})(?:\\.\\d{1,2})?$",
-              },
-              monthlyHours: { type: "integer", minimum: 1, maximum: 744 },
-            },
-          },
         },
       },
     },
@@ -1687,7 +1674,7 @@ export async function v1ProjectsController(app: FastifyInstance) {
       schema: {
         tags: ["Projects"],
         summary:
-          "Save the operational readiness checklist for a planned Project",
+          "Save the readiness checklist for a planned Project or fuel offers for an active Project",
         security: [{ bearerAuth: [] }],
         params: {
           type: "object",

@@ -305,7 +305,7 @@ describe("project material offers readiness", () => {
     expect(inactiveSupplier.statusCode).toBe(409);
   });
 
-  it("allows removing every fuel offer from readiness", async () => {
+  it("allows active projects to add and edit fuel offers while preserving price history", async () => {
     const scope = await setup();
     const supplierId = await createSupplier(scope.authorization, {
       document: syntheticCatalogSupplierCpfFixture,
@@ -357,6 +357,69 @@ describe("project material offers readiness", () => {
     });
     expect(withFuel.statusCode, withFuel.body).toBe(200);
     expect(withFuel.json().data.fuelOffers).toHaveLength(1);
+    const firstProjectOfferId = withFuel.json().data.fuelOffers[0].id as string;
+
+    const secondItemId = await createItem(
+      scope.authorization,
+      "Etanol de teste da obra",
+      fuelCategory.id,
+    );
+    const secondSourceOffer = await app.inject({
+      method: "POST",
+      url: `/api/v1/suppliers/${supplierId}/offers`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        itemId: secondItemId,
+        baseUnitId: "00000000-0000-4000-8000-00000000a003",
+        purchaseUnitId: "00000000-0000-4000-8000-00000000a003",
+        conversionToBase: "1.000000",
+        price: "4.5000",
+      },
+    });
+    expect(secondSourceOffer.statusCode, secondSourceOffer.body).toBe(201);
+    const secondSourceOfferId = secondSourceOffer.json().data.id as string;
+
+    await app.prisma.project.update({
+      where: { id: scope.projectId },
+      data: { status: "ACTIVE", actualStartedAt: new Date() },
+    });
+
+    const activeUpdate = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/readiness`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        fuelOffers: [
+          { mode: "existing", sourceOfferId, price: "7.1000" },
+          {
+            mode: "existing",
+            sourceOfferId: secondSourceOfferId,
+            price: "4.7000",
+          },
+        ],
+      },
+    });
+    expect(activeUpdate.statusCode, activeUpdate.body).toBe(200);
+    expect(activeUpdate.json().data.fuelOffers).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: firstProjectOfferId, price: "7.1000" }),
+        expect.objectContaining({
+          sourceOfferId: secondSourceOfferId,
+          price: "4.7000",
+        }),
+      ]),
+    );
+
+    const priceHistory = await app.prisma.projectSupplierOfferPrice.findMany({
+      where: { projectOfferId: firstProjectOfferId },
+      orderBy: { effectiveFrom: "asc" },
+    });
+    expect(priceHistory.map((price) => price.price.toFixed(4))).toEqual([
+      "6.7000",
+      "7.1000",
+    ]);
+    expect(priceHistory[0].effectiveTo).not.toBeNull();
+    expect(priceHistory[1].effectiveTo).toBeNull();
 
     const withoutFuel = await app.inject({
       method: "PUT",

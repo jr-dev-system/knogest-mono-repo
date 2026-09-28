@@ -199,13 +199,6 @@ describe("project work-front quantities", () => {
         meterType: "HOUR_METER",
       },
     });
-    await app.prisma.machineOwnershipPeriod.create({
-      data: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        machineId: machine.id,
-      },
-    });
     await app.prisma.machineIdentifier.create({
       data: {
         corporationId: scope.corporationId,
@@ -304,13 +297,6 @@ describe("project work-front quantities", () => {
         manufacturer: "Caterpillar",
         model: "320 GC",
         meterType: "HOUR_METER",
-      },
-    });
-    await app.prisma.machineOwnershipPeriod.create({
-      data: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        machineId: machine.id,
       },
     });
     await app.prisma.machineMeterReading.create({
@@ -438,13 +424,6 @@ describe("project work-front quantities", () => {
         meterType: "HOUR_METER",
       },
     });
-    await app.prisma.machineOwnershipPeriod.create({
-      data: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        machineId: requiredMachine.id,
-      },
-    });
     const requiredReading = await app.prisma.machineMeterReading.create({
       data: {
         corporationId: scope.corporationId,
@@ -504,13 +483,6 @@ describe("project work-front quantities", () => {
         manufacturer: "JCB",
         model: "3CX",
         meterType: "HOUR_METER",
-      },
-    });
-    await app.prisma.machineOwnershipPeriod.create({
-      data: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        machineId: unrestrictedMachine.id,
       },
     });
     const unrestrictedReading = await app.prisma.machineMeterReading.create({
@@ -600,13 +572,6 @@ describe("project work-front quantities", () => {
         manufacturer: "Volvo",
         model: "EC210",
         meterType: "HOUR_METER",
-      },
-    });
-    await app.prisma.machineOwnershipPeriod.create({
-      data: {
-        corporationId: scope.corporationId,
-        companyId: scope.companyId,
-        machineId: machine.id,
       },
     });
     const reading = await app.prisma.machineMeterReading.create({

@@ -13,6 +13,19 @@ const EMPTY_COMPANY = {
 const fixtureId = (value: number) =>
   `00000000-0000-4000-8000-${String(value).padStart(12, "0")}`;
 
+const MONTHLY_WORKLOAD_HOURS = 220;
+
+function calculateMonthlyOvertimeRate(compensationValue?: string) {
+  if (!compensationValue) return "0.00";
+
+  const [whole, fraction = "00"] = compensationValue.split(".");
+  const monthlyCents = Number(whole) * 100 + Number(fraction);
+  const overtimeCents = Math.round(
+    (monthlyCents * 3) / (MONTHLY_WORKLOAD_HOURS * 2),
+  );
+  return (overtimeCents / 100).toFixed(2);
+}
+
 type CompanyFixture = {
   id: string;
   name: string;
@@ -23,6 +36,7 @@ type CompanyFixture = {
     fullName: string;
     registrationNumber: string;
     role: string;
+    compensationValue?: string;
   }>;
   clients: Array<{
     id: string;
@@ -39,8 +53,17 @@ type CompanyFixture = {
     name: string;
     manufacturer: string;
     model: string;
+    machineModelId?: string;
+    modelVersion?: string;
     companyTag: string;
     initialMeterReading: string;
+    type?: "YELLOW_LINE" | "WHITE_LINE";
+    meterType?: "HOUR_METER" | "ODOMETER";
+    hourlyRate?: string;
+    loadCapacity?: string;
+    loadCapacityUnitCode?: "M3_LOOSE" | "M3_COMPACTED" | "LITER" | "CUBIC_YARD";
+    loadVolumeM3?: string;
+    operatorIndex?: number;
   }>;
   projects: Array<{
     id: string;
@@ -161,92 +184,269 @@ const companies: CompanyFixture[] = [
     employees: [
       {
         id: fixtureId(2101),
-        document: "20200200178",
-        fullName: "Rafael Lima",
+        document: "20260900176",
+        fullName: "Hallison",
         registrationNumber: "MSA-001",
-        role: "Engenheiro de produção",
+        role: "Engenheiro Civil",
       },
       {
         id: fixtureId(2102),
-        document: "20200200259",
-        fullName: "Bianca Souza",
+        document: "20260900257",
+        fullName: "Raimundo Rafael Santos Brito",
         registrationNumber: "MSA-002",
-        role: "Operadora de máquinas",
+        role: "Supervisor de Terraplenagem",
+        compensationValue: "7000.00",
       },
       {
         id: fixtureId(2103),
-        document: "20200200330",
-        fullName: "Diego Martins",
+        document: "20260900338",
+        fullName: "Romildo Sarasate da Cruz",
         registrationNumber: "MSA-003",
-        role: "Técnico de segurança",
+        role: "Operador de Máquina",
+        compensationValue: "3502.40",
+      },
+      {
+        id: fixtureId(2104),
+        document: "20260900419",
+        fullName: "Josué Oliveira Fernandes",
+        registrationNumber: "MSA-004",
+        role: "Motorista",
+        compensationValue: "2840.20",
+      },
+      {
+        id: fixtureId(2105),
+        document: "20260900508",
+        fullName: "Israel Costa de Sousa Silva",
+        registrationNumber: "MSA-005",
+        role: "Motorista",
+        compensationValue: "2840.20",
+      },
+      {
+        id: fixtureId(2106),
+        document: "20260900680",
+        fullName: "Fabio Barbosa da Silva",
+        registrationNumber: "MSA-006",
+        role: "Operador de Máquina",
+        compensationValue: "2840.20",
+      },
+      {
+        id: fixtureId(2107),
+        document: "20260900761",
+        fullName: "Raimundo de Sousa",
+        registrationNumber: "MSA-007",
+        role: "Operador de Máquina",
+        compensationValue: "3502.40",
+      },
+      {
+        id: fixtureId(2108),
+        document: "20260900842",
+        fullName: "Isaias Sousa de Oliveira",
+        registrationNumber: "MSA-008",
+        role: "Motorista",
+        compensationValue: "2840.20",
+      },
+      {
+        id: fixtureId(2109),
+        document: "20260900923",
+        fullName: "Francivan da Silva Sena",
+        registrationNumber: "MSA-009",
+        role: "Ajudante",
+        compensationValue: "1661.00",
+      },
+      {
+        id: fixtureId(2110),
+        document: "20260901067",
+        fullName: "Justino Pereira Cabral",
+        registrationNumber: "MSA-010",
+        role: "Operador de Máquina",
+        compensationValue: "3714.60",
+      },
+      {
+        id: fixtureId(2111),
+        document: "20260901148",
+        fullName: "Francisco Carlos da Cruz Sousa",
+        registrationNumber: "MSA-011",
+        role: "Motorista",
+        compensationValue: "2840.20",
+      },
+      {
+        id: fixtureId(2112),
+        document: "20260901229",
+        fullName: "Alan Conceição Silva",
+        registrationNumber: "MSA-012",
+        role: "Soldador / Auxiliar Mecânico",
+        compensationValue: "2434.00",
+      },
+      {
+        id: fixtureId(2113),
+        document: "20260901300",
+        fullName: "Paulo Daniel Cruza Tavares",
+        registrationNumber: "MSA-013",
+        role: "Meio Oficial",
+        compensationValue: "1854.00",
+      },
+      {
+        id: fixtureId(2114),
+        document: "20260901490",
+        fullName: "Yuri Samuel Melo",
+        registrationNumber: "MSA-014",
+        role: "Ajudante",
+        compensationValue: "1661.00",
+      },
+      {
+        id: fixtureId(2115),
+        document: "20260901571",
+        fullName: "Gabriel Oliveira de Sousa",
+        registrationNumber: "MSA-015",
+        role: "Operador de Máquina",
+        compensationValue: "2840.20",
       },
     ],
     clients: [
       {
         id: fixtureId(2201),
-        document: "20200200000103",
-        legalName: "Minas do Atlântico Ltda.",
-      },
-      {
-        id: fixtureId(2202),
-        document: "20200200000286",
-        legalName: "Pedreira Serra Azul Ltda.",
+        document: "20260928000112",
+        legalName: "Construtora Quatro Rodas Ltda.",
       },
     ],
     suppliers: [
       {
         id: fixtureId(2301),
-        document: "20200200000367",
-        legalName: "Combustíveis Serra Azul Ltda.",
-      },
-      {
-        id: fixtureId(2302),
-        document: "20200200000448",
-        legalName: "Posto Minas Operacional Ltda.",
+        document: "20260928000201",
+        legalName: "Posto 4 Rodas Ltda.",
       },
     ],
     machines: [
       {
         id: fixtureId(2401),
-        name: "Escavadeira Serra 01",
-        manufacturer: "Komatsu",
-        model: "PC210",
-        companyTag: "MSA-ESC-01",
-        initialMeterReading: "980.00",
+        name: "Escavadeira HX220L Serra 01",
+        manufacturer: "Hyundai",
+        model: "HX220L",
+        companyTag: "MSA-ESC-001",
+        initialMeterReading: "0.00",
+        hourlyRate: "200.00",
+        operatorIndex: 2,
       },
       {
         id: fixtureId(2402),
-        name: "Trator de Esteira Serra 01",
+        name: "Trator de Esteira FD9 Serra 01",
+        manufacturer: "Fiatallis",
+        model: "FD9",
+        companyTag: "MSA-TRT-001",
+        initialMeterReading: "0.00",
+        hourlyRate: "200.00",
+        operatorIndex: 5,
+      },
+      {
+        id: fixtureId(2403),
+        name: "Motoniveladora Serra 01",
         manufacturer: "Caterpillar",
-        model: "D6 GC",
-        companyTag: "MSA-TRT-01",
-        initialMeterReading: "630.00",
+        model: "120K",
+        companyTag: "MSA-MOT-001",
+        initialMeterReading: "0.00",
+        hourlyRate: "200.00",
+        operatorIndex: 6,
+      },
+      {
+        id: fixtureId(2404),
+        name: "Rolo Compactador Serra 01",
+        manufacturer: "Müller",
+        model: "VAP 70",
+        companyTag: "MSA-RLC-001",
+        initialMeterReading: "0.00",
+        hourlyRate: "115.00",
+        operatorIndex: 9,
+      },
+      {
+        id: fixtureId(2405),
+        name: "Caminhão-Pipa Serra 01",
+        manufacturer: "Mercedes-Benz",
+        model: "2730",
+        modelVersion: "Pipa 8.000 L",
+        companyTag: "MSA-PIP-001",
+        initialMeterReading: "0.00",
+        type: "WHITE_LINE",
+        meterType: "ODOMETER",
+        hourlyRate: "125.00",
+        loadCapacity: "8000.000",
+        loadCapacityUnitCode: "LITER",
+        operatorIndex: 3,
+      },
+      {
+        id: fixtureId(2406),
+        name: "Caminhão-Pipa Serra 02",
+        manufacturer: "Mercedes-Benz",
+        model: "2730",
+        machineModelId: fixtureId(2405),
+        modelVersion: "Pipa 8.000 L",
+        companyTag: "MSA-PIP-002",
+        initialMeterReading: "0.00",
+        type: "WHITE_LINE",
+        meterType: "ODOMETER",
+        hourlyRate: "125.00",
+        loadCapacity: "8000.000",
+        loadCapacityUnitCode: "LITER",
+        operatorIndex: 4,
+      },
+      {
+        id: fixtureId(2407),
+        name: "Caminhão Basculante Serra 01",
+        manufacturer: "Mercedes-Benz",
+        model: "2730",
+        modelVersion: "Basculante 16 m³",
+        companyTag: "MSA-BSC-001",
+        initialMeterReading: "0.00",
+        type: "WHITE_LINE",
+        meterType: "ODOMETER",
+        hourlyRate: "125.00",
+        loadCapacity: "16.000",
+        loadCapacityUnitCode: "M3_LOOSE",
+        loadVolumeM3: "16.000",
+        operatorIndex: 7,
+      },
+      {
+        id: fixtureId(2408),
+        name: "Caminhão Basculante Serra 02",
+        manufacturer: "Volkswagen",
+        model: "31.280",
+        companyTag: "MSA-BSC-002",
+        initialMeterReading: "0.00",
+        type: "WHITE_LINE",
+        meterType: "ODOMETER",
+        hourlyRate: "125.00",
+        loadCapacity: "16.000",
+        loadCapacityUnitCode: "M3_LOOSE",
+        loadVolumeM3: "16.000",
+        operatorIndex: 8,
+      },
+      {
+        id: fixtureId(2409),
+        name: "Caminhão Basculante Serra 03",
+        manufacturer: "Volkswagen",
+        model: "17.180",
+        companyTag: "MSA-BSC-003",
+        initialMeterReading: "0.00",
+        type: "WHITE_LINE",
+        meterType: "ODOMETER",
+        hourlyRate: "125.00",
+        loadCapacity: "16.000",
+        loadCapacityUnitCode: "M3_LOOSE",
+        loadVolumeM3: "16.000",
+        operatorIndex: 10,
       },
     ],
     projects: [
       {
-        id: fixtureId(2501),
-        name: "Expansão Serra Azul",
-        address: "Mina Serra Azul, zona rural, Quixadá - CE",
-        contractNumber: "MSA-2026-001",
-        approvedBudget: "1250000.00",
-        plannedStartDate: "2026-07-15",
-        plannedEndDate: "2027-01-31",
-        clientIndex: 0,
-        managerIndex: 0,
-        technicalResponsibleIndex: 2,
-      },
-      {
         id: fixtureId(2502),
         name: "Pátio de Estocagem Serra",
-        address: "Acesso da Pedreira, km 8, Quixeramobim - CE",
+        address: "Pátio de Estocagem Serra, Quixeramobim - CE",
         contractNumber: "MSA-2026-002",
         approvedBudget: "730000.00",
-        plannedStartDate: "2026-09-01",
+        plannedStartDate: "2026-08-25",
         plannedEndDate: "2027-02-28",
-        clientIndex: 1,
+        clientIndex: 0,
         managerIndex: 0,
-        technicalResponsibleIndex: 1,
+        technicalResponsibleIndex: 0,
       },
     ],
   },
@@ -258,6 +458,183 @@ const daySchedule = Array.from({ length: 7 }, (_, index) => ({
   startTime: index < 5 ? "08:00" : null,
   endTime: index < 5 ? "17:00" : null,
 }));
+
+async function seedSerraAzulPatioRoster(
+  prisma: PrismaClient,
+  fixture: CompanyFixture,
+) {
+  const project = fixture.projects.find(
+    (candidate) => candidate.name === "Pátio de Estocagem Serra",
+  );
+  if (!project) return;
+
+  const effectiveFrom = new Date("2026-08-25T08:00:00.000Z");
+  for (const [index, employee] of fixture.employees.entries()) {
+    const role = await prisma.jobRole.findUniqueOrThrow({
+      where: {
+        corporationId_companyId_normalizedName: {
+          corporationId: PILOT_CORPORATION_ID,
+          companyId: fixture.id,
+          normalizedName: employee.role.toLocaleLowerCase("pt-BR"),
+        },
+      },
+      select: { id: true },
+    });
+    const rolePeriodId = fixtureId(Number(`21${index + 1}04`));
+    const allocationId = fixtureId(26001 + index);
+    const currentAllocation = await prisma.projectEmployeeAllocation.findFirst({
+      where: {
+        corporationId: PILOT_CORPORATION_ID,
+        personId: fixtureId(Number(`21${index + 1}01`)),
+        effectiveTo: null,
+      },
+      select: { id: true },
+    });
+    const activeAllocationId = currentAllocation?.id ?? allocationId;
+    const allocation = {
+      corporationId: PILOT_CORPORATION_ID,
+      companyId: fixture.id,
+      projectId: project.id,
+      employmentId: employee.id,
+      personId: fixtureId(Number(`21${index + 1}01`)),
+      shift: "DAY" as const,
+      jobRole: employee.role,
+      confirmedJobRoleId: role.id,
+      employmentJobRolePeriodId: rolePeriodId,
+      monthlyWorkloadHours: MONTHLY_WORKLOAD_HOURS,
+      compensationMode: "monthly",
+      compensationValue: employee.compensationValue ?? "0.00",
+      overtimeRate: calculateMonthlyOvertimeRate(employee.compensationValue),
+      effectiveFrom,
+      effectiveTo: null,
+      createdByUserId: PILOT_ADMIN_ID,
+      endedByUserId: null,
+      endedReason: null,
+    };
+    await prisma.projectEmployeeAllocation.upsert({
+      where: { id: activeAllocationId },
+      update: allocation,
+      create: { id: activeAllocationId, ...allocation },
+    });
+  }
+
+  for (const [index, machine] of fixture.machines.entries()) {
+    const allocationId = fixtureId(27001 + index);
+    const shiftAssignmentId = fixtureId(28001 + index);
+    const startMeterReadingId = fixtureId(Number(`24${index + 1}03`));
+    const operatorEmploymentId =
+      machine.operatorIndex === undefined
+        ? null
+        : (fixture.employees[machine.operatorIndex]?.id ?? null);
+    const currentAllocation = await prisma.projectMachineAllocation.findFirst({
+      where: {
+        corporationId: PILOT_CORPORATION_ID,
+        machineId: machine.id,
+        effectiveTo: null,
+      },
+      select: { id: true },
+    });
+    const activeAllocationId = currentAllocation?.id ?? allocationId;
+    const allocation = {
+      corporationId: PILOT_CORPORATION_ID,
+      companyId: fixture.id,
+      projectId: project.id,
+      machineId: machine.id,
+      startMeterReadingId,
+      operatorEmploymentId,
+      effectiveFrom,
+      effectiveTo: null,
+      createdByUserId: PILOT_ADMIN_ID,
+      endedByUserId: null,
+      endedReason: null,
+    };
+    await prisma.projectMachineAllocation.upsert({
+      where: { id: activeAllocationId },
+      update: allocation,
+      create: { id: activeAllocationId, ...allocation },
+    });
+    const currentShiftAssignment =
+      await prisma.projectMachineShiftAssignment.findFirst({
+        where: {
+          corporationId: PILOT_CORPORATION_ID,
+          machineId: machine.id,
+          shift: "DAY",
+          effectiveTo: null,
+        },
+        select: { id: true },
+      });
+    const activeShiftAssignmentId =
+      currentShiftAssignment?.id ?? shiftAssignmentId;
+    await prisma.projectMachineShiftAssignment.upsert({
+      where: { id: activeShiftAssignmentId },
+      update: {
+        corporationId: PILOT_CORPORATION_ID,
+        companyId: fixture.id,
+        projectId: project.id,
+        machineId: machine.id,
+        operatorEmploymentId,
+        effectiveFrom,
+        effectiveTo: null,
+        createdByUserId: PILOT_ADMIN_ID,
+        endedByUserId: null,
+        endedReason: null,
+        projectMachineAllocationId: activeAllocationId,
+        shift: "DAY",
+      },
+      create: {
+        id: activeShiftAssignmentId,
+        corporationId: PILOT_CORPORATION_ID,
+        companyId: fixture.id,
+        projectId: project.id,
+        machineId: machine.id,
+        operatorEmploymentId,
+        effectiveFrom,
+        createdByUserId: PILOT_ADMIN_ID,
+        projectMachineAllocationId: activeAllocationId,
+        shift: "DAY",
+      },
+    });
+  }
+
+  const fuelAgreementId = fixtureId(29001);
+  await prisma.$transaction(async (tx) => {
+    await tx.projectFuelAgreement.upsert({
+      where: { id: fuelAgreementId },
+      update: {
+        fuelSupplierId: fixture.suppliers[0].id,
+        effectiveFrom,
+        effectiveTo: null,
+      },
+      create: {
+        id: fuelAgreementId,
+        corporationId: PILOT_CORPORATION_ID,
+        companyId: fixture.id,
+        projectId: project.id,
+        fuelSupplierId: fixture.suppliers[0].id,
+        effectiveFrom,
+      },
+    });
+    await tx.projectFuelPrice.upsert({
+      where: { id: fixtureId(29002) },
+      update: {
+        agreementId: fuelAgreementId,
+        fuelTypeId: "diesel-s10",
+        pricePerLiter: "6.8900",
+        effectiveFrom,
+        effectiveTo: null,
+      },
+      create: {
+        id: fixtureId(29002),
+        corporationId: PILOT_CORPORATION_ID,
+        companyId: fixture.id,
+        agreementId: fuelAgreementId,
+        fuelTypeId: "diesel-s10",
+        pricePerLiter: "6.8900",
+        effectiveFrom,
+      },
+    });
+  });
+}
 
 async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
   await prisma.company.upsert({
@@ -465,74 +842,100 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
   }
 
   for (const [index, machine] of fixture.machines.entries()) {
-    const ownershipId = fixtureId(
-      Number(`${fixture.prefix === "TN" ? 14 : 24}${index + 1}01`),
-    );
     const identifierId = fixtureId(
       Number(`${fixture.prefix === "TN" ? 14 : 24}${index + 1}02`),
     );
     const readingId = fixtureId(
       Number(`${fixture.prefix === "TN" ? 14 : 24}${index + 1}03`),
     );
+    const type = machine.type ?? "YELLOW_LINE";
+    const meterType = machine.meterType ?? "HOUR_METER";
+    const machineModelId = machine.machineModelId ?? machine.id;
+    const operator =
+      machine.operatorIndex === undefined
+        ? undefined
+        : fixture.employees[machine.operatorIndex];
+    const requiredJobRole = operator
+      ? await prisma.jobRole.findUnique({
+          where: {
+            corporationId_companyId_normalizedName: {
+              corporationId: PILOT_CORPORATION_ID,
+              companyId: fixture.id,
+              normalizedName: operator.role.toLocaleLowerCase("pt-BR"),
+            },
+          },
+          select: { id: true },
+        })
+      : null;
     await prisma.machineModel.upsert({
-      where: { id: machine.id },
+      where: { id: machineModelId },
       update: {
         manufacturer: machine.manufacturer,
         model: machine.model,
+        version: machine.modelVersion,
         normalizedManufacturer: machine.manufacturer.toLowerCase(),
         normalizedModel: machine.model.toLowerCase(),
-        normalizedVersion: "",
-        type: "YELLOW_LINE",
-        meterType: "HOUR_METER",
+        normalizedVersion: machine.modelVersion?.toLowerCase() ?? "",
+        type,
+        meterType,
+        requiresOperator: Boolean(requiredJobRole),
+        requiredJobRoleId: requiredJobRole?.id ?? null,
       },
       create: {
-        id: machine.id,
+        id: machineModelId,
         corporationId: PILOT_CORPORATION_ID,
         companyId: fixture.id,
         manufacturer: machine.manufacturer,
         model: machine.model,
+        version: machine.modelVersion,
         normalizedManufacturer: machine.manufacturer.toLowerCase(),
         normalizedModel: machine.model.toLowerCase(),
-        normalizedVersion: "",
-        type: "YELLOW_LINE",
-        meterType: "HOUR_METER",
-        requiresOperator: false,
+        normalizedVersion: machine.modelVersion?.toLowerCase() ?? "",
+        type,
+        meterType,
+        requiresOperator: Boolean(requiredJobRole),
+        requiredJobRoleId: requiredJobRole?.id,
       },
     });
     await prisma.machine.upsert({
       where: { id: machine.id },
       update: {
         name: machine.name,
-        description: `Equipamento de desenvolvimento ${fixture.prefix}`,
-        type: "YELLOW_LINE",
+        description:
+          fixture.prefix === "MSA"
+            ? "Equipamento do Pátio de Estocagem Serra"
+            : `Equipamento de desenvolvimento ${fixture.prefix}`,
+        type,
         manufacturer: machine.manufacturer,
         model: machine.model,
-        meterType: "HOUR_METER",
-        machineModelId: machine.id,
+        version: machine.modelVersion,
+        meterType,
+        machineModelId,
+        hourlyRate: machine.hourlyRate,
+        loadCapacity: machine.loadCapacity,
+        loadCapacityUnitCode: machine.loadCapacityUnitCode,
+        loadVolumeM3: machine.loadVolumeM3,
         isActive: true,
       },
       create: {
         id: machine.id,
         corporationId: PILOT_CORPORATION_ID,
         name: machine.name,
-        description: `Equipamento de desenvolvimento ${fixture.prefix}`,
-        type: "YELLOW_LINE",
+        description:
+          fixture.prefix === "MSA"
+            ? "Equipamento do Pátio de Estocagem Serra"
+            : `Equipamento de desenvolvimento ${fixture.prefix}`,
+        type,
         manufacturer: machine.manufacturer,
         model: machine.model,
-        meterType: "HOUR_METER",
-        machineModelId: machine.id,
+        version: machine.modelVersion,
+        meterType,
+        machineModelId,
+        hourlyRate: machine.hourlyRate,
+        loadCapacity: machine.loadCapacity,
+        loadCapacityUnitCode: machine.loadCapacityUnitCode,
+        loadVolumeM3: machine.loadVolumeM3,
         isActive: true,
-      },
-    });
-    await prisma.machineOwnershipPeriod.upsert({
-      where: { id: ownershipId },
-      update: { effectiveTo: null },
-      create: {
-        id: ownershipId,
-        corporationId: PILOT_CORPORATION_ID,
-        companyId: fixture.id,
-        machineId: machine.id,
-        effectiveFrom: new Date("2026-01-05T00:00:00.000Z"),
       },
     });
     await prisma.machineIdentifier.upsert({
@@ -576,6 +979,26 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
         recordedAt: new Date("2026-01-05T00:00:00.000Z"),
       },
     });
+    if (
+      type === "WHITE_LINE" &&
+      machine.loadCapacity &&
+      machine.loadCapacityUnitCode
+    ) {
+      await prisma.machineTransportSpecification.upsert({
+        where: { machineId: machine.id },
+        update: {
+          nominalCapacity: machine.loadCapacity,
+          effectiveCapacity: machine.loadCapacity,
+          capacityUnitCode: machine.loadCapacityUnitCode,
+        },
+        create: {
+          machineId: machine.id,
+          nominalCapacity: machine.loadCapacity,
+          effectiveCapacity: machine.loadCapacity,
+          capacityUnitCode: machine.loadCapacityUnitCode,
+        },
+      });
+    }
   }
 
   for (const [index, project] of fixture.projects.entries()) {
@@ -599,6 +1022,8 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
         Number(`${fixture.prefix === "TN" ? 15 : 25}${index + 1}06`),
       );
       const now = new Date("2026-06-30T12:00:00.000Z");
+      const isSerraAzulPatio =
+        fixture.prefix === "MSA" && project.name === "Pátio de Estocagem Serra";
 
       await tx.project.upsert({
         where: { id: project.id },
@@ -608,8 +1033,10 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
           contractNumber: project.contractNumber,
           normalizedContractNumber:
             project.contractNumber.toLocaleLowerCase("pt-BR"),
-          status: "PLANNED",
-          actualStartedAt: null,
+          status: isSerraAzulPatio ? "ACTIVE" : "PLANNED",
+          actualStartedAt: isSerraAzulPatio
+            ? new Date("2026-08-25T08:00:00.000Z")
+            : null,
         },
         create: {
           id: project.id,
@@ -620,7 +1047,10 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
           contractNumber: project.contractNumber,
           normalizedContractNumber:
             project.contractNumber.toLocaleLowerCase("pt-BR"),
-          status: "PLANNED",
+          status: isSerraAzulPatio ? "ACTIVE" : "PLANNED",
+          actualStartedAt: isSerraAzulPatio
+            ? new Date("2026-08-25T08:00:00.000Z")
+            : undefined,
         },
       });
       await tx.projectBaseline.upsert({
@@ -697,11 +1127,16 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
           effectiveFrom: now,
         },
       });
+      const currentSchedule = await tx.projectScheduleRevision.findFirst({
+        where: { projectId: project.id, effectiveTo: null },
+        select: { id: true },
+      });
+      const activeScheduleId = currentSchedule?.id ?? scheduleId;
       await tx.projectScheduleRevision.upsert({
-        where: { id: scheduleId },
+        where: { id: activeScheduleId },
         update: { effectiveFrom: now, effectiveTo: null },
         create: {
-          id: scheduleId,
+          id: activeScheduleId,
           corporationId: PILOT_CORPORATION_ID,
           companyId: fixture.id,
           projectId: project.id,
@@ -712,7 +1147,7 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
         await tx.projectScheduleDay.upsert({
           where: {
             scheduleRevisionId_shift_dayOfWeek: {
-              scheduleRevisionId: scheduleId,
+              scheduleRevisionId: activeScheduleId,
               shift: "DAY",
               dayOfWeek: day.dayOfWeek,
             },
@@ -726,7 +1161,7 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
             ),
             corporationId: PILOT_CORPORATION_ID,
             companyId: fixture.id,
-            scheduleRevisionId: scheduleId,
+            scheduleRevisionId: activeScheduleId,
             ...day,
           },
         });
@@ -734,7 +1169,7 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
       await tx.projectBreakTemplate.upsert({
         where: {
           scheduleRevisionId_shift_position: {
-            scheduleRevisionId: scheduleId,
+            scheduleRevisionId: activeScheduleId,
             shift: "DAY",
             position: 0,
           },
@@ -744,7 +1179,7 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
           id: breakTemplateId,
           corporationId: PILOT_CORPORATION_ID,
           companyId: fixture.id,
-          scheduleRevisionId: scheduleId,
+          scheduleRevisionId: activeScheduleId,
           position: 0,
           name: "Intervalo de almoço",
           durationMinutes: 60,
@@ -752,6 +1187,8 @@ async function seedCompany(prisma: PrismaClient, fixture: CompanyFixture) {
       });
     });
   }
+
+  if (fixture.prefix === "MSA") await seedSerraAzulPatioRoster(prisma, fixture);
 }
 
 async function seedEmptyCompany(prisma: PrismaClient) {
