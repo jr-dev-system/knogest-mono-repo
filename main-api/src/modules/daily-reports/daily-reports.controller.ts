@@ -62,6 +62,55 @@ const operationalCloseSchema = {
   },
 } as const;
 
+const operationalDayResponseSchema = {
+  type: "object",
+  additionalProperties: true,
+  required: ["reportDate", "shifts"],
+  properties: {
+    reportDate: { type: "string", format: "date" },
+    shifts: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: true,
+        required: ["shift", "enabled", "options", "report"],
+        properties: {
+          shift,
+          enabled: { type: "boolean" },
+          options: {
+            type: "object",
+            nullable: true,
+            additionalProperties: true,
+            properties: {
+              defaults: {
+                type: "object",
+                additionalProperties: true,
+                required: ["breakTemplates"],
+                properties: {
+                  breakTemplates: {
+                    type: "array",
+                    items: {
+                      type: "object",
+                      additionalProperties: false,
+                      required: ["id", "name", "durationMinutes"],
+                      properties: {
+                        id: uuid,
+                        name: { type: "string" },
+                        durationMinutes: { type: "integer", minimum: 1 },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          report: { type: "object", nullable: true, additionalProperties: true },
+        },
+      },
+    },
+  },
+} as const;
+
 const errorSchema = {
   type: "object",
   required: ["success", "code", "message", "details", "requestId"],
@@ -580,7 +629,7 @@ export const v1DailyReportsController = async (app: FastifyInstance) => {
 
   app.get("/projects/:projectId/operational-days/:reportDate", {
     preHandler: [app.requireCompanyScope, validateParams(operationalDayParamsSchema)],
-    schema: { tags: ["Project operations"], summary: "Get the operational command center for a project day", security: [{ bearerAuth: [] }], params: { type: "object", additionalProperties: false, required: ["projectId", "reportDate"], properties: { projectId: uuid, reportDate: { type: "string", format: "date" } } }, response: { 200: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
+    schema: { tags: ["Project operations"], summary: "Get the operational command center for a project day", security: [{ bearerAuth: [] }], params: { type: "object", additionalProperties: false, required: ["projectId", "reportDate"], properties: { projectId: uuid, reportDate: { type: "string", format: "date" } } }, response: { 200: successSchema(operationalDayResponseSchema), ...commonErrors } },
   }, async (request, reply) => {
     const { projectId, reportDate } = request.params as z.infer<typeof operationalDayParamsSchema>;
     return jsonResponse.success({ reply, data: await service.operationalDay(scopeFromRequest(request), projectId, reportDate) });

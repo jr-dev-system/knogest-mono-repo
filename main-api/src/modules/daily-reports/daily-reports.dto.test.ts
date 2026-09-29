@@ -234,13 +234,20 @@ describe("operational shift commands", () => {
       operationalShiftCloseSchema.safeParse({
         endedAt: "2026-09-24T20:00:00.000Z",
         earlyClosureReason: null,
-        employees: [{
-          employmentId: id("1"),
-          checkInAt: null,
-          checkOutAt: null,
-          breaks: [],
-          overtimeConfirmed: false,
-        }],
+        employees: [
+          {
+            employmentId: id("1"),
+            checkInAt: null,
+            checkOutAt: null,
+            breaks: [
+              {
+                startAt: "2026-09-24T15:00:00.000Z",
+                endAt: "2026-09-24T16:00:00.000Z",
+              },
+            ],
+            overtimeConfirmed: false,
+          },
+        ],
         machines: [],
       }).success,
     ).toBe(true);

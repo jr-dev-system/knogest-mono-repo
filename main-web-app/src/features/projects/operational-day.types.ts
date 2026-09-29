@@ -61,6 +61,11 @@ export type OperationalReport = {
 
 export type OperationalOptions = {
   defaults: {
+    breakTemplates: Array<{
+      id: string;
+      name: string;
+      durationMinutes: number;
+    }>;
     schedulePeriods: OperationalReport["schedulePeriods"];
     activityStartTime: string;
     activityEndTime: string;

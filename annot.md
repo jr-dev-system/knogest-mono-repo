@@ -233,6 +233,7 @@ selecionar os caminhões, quantidade de viagens. Não vai existir qualidade e ev
 [] - Ao finalizar turno confirmar horário final do turno e horário excedente.
 [] - Confirmar horário de todos os funcionários preenchidos automaticamente (inicio e final) que iniciaram o turno.
 [] - Confirmar odometro final de todas as máquinas que participaram do turno.
+
 [] - Não deve ser possível iniciar um mesmo turno caso já tenha um em aberto em outro dia ou no mesmo dia. Depois de um turno fechado, deve ser impossível rabrir ou algo do tipo.
 
 [] - Quando adcionar uma máquina à obra deve ter um input para o valor/hora (tomando como default, mas não permanente, o valor adcionado ao criar unidade) da máquina e horas/mês disponível daquela máquina.

@@ -10,7 +10,9 @@ O fluxo manual permanece disponível para consulta dos registros existentes.
 ## Central operacional do dia
 
 Ao selecionar uma data disponível no calendário, a interface abre uma central
-com uma faixa para cada turno habilitado. A abertura de um turno exige:
+com uma faixa para cada turno habilitado. A abertura começa pela confirmação
+do horário de início, preenchido pela sugestão operacional ou pelo instante
+corrente. Somente depois dessa confirmação local são apresentados:
 
 - checklist de todos os funcionários alocados, como presente ou ausente, com
   motivo de ausência opcional;
@@ -22,8 +24,10 @@ As opções refletem o contexto vigente no instante real de início. Antes de o
 turno ser iniciado, a data atual usa o instante corrente e uma abertura
 retroativa usa o último contexto vigente naquele dia. Isso permite incluir uma
 mobilização efetivada depois do horário planejado sem misturar recursos de
-outro dia. Ao confirmar, a API cria o RDO em rascunho e registra a entrada dos
-presentes e a leitura inicial das máquinas de forma automática.
+outro dia. Confirmar o horário não persiste parcialmente o turno: somente a
+confirmação posterior dos dois checklists envia o comando atômico. A API então
+cria o RDO em rascunho e registra a entrada dos presentes e a leitura inicial
+das máquinas de forma automática.
 
 Com o turno aberto, a central atualiza a cada 30 segundos e ao retomar foco.
 Ela permite completar as perguntas obrigatórias do RDO, abrir o lançamento de
@@ -35,10 +39,35 @@ ações táteis, mas ainda não persistem dados nesta versão.
 Interferências registram categoria, descrição, impacto, início e fim opcional.
 Cada registro precisa ser confirmado individualmente antes do fechamento.
 
-O encerramento revisa, em uma única operação atômica:
+O encerramento usa um assistente modal guiado em quatro etapas:
 
-- entrada, saída, até seis intervalos e confirmação de horas extras de cada
-  funcionário presente;
+1. **Horários** confirma o início já registrado, permite ajustar o
+   encerramento preenchido com o horário atual e calcula automaticamente o
+   excedente do turno em relação à jornada prevista. Nesta mesma etapa são
+   definidos os intervalos gerais do turno: um intervalo pode usar nome e
+   duração de um modelo cadastrado na obra, com o início informado no
+   fechamento, ou ser criado com nome, início e duração. Encerramento
+   antecipado continua exigindo motivo.
+2. **Medidores** percorre todas as máquinas em páginas locais de seis itens.
+   Máquinas aptas exigem leitura final não inferior à inicial e usam o rótulo
+   real **Horímetro** ou **Odômetro**; máquinas não aptas permanecem sem leitura
+   final.
+3. **Equipe** percorre todos os funcionários em páginas locais de dez itens e
+   confirma entrada e saída. Os intervalos definidos na primeira etapa são
+   aplicados a todos os presentes e descontados tanto da jornada prevista
+   quanto da realizada. A confirmação individual de hora extra só aparece
+   quando a saída excede o encerramento previsto e mostra apenas a duração
+   `HH:MM`; valores monetários nunca são exibidos. Ausentes e integrantes sem
+   hora extra habilitada preservam suas regras automáticas.
+4. **Revisão** mostra um resumo dos três grupos com ação **Editar** em cada um.
+   Ao concluir uma edição aberta pela revisão, o fluxo retorna diretamente a
+   ela sem obrigar a percorrer as outras etapas.
+
+A confirmação final revisa, em uma única operação atômica:
+
+- entrada, saída, até seis intervalos gerais do turno aplicados a cada
+  funcionário presente e, quando houver excedente, confirmação de horas
+  extras;
 - leitura final de toda máquina apta;
 - confirmação de todas as interferências;
 - respostas obrigatórias do RDO e, quando aplicável, o motivo do encerramento
@@ -118,11 +147,12 @@ copiada para o relatório.
 Cada alocação de funcionário possui **Habilitar hora extra**, ligado por padrão.
 O valor é copiado para o RDO ao iniciar o turno. Para quem está com a opção
 desligada, o fechamento usa automaticamente o início e o fim reais do turno
-como marcações de frequência, limita os minutos regulares à jornada planejada
-e registra zero minuto de hora extra. A interface não solicita horários ou
-confirmação individual de hora extra para esse funcionário. Para quem está com
-a opção ligada, o preenchimento individual e a conferência de horas extras
-continuam disponíveis.
+como marcações de frequência, desconta os intervalos gerais, limita os minutos
+regulares à jornada planejada líquida e registra zero minuto de hora extra. A
+interface não solicita horários ou confirmação individual de hora extra para
+esse funcionário. Para quem está com a opção ligada, o preenchimento
+individual continua disponível; a conferência de horas extras só é solicitada
+quando a saída ultrapassa o encerramento previsto do turno.
 
 As linhas do rascunho ainda não são oficiais. A finalização torna as jornadas
 oficiais em conjunto com o RDO; consumidores devem considerar somente jornadas

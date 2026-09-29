@@ -23488,7 +23488,76 @@
                   "properties": {
                     "success": { "type": "boolean", "enum": [true] },
                     "message": { "type": "string" },
-                    "data": { "type": "object", "additionalProperties": true }
+                    "data": {
+                      "type": "object",
+                      "additionalProperties": true,
+                      "required": ["reportDate", "shifts"],
+                      "properties": {
+                        "reportDate": { "type": "string", "format": "date" },
+                        "shifts": {
+                          "type": "array",
+                          "items": {
+                            "type": "object",
+                            "additionalProperties": true,
+                            "required": [
+                              "shift",
+                              "enabled",
+                              "options",
+                              "report"
+                            ],
+                            "properties": {
+                              "shift": {
+                                "type": "string",
+                                "enum": ["day", "night"]
+                              },
+                              "enabled": { "type": "boolean" },
+                              "options": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true,
+                                "properties": {
+                                  "defaults": {
+                                    "type": "object",
+                                    "additionalProperties": true,
+                                    "required": ["breakTemplates"],
+                                    "properties": {
+                                      "breakTemplates": {
+                                        "type": "array",
+                                        "items": {
+                                          "type": "object",
+                                          "additionalProperties": false,
+                                          "required": [
+                                            "id",
+                                            "name",
+                                            "durationMinutes"
+                                          ],
+                                          "properties": {
+                                            "id": {
+                                              "type": "string",
+                                              "format": "uuid"
+                                            },
+                                            "name": { "type": "string" },
+                                            "durationMinutes": {
+                                              "type": "integer",
+                                              "minimum": 1
+                                            }
+                                          }
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
+                              },
+                              "report": {
+                                "type": "object",
+                                "nullable": true,
+                                "additionalProperties": true
+                              }
+                            }
+                          }
+                        }
+                      }
+                    }
                   }
                 }
               }

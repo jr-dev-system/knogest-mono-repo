@@ -395,23 +395,30 @@ export class DailyReportsService {
             if (!item) throw incomplete("employees");
             if (
               entry.attendanceStatus === "PRESENT" &&
-              (entry.overtimeEnabled &&
-                (!item.checkInAt || !item.checkOutAt || !item.overtimeConfirmed))
+              entry.overtimeEnabled &&
+              (!item.checkInAt || !item.checkOutAt || !item.overtimeConfirmed)
             )
               throw incomplete("employee-hours");
             const fixedAttendance =
               entry.attendanceStatus === "PRESENT" && !entry.overtimeEnabled;
+            const submittedStart = item.checkInAt
+              ? new Date(item.checkInAt)
+              : null;
             const start = fixedAttendance
               ? record.startedAt
-              : item.checkInAt
-                ? new Date(item.checkInAt)
-                : null;
+              : submittedStart &&
+                  submittedStart < record.startedAt &&
+                  record.startedAt.getTime() - submittedStart.getTime() <
+                    60_000
+                ? record.startedAt
+                : submittedStart;
             const end = fixedAttendance
               ? endedAt
               : item.checkOutAt
                 ? new Date(item.checkOutAt)
                 : null;
-            const breaks = fixedAttendance ? [] : item.breaks;
+            const breaks =
+              entry.attendanceStatus === "PRESENT" ? item.breaks : [];
             if (
               (start && end && end <= start) ||
               (start && start < record.startedAt) ||
@@ -432,22 +439,18 @@ export class DailyReportsService {
               if (
                 !start ||
                 !end ||
-                breakStart < start ||
-                breakEnd > end ||
+                breakStart < record.startedAt ||
+                breakEnd > endedAt ||
                 (previousEnd && breakStart < previousEnd)
               )
                 throw incomplete("employee-breaks");
             }
-            const breakMinutes = breaks.reduce(
-              (total, current) =>
-                total +
-                Math.round(
-                  (new Date(current.endAt).getTime() -
-                    new Date(current.startAt).getTime()) /
-                    60000,
-                ),
-              0,
-            );
+            const breakIntervals = breaks.map((current) => ({
+              startAt: new Date(current.startAt),
+              endAt: new Date(current.endAt),
+            }));
+            const breakMinutes =
+              start && end ? overlapMinutes(breakIntervals, start, end) : 0;
             const worked =
               start && end
                 ? Math.max(
@@ -456,13 +459,24 @@ export class DailyReportsService {
                       breakMinutes,
                   )
                 : 0;
+            const plannedWindow = intervalFromLocal(
+              civilDate(record.reportDate),
+              record.activityStartTime,
+              record.activityEndTime,
+              record.activityEndDayOffset,
+            );
             const planned = Math.max(
               0,
               activityWindowMinutes({
                 activityStartTime: record.activityStartTime,
                 activityEndTime: record.activityEndTime,
                 activityEndDayOffset: record.activityEndDayOffset,
-              }),
+              }) -
+                overlapMinutes(
+                  breakIntervals,
+                  plannedWindow.startAt,
+                  plannedWindow.endAt,
+                ),
             );
             await replaceOperationalEmployeeCloseHandler(
               transactionContext,
@@ -727,6 +741,7 @@ export class DailyReportsService {
       defaults: {
         reportDate: query.reportDate,
         shift: query.shift,
+        breakTemplates: context.breakTemplates,
         schedulePeriods: [
           {
             startTime: defaultWindow.startTime,
@@ -1412,6 +1427,18 @@ function scheduleScale(days: Array<{ dayOfWeek: number; isWorking: boolean }>) {
   if (contiguous && working.length > 1)
     return `${dayLabels[working[0]! - 1]!} a ${dayLabels[working.at(-1)! - 1]!}`;
   return working.map((day) => dayLabels[day - 1] ?? String(day)).join(", ");
+}
+
+function overlapMinutes(
+  intervals: Array<{ startAt: Date; endAt: Date }>,
+  windowStart: Date,
+  windowEnd: Date,
+) {
+  return intervals.reduce((total, interval) => {
+    const start = Math.max(interval.startAt.getTime(), windowStart.getTime());
+    const end = Math.min(interval.endAt.getTime(), windowEnd.getTime());
+    return total + Math.max(0, Math.round((end - start) / 60_000));
+  }, 0);
 }
 
 function normalizeDecimal(value: string) {

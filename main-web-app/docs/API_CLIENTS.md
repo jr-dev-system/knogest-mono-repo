@@ -70,6 +70,11 @@ valida UUID/data, chama exclusivamente o cliente Kubb e recarrega o retrato do
 dia devolvido ao componente. A tela também chama `router.refresh()` a cada 30
 segundos e ao recuperar foco.
 
+Cada turno habilitado devolve em `options.defaults.breakTemplates` os modelos
+de intervalo vigentes, com `id`, `name` e `durationMinutes`. O componente coleta
+o horário de início do intervalo geral e, no fechamento, envia a mesma lista de
+`breaks` para cada funcionário presente; ausentes continuam com lista vazia.
+
 O CTA de produção abre o assistente compartilhado sobre a própria Central e
 consulta as opções para a data e o turno do RDO. O comando recebe o supervisor
 como responsável e omite início e fim; fechar ou salvar não navega para a aba

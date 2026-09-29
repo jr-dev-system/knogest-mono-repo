@@ -158,7 +158,13 @@ describe("project daily reports", () => {
           endDayOffset: dayOfWeek <= 6 ? 1 : 0,
         })),
       ],
-      breakTemplates: [],
+      breakTemplates: [
+        {
+          shift: "day",
+          name: "Almoço",
+          durationMinutes: 60,
+        },
+      ],
       initialEmployeeAllocations: [],
       initialMachineAllocations: [],
       projectSupplierOffers: [],
@@ -239,6 +245,7 @@ describe("project daily reports", () => {
             compensationMode: "monthly",
             compensationValue: "5000.00",
             overtimeRate: "30.00",
+            overtimeEnabled: false,
           },
           {
             employmentId: nightEmploymentId,
@@ -401,6 +408,9 @@ describe("project daily reports", () => {
     });
     expect(options.statusCode, options.body).toBe(200);
     expect(options.json().data.defaults.scheduleScale).toBe("Seg. a Sáb.");
+    expect(options.json().data.defaults.breakTemplates).toEqual([
+      expect.objectContaining({ name: "Almoço", durationMinutes: 60 }),
+    ]);
     expect(options.json().data.machineOptions[0].startMeterReading.value).toBe(
       "2168.10",
     );
@@ -485,6 +495,99 @@ describe("project daily reports", () => {
     });
     expect(isolated.statusCode, isolated.body).toBe(200);
     expect(isolated.json().data.data).toEqual([]);
+  });
+
+  it("applies the shared shift breaks to automatic employee hours", async () => {
+    const scope = await setup();
+    const started = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/operational-days/${scope.reportDate}/shifts/day/start`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        startedAt: `${scope.reportDate}T10:00:00.000Z`,
+        employees: [
+          {
+            employmentId: scope.employmentId,
+            status: "present",
+            absenceReason: null,
+          },
+        ],
+        machines: [
+          {
+            machineId: scope.machineId,
+            condition: "fit",
+            conditionNote: null,
+          },
+        ],
+      },
+    });
+    expect(started.statusCode, started.body).toBe(201);
+    const reportId = started.json().data.id as string;
+
+    const rdo = await app.inject({
+      method: "PUT",
+      url: `/api/v1/projects/${scope.projectId}/operational-shifts/${reportId}/rdo`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        schedulePeriods: [
+          {
+            startTime: "07:00",
+            endTime: "18:00",
+            startDayOffset: 0,
+            endDayOffset: 0,
+          },
+        ],
+        activityStartTime: "07:00",
+        activityEndTime: "18:00",
+        activityEndDayOffset: 0,
+        activityTypes: ["earthworks"],
+        climateConditions: ["dry"],
+        dailyRainfallMm: "0",
+        monthlyRainfallMm: "0",
+        supervisorEmploymentId: scope.employmentId,
+        technicalResponsibilityEmploymentIds: [scope.employmentId],
+        executedActivities: "Execução acompanhada pela central operacional.",
+      },
+    });
+    expect(rdo.statusCode, rdo.body).toBe(200);
+
+    const closed = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/operational-shifts/${reportId}/close`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        endedAt: `${scope.reportDate}T22:00:00.000Z`,
+        earlyClosureReason: null,
+        employees: [
+          {
+            employmentId: scope.employmentId,
+            checkInAt: null,
+            checkOutAt: null,
+            breaks: [
+              {
+                startAt: `${scope.reportDate}T15:00:00.000Z`,
+                endAt: `${scope.reportDate}T16:00:00.000Z`,
+              },
+            ],
+            overtimeConfirmed: true,
+          },
+        ],
+        machines: [
+          { machineId: scope.machineId, endMeterReadingValue: "2170.00" },
+        ],
+      },
+    });
+    expect(closed.statusCode, closed.body).toBe(200);
+    expect(closed.json().data.employees[0]).toMatchObject({
+      regularWorkedMinutes: 600,
+      overtimeMinutes: 0,
+      breaks: [
+        {
+          startAt: `${scope.reportDate}T15:00:00.000Z`,
+          endAt: `${scope.reportDate}T16:00:00.000Z`,
+        },
+      ],
+    });
   });
 
   it("finalizes atomically, creates meter references and becomes immutable", async () => {

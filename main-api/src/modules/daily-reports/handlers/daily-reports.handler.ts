@@ -253,6 +253,18 @@ export async function findProjectDailyReportContextHandler(
         })
       : [],
   ]);
+  const breakTemplates = scheduleRevision
+    ? await context.prisma.projectBreakTemplate.findMany({
+        where: {
+          corporationId: scope.corporationId,
+          companyId: scope.companyId,
+          scheduleRevisionId: scheduleRevision.id,
+          shift,
+        },
+        orderBy: { position: "asc" },
+        select: { id: true, name: true, durationMinutes: true },
+      })
+    : [];
 
   return {
     project,
@@ -260,6 +272,7 @@ export async function findProjectDailyReportContextHandler(
     manager,
     technicalResponsibilities,
     scheduleDays,
+    breakTemplates,
     employees,
     machines,
     employmentRecords,
