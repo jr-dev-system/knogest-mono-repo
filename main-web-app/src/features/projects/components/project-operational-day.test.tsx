@@ -60,7 +60,7 @@ function operationalDay(withResources = true): OperationalDay {
           },
           responsibleOptions: [],
           employeeOptions: withResources
-            ? [{ id: "employee-1", name: "Bianca Souza", jobRole: "Operadora" }]
+            ? [{ id: "employee-1", name: "Bianca Souza", jobRole: "Operadora", overtimeEnabled: true }]
             : [],
           machineOptions: withResources
             ? [
@@ -232,7 +232,7 @@ describe("ProjectOperationalDay", () => {
     expect(
       await screen.findByRole("heading", { name: "Nova produção" }),
     ).toBeTruthy();
-    expect(screen.getAllByText("Tipo de lançamento").length).toBeGreaterThan(0);
+    expect(screen.getByRole("option", { name: "Corte · m³" })).toBeTruthy();
     expect(screen.queryByLabelText("Responsável")).toBeNull();
     expect(screen.queryByLabelText("Data")).toBeNull();
     expect(screen.queryByLabelText("Turno")).toBeNull();
@@ -240,8 +240,7 @@ describe("ProjectOperationalDay", () => {
     expect(screen.queryByLabelText("Fim")).toBeNull();
     expect(push).not.toHaveBeenCalled();
 
-    fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
-    expect(screen.getAllByText("Frente e serviço").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Frente")).toBeTruthy();
 
     refresh.mockClear();
     fireEvent.focus(window);
@@ -254,7 +253,7 @@ describe("ProjectOperationalDay", () => {
         projectName="Obra Serra"
       />,
     );
-    expect(screen.getAllByText("Frente e serviço").length).toBeGreaterThan(0);
+    expect(screen.getByLabelText("Frente")).toBeTruthy();
     expect(screen.queryByText("Tipo de lançamento")).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Fechar" }));
@@ -280,13 +279,13 @@ describe("ProjectOperationalDay", () => {
     fireEvent.click(screen.getByRole("button", { name: "Adicionar produção" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain(
-      "Não há frente de serviço iniciada nesta obra. Inicie uma frente antes de registrar produção.",
+      "Inicie uma frente de serviço antes de registrar produção.",
     );
     expect(
       (screen.getByRole("button", {
-        name: "Avançar",
+        name: "Revisar produção",
       }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    expect(screen.queryByLabelText("Frente")).toBeNull();
+    expect((screen.getByLabelText("Frente") as HTMLSelectElement).options).toHaveLength(0);
   });
 });

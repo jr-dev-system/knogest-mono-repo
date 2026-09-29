@@ -21,6 +21,7 @@ import { FormSection } from "@/components/ui/form-section";
 import { FormWizardProgress } from "@/components/ui/form-wizard-progress";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
+import { formatLoadCapacity } from "@/features/machines/capacity-format";
 
 import {
   createHaulRouteAction,
@@ -36,6 +37,7 @@ import type {
   ProjectProductionOptions,
 } from "../productions.types";
 import { calculateMovementPreview } from "../production-preview";
+import { productionServiceLabel, productionUnitLabel } from "../production-labels";
 
 const decimal = /^(?:0|[1-9]\d{0,11})(?:[.,]\d{1,6})?$/u;
 const wizardSchema = z.object({
@@ -126,7 +128,7 @@ const roleLabels: Record<ProjectProductionEquipmentRole, string> = {
 const controlClass =
   "h-11 w-full rounded-md border border-input bg-background px-3 text-sm font-semibold outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30 disabled:opacity-60";
 
-export function ProjectProductionWizard({
+export function LegacyProductionWizard({
   contextualEntry,
   detail,
   onContextChange,
@@ -180,7 +182,7 @@ export function ProjectProductionWizard({
   const selectedService = selectedFront?.services.find(
     (service) => service.id === values.workFrontServiceId,
   );
-  const editable = !detail || detail.status === "draft";
+  const editable = false;
   const missingActiveWorkFrontForNewProduction =
     !detail && options.workFronts.length === 0;
 
@@ -749,7 +751,7 @@ function IndividualQuantityStep({
             <Input disabled={!editable} {...form.register("materialName")} />
           </Field>
           {service?.serviceCode === "top_soil" && (
-            <Field label="Subtipo de topsoil">
+            <Field label="Tipo de solo vegetal">
               <select
                 className={controlClass}
                 disabled={!editable}
@@ -1026,7 +1028,7 @@ function TruckStep({
                     }
                   />
                   {truck.name} · {truck.identifier ?? "sem identificação"} ·{" "}
-                  {truck.effectiveCapacity} {truck.capacityUnitCode}
+                  {formatLoadCapacity(truck.effectiveCapacity, truck.capacityUnitCode)}
                 </label>
                 {checked && (
                   <div className="mt-3 grid gap-2 sm:grid-cols-4">
@@ -1907,7 +1909,7 @@ function integerOrNull(value: string) {
   return value.trim() ? Number(value) : null;
 }
 function explicitUnit(unit: string, condition: string) {
-  return unit.toUpperCase() === "M3" ? `M3_${condition.toUpperCase()}` : unit;
+  return productionUnitLabel(unit.toUpperCase() === "M3" ? `M3_${condition.toUpperCase()}` : unit);
 }
 function sourceServiceCode(
   values: WizardValues,
@@ -1942,20 +1944,7 @@ function componentType(serviceCode: string, fallback: "cut" | "fill") {
         : fallback;
 }
 function serviceLabel(code: string) {
-  return (
-    ((
-      {
-        cut: "Corte",
-        fill: "Aterro",
-        finishing: "Acabamento",
-        top_soil: "Top soil",
-        unsuitable_soil_removal: "Remoção de solo impróprio",
-        replacement_fill: "Aterro de substituição",
-      } as Record<string, string>
-    )[code] ??
-      code) ||
-    "Serviço"
-  );
+  return productionServiceLabel(code) || "Serviço";
 }
 function translateError(code: string) {
   return (

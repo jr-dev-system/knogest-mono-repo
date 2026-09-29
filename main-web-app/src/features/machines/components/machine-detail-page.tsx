@@ -100,10 +100,10 @@ export function MachineDetailPage({
             {meterTypeLabel(machine.meterType)} ({" "}
             {machine.meterType === "HOUR_METER" ? "h" : "km"})
           </Info>
-          <Info label="Propriedade atual">
-            {machine.ownership
-              ? `Desde ${formatDateTime(machine.ownership.effectiveFrom)}`
-              : "Sem propriedade atual"}
+          <Info label="Valor/hora">
+            {machine.hourlyRate
+              ? `R$ ${machine.hourlyRate.replace(".", ",")}/h`
+              : "Não informado"}
           </Info>
           <Info label="Descrição">
             {machine.description ?? "Sem descrição"}
@@ -131,15 +131,29 @@ export function MachineDetailPage({
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="grid gap-1.5 text-sm font-semibold">
                 <span className="flex items-center gap-2">
-                  <Truck className="size-4" /> Volume de carga (m³)
+                  <Truck className="size-4" /> Capacidade
                 </span>
                 <Input
-                  name="loadVolumeM3"
+                  name="loadCapacity"
                   inputMode="decimal"
-                  defaultValue={machine.loadVolumeM3?.replace(".", ",") ?? ""}
+                  defaultValue={machine.loadCapacity?.replace(".", ",") ?? ""}
                   placeholder="Ex.: 12,500"
                   disabled={pending}
                 />
+              </label>
+              <label className="grid gap-1.5 text-sm font-semibold">
+                <span>Unidade da capacidade</span>
+                <select
+                  name="loadCapacityUnitCode"
+                  defaultValue={machine.loadCapacityUnitCode ?? "M3_LOOSE"}
+                  disabled={pending}
+                  className="h-10 rounded-md border border-input bg-background px-3 text-sm font-semibold"
+                >
+                  <option value="M3_LOOSE">m³ solto</option>
+                  <option value="M3_COMPACTED">m³ compactado</option>
+                  <option value="LITER">Litro (L)</option>
+                  <option value="CUBIC_YARD">Jarda cúbica (yd³)</option>
+                </select>
               </label>
               <label className="grid gap-1.5 text-sm font-semibold">
                 <span className="flex items-center gap-2">

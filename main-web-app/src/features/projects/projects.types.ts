@@ -112,6 +112,7 @@ export type ProjectDetailSnapshot = {
     compensationMode: CompensationMode;
     compensationValue: string;
     overtimeRate: string;
+    overtimeEnabled: boolean;
     effectiveFrom: string;
   }[];
   machineAllocations: {

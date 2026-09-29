@@ -46,29 +46,11 @@ function nullableDecimalPayloadValue(formData: FormData, key: string) {
 
 function payload(formData: FormData): PostApiV1MachineModelsMutationRequest {
   const type = optionalString(formData, "type");
-  const isWhiteLine = type === "WHITE_LINE";
   return {
     description: optionalPayloadString(formData, "description"),
     manufacturer: optionalString(formData, "manufacturer"),
     model: optionalString(formData, "model"),
     version: optionalPayloadString(formData, "version"),
-    loadCapacity: isWhiteLine
-      ? optionalPayloadString(formData, "loadCapacity")?.replace(",", ".")
-      : undefined,
-    loadCapacityUnitCode: isWhiteLine
-      ? (optionalPayloadString(formData, "loadCapacityUnitCode") as
-          | "M3_LOOSE"
-          | "M3_COMPACTED"
-          | "LITER"
-          | "CUBIC_YARD"
-          | undefined)
-      : undefined,
-    maxSupportedWeightT: isWhiteLine
-      ? optionalPayloadString(formData, "maxSupportedWeightT")?.replace(
-          ",",
-          ".",
-        )
-      : undefined,
     type: type === "WHITE_LINE" ? "WHITE_LINE" : "YELLOW_LINE",
     requiresOperator: optionalString(formData, "requiresOperator") === "true",
     requiredJobRoleId:
@@ -193,7 +175,14 @@ export async function updateMachineLoadSpecificationAction(
     await patchApiV1MachinesMachineidLoadSpecification({
       machineId,
       data: {
-        loadVolumeM3: nullableDecimalPayloadValue(formData, "loadVolumeM3"),
+        loadCapacity: nullableDecimalPayloadValue(formData, "loadCapacity"),
+        loadCapacityUnitCode: optionalPayloadString(formData, "loadCapacity")
+          ? (optionalString(formData, "loadCapacityUnitCode") as
+              | "M3_LOOSE"
+              | "M3_COMPACTED"
+              | "LITER"
+              | "CUBIC_YARD")
+          : null,
         maxSupportedWeightT: nullableDecimalPayloadValue(
           formData,
           "maxSupportedWeightT",
@@ -227,6 +216,7 @@ export async function createMachineModelAction(
         ]
           .filter(Boolean)
           .join(" "),
+        type: response.data.type,
         requiresOperator: response.data.requiresOperator,
         requiredJobRoleId: response.data.requiredJobRole?.id ?? null,
         requiredJobRoleName: response.data.requiredJobRole?.name ?? null,
@@ -297,7 +287,6 @@ export async function addMachineModelUnitsAction(
   formData: FormData,
 ): Promise<MachineActionState> {
   try {
-    const ownership = optionalString(formData, "unitOwnership");
     const allocateNow = optionalString(formData, "unitAllocateNow") === "yes";
     const operatorAssignments = [
       ["day", optionalPayloadString(formData, "unitDayOperatorEmploymentId")],
@@ -327,32 +316,32 @@ export async function addMachineModelUnitsAction(
           formData,
           "unitInitialMeterReading",
         ),
-        ownership:
-          ownership === "RENTED"
-            ? {
-                kind: "RENTED",
-                lessorName: optionalString(formData, "unitLessorName"),
-                suggestedHourlyRate: decimalPayloadValue(
-                  formData,
-                  "unitSuggestedHourlyRate",
-                ),
-              }
-            : { kind: "OWNED" },
+        hourlyRate: optionalPayloadString(formData, "unitHourlyRate")?.replace(
+          ",",
+          ".",
+        ),
+        loadCapacity: optionalPayloadString(
+          formData,
+          "unitLoadCapacity",
+        )?.replace(",", "."),
+        loadCapacityUnitCode: optionalPayloadString(
+          formData,
+          "unitLoadCapacity",
+        )
+          ? (optionalString(formData, "unitLoadCapacityUnitCode") as
+              | "M3_LOOSE"
+              | "M3_COMPACTED"
+              | "LITER"
+              | "CUBIC_YARD")
+          : undefined,
+        maxSupportedWeightT: optionalPayloadString(
+          formData,
+          "unitMaxSupportedWeightT",
+        )?.replace(",", "."),
         allocation: allocateNow
           ? {
               projectId: optionalString(formData, "unitProjectId"),
               operatorAssignments,
-              ...(ownership === "RENTED"
-                ? {
-                    confirmedHourlyRate: decimalPayloadValue(
-                      formData,
-                      "unitConfirmedHourlyRate",
-                    ),
-                    monthlyHours: Number(
-                      optionalString(formData, "unitMonthlyHours"),
-                    ),
-                  }
-                : {}),
             }
           : undefined,
       },

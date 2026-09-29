@@ -14,7 +14,6 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { FieldHelpPopover } from "@/components/ui/field-help-popover";
 import { Input } from "@/components/ui/input";
 import type { MachineActionState } from "../machines-action-state";
-import { formatLoadCapacity } from "../capacity-format";
 import type {
   MachineAllocationProjectContextResult,
   MachineAllocationProjectsResult,
@@ -128,7 +127,6 @@ export function MachinesPageView({
                 <TableHead icon={Truck} label="Modelo / versão" />
                 <TableHead icon={Tag} label="Unidades" />
                 <TableHead label="Tipo" />
-                <TableHead label="Capacidade de carga" />
               </tr>
             </thead>
             <tbody>
@@ -167,9 +165,7 @@ export function MachinesPageView({
                               const state =
                                 unit.availability.state === "available"
                                   ? "Disponível"
-                                  : unit.availability.state === "without_rental"
-                                    ? "Sem locação"
-                                    : "Indisponível";
+                                  : "Indisponível";
                               return `${identifier} — ${state}`;
                             })}
                           />
@@ -179,30 +175,11 @@ export function MachinesPageView({
                     <td className="px-4 py-3 font-semibold">
                       {typeLabel(row.type)}
                     </td>
-                    <td className="px-4 py-3 text-muted-foreground">
-                      {row.type === "WHITE_LINE" ? (
-                        <>
-                          <span className="block font-semibold text-foreground">
-                            {formatLoadCapacity(
-                              row.loadCapacity,
-                              row.loadCapacityUnitCode,
-                            ) ?? "Volume não informado"}
-                          </span>
-                          <span className="block text-xs">
-                            {row.maxSupportedWeightT
-                              ? `${row.maxSupportedWeightT.replace(".", ",")} t máx.`
-                              : "Peso não informado"}
-                          </span>
-                        </>
-                      ) : (
-                        "Não aplicável"
-                      )}
-                    </td>
                   </tr>
                 ))
               ) : (
                 <tr>
-                  <td colSpan={4} className="px-4 py-14 text-center">
+                  <td colSpan={3} className="px-4 py-14 text-center">
                     <p className="text-base font-bold">
                       Nenhuma máquina encontrada
                     </p>

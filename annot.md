@@ -200,10 +200,19 @@ A distinção entre um card e outro ainda causa um certo peso cgnitivo, não é 
 [] Remover os campos de material e cadastro de material. deixe somente a origem e destino neste card. e por enquanto, deixe somente oculto
 [] origem e destino devem ser as frentes ativas de serviço e podem ser usado o mesmo valor nos 2.
 
--- Se o turno diuno que está iniciado o turno noturno não deve aparecer, principalmente se não tiver habilitado o turno noturno na obra. E se tiver habilitado para iniciar o turno deve ser um botão discreto e combinando com a interface. Se coincidir dos turnos estarem iniciados ao mesmo tempo. ooS 2 PAINEIS NÃO PODEM EM HIPOTESE ALGUMA APARECER AO MESMO TEMPO. Tem que ser um ou outro e o tiítulo de noturno ou diurno deve ser bem explicito, claro e visível para não causar confusão.
+-- Na página do dia da obra Se o turno diuno que está iniciado o turno noturno não deve aparecer, principalmente se não tiver habilitado o turno noturno na obra. E se tiver habilitado para iniciar o turno deve ser um botão discreto e combinando com a interface. Se coincidir dos turnos estarem iniciados ao mesmo tempo. ooS 2 PAINEIS NÃO PODEM EM HIPOTESE ALGUMA APARECER AO MESMO TEMPO. Tem que ser um ou outro e o tiítulo de noturno ou diurno deve ser bem explicito, claro e visível para não causar confusão.
 
 -- Quando adcionar produção e não tiver nenhuma frente iniciada aparecer um alerta no formulário indicando isso.
 
--- O modal de criar unidades para uma obra deve aparecer somente se tiver alguma obra em planejamento ou em andamento. Caso contrário o alert modal nem deve aparecer. A mesma coisa para a alocação na criação da unidade dentro da página da máquina.
+[x] O alert modal de criar unidades para uma obra na criação do modelo deve aparecer somente se tiver alguma obra em planejamento ou em andamento. Caso contrário o alert modal nem deve aparecer. A mesma coisa para a alocação na criação da unidade dentro da página da máquina.
 
--- Na máquina não vai mais existir a propriedade se é alugada ou própria, em todos vai aparecer o campo opcional Valor/hora sugerido
+[x] Na unidade máquina não vai mais existir o atributo se é alugada ou própria, em todos vai aparecer o campo opcional Valor/hora
+
+[x] A capacidade de carga e peso são atributos da unidade e não do modelo
+
+[] O funcionário da equipe dentro da obra deve ter um checkbox chamado "Habilitar hora extra" que por padrão vem habilitado. Quando estiver desabilitada esse funcionário quando selecionado na hora de iniciar o turno ele recebe somente as horas certa de início e final do turno no controle de frequencia.
+
+[] - Uma frente não exige máquinas ou equipes mobilizadas ela recebe apenas os quantitativos de produção igual já recebe. Os funcionários e máquinas são da obra
+
+[] - Para adcionar uma produção na página do dia do calendário no caso do manual é necessário somente adcionar a atividade,
+selecionar os caminhões, quantidade de viagens. Não vai existir qualidade e evidencia, evidencias por URL, selecionar a atividade que a máquina, local e material, quantidade operacional. No resumo na hora de confirmar o registro de produção o calculo de m3 cúbico deve ser automático pela quantidade de viagens feita pelos caminhões selecionados e o DMT médio. Para o caso de aterro deve ter 2 opções ou adcionar direto a quantidade do volume ou a quantidade de carradas em m3 e o fator de empolamento. Não vai ter a opção de movimentação de material.

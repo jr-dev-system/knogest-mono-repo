@@ -42,6 +42,7 @@ import { FormWizardProgress } from "@/components/ui/form-wizard-progress";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
 import { cn } from "@/lib/utils";
+import { productionServiceLabel, productionUnitLabel } from "../production-labels";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import {
   finalizeProjectDailyReportAction,
@@ -248,15 +249,6 @@ const climateOptions = [
   ["dry", "Seco"],
   ["waterlogged_soil", "Solo encharcado"],
 ] as const;
-const serviceLabels: Record<string, string> = {
-  cut: "Corte",
-  fill: "Aterro",
-  finishing: "Acabamento",
-  top_soil: "Top soil",
-  unsuitable_soil_removal: "Remoção de solo impróprio",
-  replacement_fill: "Aterro de substituição",
-};
-
 function formatDecimal(value: string) {
   return new Intl.NumberFormat("pt-BR", {
     maximumFractionDigits: 3,
@@ -1675,11 +1667,10 @@ function DailyReportReview({
                 >
                   <span>
                     <strong>
-                      {serviceLabels[production.serviceCode] ??
-                        production.serviceCode}
+                      {productionServiceLabel(production.serviceCode)}
                     </strong>{" "}
                     · {formatDecimal(production.officialQuantity)}{" "}
-                    {production.unitCode} · {production.tripCount} viagem(ns)
+                    {productionUnitLabel(production.unitCode)} · {production.tripCount} viagem(ns)
                   </span>
                   <span
                     className={cn(

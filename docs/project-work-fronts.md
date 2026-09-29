@@ -6,7 +6,9 @@ O **quantitativo de referência** é a linha de base aprovada do projeto. Ele re
 
 Uma **frente de serviço** é uma área operacional da obra (trecho, setor, estaca ou acesso) que recebe parte desses quantitativos. A soma das frentes é uma alocação operacional; ela não reescreve o total de referência. A alocação pode ser parcial.
 
-Cada frente declara de quais classes de recurso precisa para começar: **equipe**, **máquinas** ou ambas. Ao menos uma classe é obrigatória. Isso é uma regra da frente, não uma reserva antecipada de recursos durante o planejamento.
+Uma frente recebe somente quantitativos de produção. Pessoas e máquinas são
+mobilizadas para a obra e seu turno, não para uma frente. O início da frente
+não depende de destinar esses recursos a ela.
 
 A soma dos quantitativos das frentes não canceladas não pode ultrapassar o total da linha de base atual. O formulário avisa e bloqueia o envio assim que identifica um valor acima do saldo. A API repete a validação em transação serializável, evitando que cadastros simultâneos consumam o mesmo saldo. Um valor exatamente igual ao saldo é permitido; ao cancelar uma frente, sua parcela volta a ficar disponível.
 
@@ -15,7 +17,7 @@ O inverso também é protegido: uma revisão da linha de base não pode remover 
 O item **Planejamento** também permanece disponível na obra ativa. Nessa fase,
 o quantitativo geral pode ser revisto respeitando o total distribuído, e uma
 operação exclusiva permite substituir os serviços de uma frente ativa sem
-alterar nome, localização, datas, notas ou requisitos de mobilização.
+alterar nome, localização, datas ou notas.
 
 No detalhe da obra, a navegação passa a ocupar uma sidebar contextual, fixa no
 desktop. A navegação global inicia compacta, com atalhos por ícone, e o seletor
@@ -36,6 +38,12 @@ novos relatórios; **Configurações** abre Responsáveis, Máquinas e Equipe;
 Orçamento e Ciclos de pagamento. Os Ciclos de pagamento concentram os prazos
 antes exibidos junto da equipe. Essa organização não altera as permissões de
 edição de cada recurso após o início da obra.
+
+Depois do início da obra, **Combustível** continua permitindo incluir, editar e
+remover ofertas. A alteração de preço mantém a mesma oferta da obra e encerra
+o período do preço anterior antes de registrar o novo valor; assim, consultas
+operacionais e auditorias preservam o histórico de vigência. Os demais itens
+do checklist de prontidão continuam restritos à obra planejada.
 
 Quando um grupo está fechado, seu indicador resume a prontidão dos itens
 internos: fica verde somente se todos estão prontos e fica âmbar se houver
@@ -63,7 +71,7 @@ Cada serviço carrega sua própria unidade. Os serviços iniciais são:
 - corte (`M3`);
 - aterro (`M3`);
 - acabamento (`M2`);
-- top soil (`M3_KM`);
+- solo vegetal (`M3_KM`);
 - remoção de solo impróprio (`M3`);
 - aterro de substituição (`M3`).
 
@@ -76,10 +84,10 @@ Troca de solo não é um único volume: a remoção do material impróprio e o a
 3. A frente é válida para o planejamento quando seus serviços existem na linha de base, usam a mesma unidade e a distribuição não excede o total.
 4. Para iniciar a obra, o checklist operacional deve estar completo, deve existir ao menos uma frente válida e devem existir os recursos gerais exigidos pela prontidão da obra.
 5. Iniciar a obra altera somente o projeto para `ACTIVE`. Nenhuma frente começa automaticamente.
-6. Depois da mobilização geral da obra, prepare cada frente destinando recursos do pool do projeto conforme as classes exigidas pela frente.
-7. Inicie a frente em uma ação separada, somente quando o projeto estiver ativo e a mobilização mínima da frente estiver atendida.
-8. O RDO manual é consolidado por obra e turno, conforme `project-daily-reports.md`; a produção é vinculada explicitamente à frente e ao serviço, enquanto o RDO continua sem frente própria.
-9. Cada data disponível do calendário abre a Central operacional do dia. Nela,
+6. Inicie a frente em uma ação separada quando o projeto estiver ativo; não há
+   checklist de equipe ou máquinas da frente.
+7. O RDO manual é consolidado por obra e turno, conforme `project-daily-reports.md`; a produção é vinculada explicitamente à frente e ao serviço, enquanto o RDO continua sem frente própria.
+8. Cada data disponível do calendário abre a Central operacional do dia. Nela,
    os turnos habilitados podem ser iniciados, acompanhados e finalizados; o
    fechamento alimenta automaticamente o RDO e a frequência.
 
@@ -87,88 +95,37 @@ Ao acionar **Iniciar obra**, a interface abre um alert modal de confirmação e 
 
 ## Mobilização de recursos
 
-A mobilização ocorre em duas camadas:
+A mobilização da equipe e das máquinas acontece apenas na obra. A seleção de
+máquinas para uma produção consulta o pool da obra no turno; a frente informa
+qual serviço e quantitativo estão sendo produzidos. O formulário da frente não
+exibe exigências nem destinação de recursos.
 
-- **obra**: define o pool atual de pessoas e máquinas disponíveis no projeto;
-- **frente**: destina recursos desse pool para uma área operacional específica.
-
-No wizard de criação, a mobilização inicial apenas forma o pool da obra; ela
-não inicia projeto nem frente e não cria uma destinação de frente. Cada unidade
-retornada nas opções informa se exige operador e, quando aplicável, a função
-compatível para cada turno.
-
-A edição posterior do pool de máquinas na página da obra usa um wizard próprio
-de seleção e resumo. Sua consulta paginada aceita tipo, fabricante, modelo,
-versão e texto de nome, placa ou patrimônio; as máquinas já confirmadas ficam
-fixas no topo em ordem de confirmação visual, mesmo após filtrar ou trocar de
-página. Essa ordem é apenas de interface e não altera os períodos de
-mobilização nem a ordem de recursos destinada às frentes. A configuração do
-operador abre junto da máquina acionada e aplica as mesmas regras de turno,
-função confirmada e exclusividade já usadas no pool.
-
-Pessoas e máquinas só podem estar em uma frente por vez dentro da obra. Um recurso ocupado aparece indisponível e deve ser liberado da frente atual antes de outra destinação; não existe transferência automática.
-
-Máquinas cujo modelo exige operador possuem um operador por turno. Ao selecionar
-o par `máquina + turno` para uma frente, esse operador é incluído
-automaticamente e conta como equipe. Máquinas sem requisito entram na frente
-sem operador e não bloqueiam a mobilização por falta de funcionário. A mesma
-máquina pode estar em frentes diferentes em turnos diferentes.
-
-O modal de mobilização da frente separa **Funcionários** e **Máquinas** em tabs.
-Cada tab consulta até 15 recursos por página e preserva as seleções ao trocar
-de página, busca ou tipo de recurso. Funcionários podem ser buscados por nome ou
-função; máquinas por nome, fabricante, modelo, placa ou patrimônio. A busca é
-aplicada após 300 ms sem digitação.
-
-Operadores atuais das máquinas que exigem operador não aparecem como seleção direta na tab
-Funcionários. Na tab Máquinas, cada linha representa `máquina + turno` e mostra
-operador e eventual frente ocupante. Recursos de outra frente continuam
-visíveis, porém desabilitados, e precisam ser liberados antes de uma nova
-destinação.
-
-Os requisitos de equipe e máquinas bloqueiam apenas o **início** da frente. Depois de ativa, a frente pode ter sua mobilização alterada ou ficar temporariamente sem recursos sem ser encerrada automaticamente.
-
-Alterar o pool da obra também é permitido durante a execução, desde que não remova uma pessoa, máquina ou operador ainda destinado a uma frente. A função confirmada de quem já integra o pool fica congelada quando a obra é iniciada; a mudança futura será tratada pela rotina de reclassificação, não pela mobilização. Mobilizações e desmobilizações encerram o período anterior e criam histórico auditável; registros históricos não são sobrescritos nem apagados.
+Alocações antigas por frente permanecem no histórico, encerradas pela migração
+de domínio, sem participar da disponibilidade operacional atual. A edição do
+pool da obra permanece auditável e sujeita às regras de turno e operador.
 
 ## Estados
 
 Projeto: `PLANNED → ACTIVE` nesta entrega. A transição do projeto não altera o estado das frentes.
 
-Frente: `PLANNED → ACTIVE`; uma frente planejada também pode ser cancelada. Cancelar libera suas parcelas quantitativas e encerra suas destinações atuais. Pausa e conclusão ficam reservadas para a rotina de execução.
+Frente: `PLANNED → ACTIVE`; uma frente planejada também pode ser cancelada.
+Cancelar libera suas parcelas quantitativas. Pausa e conclusão ficam
+reservadas para a rotina de execução.
 
 ## Contratos de API
 
-- `POST /projects/:projectId/quantity-baseline-revisions`
-- `POST /projects/:projectId/fronts`
-- `PATCH /projects/:projectId/fronts/:frontId`
-- `PUT /projects/:projectId/fronts/:frontId/services`
-- `PUT /projects/:projectId/mobilization/employees`
-- `PUT /projects/:projectId/mobilization/machines`
-- `GET /projects/:projectId/mobilization/machine-options`
-- `PUT /projects/:projectId/fronts/:frontId/mobilization`
-- `GET /projects/:projectId/fronts/:frontId/mobilization-options`
-- `GET /projects/:projectId/mobilization-history`
-- `POST /projects/:projectId/fronts/:frontId/start`
-- `POST /projects/:projectId/fronts/:frontId/cancel`
-- `POST /projects/:projectId/activate` não recebe frentes nem inicia frentes.
-
-Os comandos de ativar obra, iniciar frente e cancelar frente não recebem body.
-Clientes devem omitir `data` e `Content-Type`; não devem enviar `{}` nem
-`application/x-www-form-urlencoded`. A ausência de body faz parte do contrato e
-é preservada pelo cliente HTTP server-only compartilhado.
-
-O detalhe de projeto retorna `quantityBaseline` com total, alocado, saldo e produzido por serviço. Cada serviço da frente retorna `produced`, `minimumQuantity`, `maximumQuantity` e `hasProductions`, além dos requisitos, destinações atuais, validade de planejamento (`planningEligibility`) e aptidão para início (`eligibility`). O histórico é paginado por cursor e pode ser filtrado por classe de recurso e frente.
-
-`mobilization-options` exige `resourceType=employee|machine`, aceita `search` e
-`cursor` e limita a página a 15 itens. O cursor é vinculado ao tenant, empresa,
-obra, frente, tipo de recurso e busca normalizada; trocar qualquer filtro
-invalida o cursor anterior.
+Os schemas Fastify e `main-api/artifacts/openapi.json` são o catálogo de
+operações. Comandos atuais de frente recebem identificação, planejamento e
+serviços, sem `requiresEmployees` ou `requiresMachines`. O detalhe ainda pode
+expor campos históricos de destinação para leitura de registros antigos; eles
+não participam da aptidão de início.
 
 ## Regras para evoluções futuras
 
-- Registros operacionais devem referenciar a frente ativa em que ocorreram, sem inferir a frente apenas pela máquina ou pelo colaborador.
-- Transferências futuras devem encerrar a destinação atual e abrir outra em uma única transação auditável.
-- Produção ou abastecimento não devem alterar implicitamente o pool da obra nem a mobilização da frente.
-- O backend continua sendo a autoridade para escopo, exclusividade e elegibilidade; bloqueios visuais são antecipações de UX, não substitutos da regra transacional.
+- Registros operacionais devem referenciar a frente ativa em que ocorreram,
+  sem inferir a frente apenas pela máquina ou pelo colaborador.
+- Produção ou abastecimento não devem alterar implicitamente o pool da obra.
+- O backend continua sendo a autoridade para escopo e elegibilidade; bloqueios
+  visuais são antecipações de UX, não substitutos da regra transacional.
 - O RDO atual pertence à obra. Uma evolução que o vincule a uma frente deve ser
   explícita e não pode inferir a frente apenas pela máquina ou pelo colaborador.

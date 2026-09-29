@@ -18,6 +18,7 @@ import { toast } from "sonner";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { productionServiceLabel, productionUnitLabel } from "../production-labels";
 
 import {
   getMoreProjectProductionsAction,
@@ -33,7 +34,7 @@ import type {
   ProjectProductionOptions,
   ProjectProductionsPage,
 } from "../productions.types";
-import { ProjectProductionWizard } from "./project-production-wizard";
+import { ProjectProductionWizard } from "./project-production-simple-wizard";
 
 const statusLabels: Record<ProjectProductionDetail["status"], string> = {
   draft: "Rascunho",
@@ -242,7 +243,7 @@ export function ProjectProductions({
         <div>
           <h3 className="font-bold">Produção de terraplanagem</h3>
           <p className="text-sm text-muted-foreground">
-            Lance atividades e movimentações em um assistente guiado.
+            Lance atividades com viagens, volumes e DMT em um formulário simples.
           </p>
         </div>
         <Button
@@ -273,12 +274,12 @@ export function ProjectProductions({
                   <span className="block font-bold">
                     {production.kind === "material_movement"
                       ? "Movimentação de material"
-                      : serviceLabel(production.serviceCode)}{" "}
+                      : productionServiceLabel(production.serviceCode)}{" "}
                     · {formatDate(production.productionDate)}
                   </span>
                   <span className="mt-1 block text-sm text-muted-foreground">
                     {formatQuantity(production.officialQuantity)}{" "}
-                    {production.unitCode} · {production.tripCount} viagem(ns) ·{" "}
+                    {productionUnitLabel(production.unitCode)} · {production.tripCount} viagem(ns) ·{" "}
                     {production.equipmentCount} equipamento(s)
                   </span>
                 </span>
@@ -400,7 +401,12 @@ function WorkflowActions({
           </Button>
         </>
       )}
-      {detail.status === "field_checked" && (
+      {detail.status === "field_checked" && detail.kind === "individual_activity" && (
+        <Button type="button" onClick={() => void transition("approve")} disabled={busy}>
+          <Check /> Aprovar
+        </Button>
+      )}
+      {detail.status === "field_checked" && detail.kind === "material_movement" && (
         <Button
           type="button"
           onClick={() => void acceptQuality()}
@@ -518,18 +524,4 @@ function formatQuantity(value: string) {
     minimumFractionDigits: 3,
     maximumFractionDigits: 3,
   }).format(Number(value));
-}
-function serviceLabel(code: string) {
-  return (
-    (
-      {
-        cut: "Corte",
-        fill: "Aterro",
-        finishing: "Acabamento",
-        top_soil: "Top soil",
-        unsuitable_soil_removal: "Remoção de solo impróprio",
-        replacement_fill: "Aterro de substituição",
-      } as Record<string, string>
-    )[code] ?? code
-  );
 }

@@ -6,17 +6,16 @@ export type MachineUnitBatchDraft = {
     companyTag?: string;
     meterType: "HOUR_METER" | "ODOMETER";
     initialMeterReading: string;
-    ownership:
-      | { kind: "OWNED" }
-      | {
-          kind: "RENTED";
-          lessorName: string;
-          suggestedHourlyRate: string;
-        };
+    hourlyRate?: string;
+    loadCapacity?: string;
+    loadCapacityUnitCode?:
+      | "M3_LOOSE"
+      | "M3_COMPACTED"
+      | "LITER"
+      | "CUBIC_YARD";
+    maxSupportedWeightT?: string;
     allocation: {
       projectId: string;
-      confirmedHourlyRate?: string;
-      monthlyHours?: number;
       operatorAssignments: Array<{
         shift: "day" | "night";
         operatorEmploymentId: string;

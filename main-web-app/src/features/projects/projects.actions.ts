@@ -130,8 +130,7 @@ const quantityBaselineActionSchema = z.object({
     .min(1)
     .max(20),
 });
-const workFrontActionSchema = z
-  .object({
+const workFrontActionSchema = z.object({
     name: z.string().trim().min(1).max(160),
     location: z.string().trim().max(240).nullable().optional(),
     notes: z.string().trim().max(1000).nullable().optional(),
@@ -145,13 +144,7 @@ const workFrontActionSchema = z
       .regex(/^\d{4}-\d{2}-\d{2}$/u)
       .nullable()
       .optional(),
-    requiresEmployees: z.boolean(),
-    requiresMachines: z.boolean(),
     services: z.array(frontServiceSchema).min(1).max(20),
-  })
-  .refine((value) => value.requiresEmployees || value.requiresMachines, {
-    path: ["requiresEmployees"],
-    message: "Selecione ao menos uma exigência de mobilização.",
   });
 
 const workFrontServicesActionSchema = z.object({
@@ -282,6 +275,7 @@ const projectReadinessActionSchema = z
           ]),
           compensationValue: readinessDecimal(2),
           overtimeRate: readinessDecimal(2),
+          overtimeEnabled: z.boolean().default(true),
         }),
       )
       .max(200)

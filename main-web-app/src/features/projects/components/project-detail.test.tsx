@@ -1147,6 +1147,7 @@ describe("Project active work-front mobilization", () => {
         compensationMode: "monthly",
         compensationValue: "5000.00",
         overtimeRate: "30.00",
+        overtimeEnabled: true,
         effectiveFrom: "2026-07-20T12:00:00.000Z",
       },
     ],
@@ -1880,6 +1881,26 @@ describe("Project detail navigation", () => {
     );
   });
 
+  it("allows managing fuel offers after the project starts", async () => {
+    const activeProject: ProjectDetailSnapshot = {
+      ...projectSnapshot,
+      status: "active",
+      actualStartedAt: "2026-07-17T00:00:00.000Z",
+      fuelOffers: [fuelOfferSnapshot],
+    };
+    const user = userEvent.setup();
+
+    renderProjectDetail(activeProject);
+
+    await user.click(screen.getByRole("button", { name: "Fornecedores" }));
+    await user.click(screen.getByRole("button", { name: /Combustível/u }));
+
+    expect(
+      screen.getByRole("button", { name: /Adicionar combustível/u }),
+    ).toBeTruthy();
+    expect(screen.getByRole("button", { name: /Editar oferta/u })).toBeTruthy();
+  });
+
   it("confirms before removing a supplied item offer", async () => {
     const projectWithMaterial: ProjectDetailSnapshot = {
       ...projectSnapshot,
@@ -1934,6 +1955,7 @@ describe("Project detail navigation", () => {
           compensationMode: "daily",
           compensationValue: "200.00",
           overtimeRate: "25.00",
+          overtimeEnabled: true,
           effectiveFrom: "2026-07-16T00:00:00.000Z",
         },
         {
@@ -1952,6 +1974,7 @@ describe("Project detail navigation", () => {
           compensationMode: "weekly",
           compensationValue: "1000.00",
           overtimeRate: "25.00",
+          overtimeEnabled: true,
           effectiveFrom: "2026-07-16T00:00:00.000Z",
         },
         {
@@ -1970,6 +1993,7 @@ describe("Project detail navigation", () => {
           compensationMode: "fortnightly",
           compensationValue: "2000.00",
           overtimeRate: "25.00",
+          overtimeEnabled: true,
           effectiveFrom: "2026-07-16T00:00:00.000Z",
         },
         {
@@ -1988,6 +2012,7 @@ describe("Project detail navigation", () => {
           compensationMode: "monthly",
           compensationValue: "4000.00",
           overtimeRate: "25.00",
+          overtimeEnabled: true,
           effectiveFrom: "2026-07-16T00:00:00.000Z",
         },
       ],

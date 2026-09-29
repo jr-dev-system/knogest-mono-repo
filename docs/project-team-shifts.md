@@ -61,9 +61,11 @@ trabalhadores, máquinas e frentes são filtradas pelo turno solicitado. Gestor 
 responsáveis técnicos só ficam operacionalmente elegíveis quando também
 pertencem à equipe daquele turno.
 
-Na produção, aparecem somente máquinas ativas de linha branca, com volume de
-carga positivo, mobilizadas na frente selecionada e no turno selecionado; a
-listagem não expõe toda a frota nem todas as máquinas da obra. RDOs finalizados
+Na produção, aparecem máquinas ativas mobilizadas na obra e no turno
+selecionado. Caminhões com capacidade volumétrica positiva são oferecidos
+para viagens; unidades em litros (como caminhões-pipa) ficam fora da seleção
+de transporte de terra. A frente identifica a atividade e não filtra o pool
+da obra. RDOs finalizados
 e produções aprovadas preservam seus snapshots e não são reescritos por
 mudanças posteriores de turno.
 

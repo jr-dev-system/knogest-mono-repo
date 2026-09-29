@@ -114,6 +114,19 @@ const options: ProjectProductionOptions = {
           maxSupportedWeightT: "25.000",
           driver: { id: employmentId, name: "Carlos Motorista" },
         },
+        {
+          id: "88888888-8888-4888-8888-888888888888",
+          name: "Caminhão-pipa 01",
+          manufacturer: "Mercedes-Benz",
+          model: "Arocs",
+          meterType: "odometer",
+          identifier: "PIPA-01",
+          nominalCapacity: "8000.000",
+          effectiveCapacity: "8000.000",
+          capacityUnitCode: "LITER",
+          maxSupportedWeightT: null,
+          driver: { id: employmentId, name: "Carlos Motorista" },
+        },
       ],
     },
   ],
@@ -150,7 +163,7 @@ describe("ProjectProductions", () => {
 
   afterEach(cleanup);
 
-  it("guides an individual activity and sends the explicit volumetric condition", async () => {
+  it("registra corte com volume calculado pelas viagens e mostra nomes em português", async () => {
     const user = userEvent.setup();
     vi.mocked(saveProjectProductionAction).mockResolvedValue({
       kind: "success",
@@ -161,20 +174,18 @@ describe("ProjectProductions", () => {
     await user.click(
       screen.getByRole("button", { name: "Adicionar produção" }),
     );
-    expect(await screen.findByText("Tipo, data e turno")).toBeTruthy();
-    expect(screen.queryByText(/America\/Sao_Paulo/u)).toBeNull();
-
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
+    expect(await screen.findByRole("option", { name: "Corte · m³" })).toBeTruthy();
     expect((screen.getByLabelText("Frente") as HTMLSelectElement).value).toBe(
       frontId,
     );
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.type(screen.getByLabelText("Quantidade"), "25,5");
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.click(screen.getByText(/Escavadeira 01/u));
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.click(screen.getByRole("button", { name: "Enviar produção" }));
+    expect(screen.getByText(/11,5 m³ solto por viagem/u)).toBeTruthy();
+    expect(screen.queryByText(/Caminhão-pipa 01/u)).toBeNull();
+    expect(screen.queryByText("Tipo de lançamento")).toBeNull();
+    await user.type(screen.getByLabelText("Viagens de Basculante 01"), "2");
+    await user.type(screen.getByLabelText("DMT médio (km)"), "2,4");
+    await user.click(screen.getByRole("button", { name: "Revisar produção" }));
+    expect(screen.getAllByText(/23 m³/u)).toHaveLength(2);
+    await user.click(screen.getByRole("button", { name: "Confirmar produção" }));
 
     await waitFor(() =>
       expect(saveProjectProductionAction).toHaveBeenCalledWith(
@@ -183,11 +194,12 @@ describe("ProjectProductions", () => {
           command: expect.objectContaining({
             kind: "individual_activity",
             submitNow: true,
-            entryMode: "direct_total",
+            entryMode: "truck_summary",
             individualActivity: expect.objectContaining({
               volumeCondition: "bank",
-              operationalQuantity: "25.5",
+              dmtKm: "2.4",
             }),
+            truckSummaries: [expect.objectContaining({ machineId: truckId, acceptedTrips: 2 })],
           }),
         }),
       ),
@@ -206,99 +218,42 @@ describe("ProjectProductions", () => {
       screen.getByRole("button", { name: "Adicionar produção" }),
     );
 
-    expect((await screen.findByRole("alert")).textContent).toContain(
-      "Não há frente de serviço iniciada nesta obra. Inicie uma frente antes de registrar produção.",
-    );
+    expect((await screen.findByRole("alert")).textContent).toContain("Inicie uma frente de serviço antes de registrar produção.");
     expect(
       (screen.getByRole("button", {
-        name: "Avançar",
+        name: "Revisar produção",
       }) as HTMLButtonElement).disabled,
     ).toBe(true);
-    expect(screen.queryByLabelText("Frente")).toBeNull();
+    expect((screen.getByLabelText("Frente") as HTMLSelectElement).options).toHaveLength(0);
   });
 
-  it("uses active fronts and accepts the same front as movement endpoints", async () => {
+  it("não oferece movimentação de material nem campos de qualidade", async () => {
     const user = userEvent.setup();
-    vi.mocked(saveProjectProductionAction).mockResolvedValue({
-      kind: "success",
-      production: detail("material_movement"),
+    render(<ProjectProductions projectId={projectId} initialPage={page} />);
+    await user.click(screen.getByRole("button", { name: "Adicionar produção" }));
+    expect(await screen.findByLabelText("Atividade")).toBeTruthy();
+    expect(screen.queryByLabelText("Tipo de lançamento")).toBeNull();
+    expect(screen.queryByLabelText("Qualidade")).toBeNull();
+    expect(screen.queryByLabelText("Evidência")).toBeNull();
+    expect(screen.queryByLabelText("Origem")).toBeNull();
+    expect(screen.queryByLabelText("Destino")).toBeNull();
+  });
+
+  it("permite lançar aterro por volume direto", async () => {
+    const user = userEvent.setup();
+    vi.mocked(getProjectProductionOptionsAction).mockResolvedValue({
+      ...options,
+      workFronts: [{ ...options.workFronts[0]!, services: [{ ...options.workFronts[0]!.services[0]!, serviceCode: "fill" }] }],
     });
+    vi.mocked(saveProjectProductionAction).mockResolvedValue({ kind: "success", production: detail("individual_activity") });
     render(<ProjectProductions projectId={projectId} initialPage={page} />);
-
-    await user.click(
-      screen.getByRole("button", { name: "Adicionar produção" }),
-    );
-    await user.selectOptions(
-      await screen.findByLabelText("Tipo de lançamento"),
-      "material_movement",
-    );
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    expect((screen.getByLabelText("Origem") as HTMLSelectElement).value).toBe(
-      frontId,
-    );
-    expect((screen.getByLabelText("Destino") as HTMLSelectElement).value).toBe(
-      frontId,
-    );
-    expect(screen.queryByLabelText("Nome do material")).toBeNull();
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.type(screen.getByLabelText("Distância carregada (km)"), "2,4");
-    await user.type(
-      screen.getByLabelText("Código para cadastro inline"),
-      "corte-a-aterro-b",
-    );
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-
-    expect(screen.getByText(/11.500 M3_LOOSE/u)).toBeTruthy();
-    await user.click(screen.getByText(/Basculante 01/u));
-    await user.type(screen.getByLabelText("Aceitas"), "8");
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.click(screen.getByText(/Escavadeira 01/u));
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    await user.click(screen.getByRole("button", { name: "Enviar produção" }));
-
-    await waitFor(() =>
-      expect(saveProjectProductionAction).toHaveBeenCalledWith(
-        expect.objectContaining({
-          projectId,
-          command: expect.objectContaining({
-            kind: "material_movement",
-            entryMode: "truck_summary",
-            materialMovement: expect.objectContaining({
-              destinationWorkFrontId: frontId,
-              materialName: null,
-              origin: "Frente Norte",
-              destination: "Frente Norte",
-              dmtKm: "2.4",
-            }),
-            truckSummaries: [
-              expect.objectContaining({
-                machineId: truckId,
-                acceptedTrips: 8,
-              }),
-            ],
-          }),
-        }),
-      ),
-    );
-  });
-
-  it("keeps material fields hidden from movement capture", async () => {
-    const user = userEvent.setup();
-    render(<ProjectProductions projectId={projectId} initialPage={page} />);
-
-    await user.click(
-      screen.getByRole("button", { name: "Adicionar produção" }),
-    );
-    await user.selectOptions(
-      await screen.findByLabelText("Tipo de lançamento"),
-      "material_movement",
-    );
-    await user.click(screen.getByRole("button", { name: /Avançar/u }));
-    expect(screen.getAllByText("Origem e destino").length).toBeGreaterThan(0);
-    expect(screen.queryByLabelText("Material cadastrado")).toBeNull();
-    expect(screen.queryByLabelText("Nome do material")).toBeNull();
-    expect(screen.queryByLabelText("Densidade t/m³")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Adicionar produção" }));
+    expect(await screen.findByRole("option", { name: "Aterro · m³" })).toBeTruthy();
+    await user.click(screen.getByLabelText("Volume direto"));
+    await user.type(screen.getByLabelText("Quantidade m³"), "25,5");
+    await user.click(screen.getByRole("button", { name: "Revisar produção" }));
+    await user.click(screen.getByRole("button", { name: "Confirmar produção" }));
+    await waitFor(() => expect(saveProjectProductionAction).toHaveBeenCalledWith(expect.objectContaining({ command: expect.objectContaining({ entryMode: "direct_total", individualActivity: expect.objectContaining({ operationalQuantity: "25.5" }) }) })));
   });
 });
 

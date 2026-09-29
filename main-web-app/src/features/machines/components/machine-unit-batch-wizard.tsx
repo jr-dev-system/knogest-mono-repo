@@ -52,11 +52,14 @@ type BatchUnit = {
   companyTag: string;
   meterType: "HOUR_METER" | "ODOMETER";
   initialMeterReading: string;
-  ownership: "OWNED" | "RENTED";
-  lessorName: string;
-  suggestedHourlyRate: string;
-  confirmedHourlyRate: string;
-  monthlyHours: string;
+  hourlyRate: string;
+  loadCapacity: string;
+  loadCapacityUnitCode:
+    | "M3_LOOSE"
+    | "M3_COMPACTED"
+    | "LITER"
+    | "CUBIC_YARD";
+  maxSupportedWeightT: string;
   dayOperatorEmploymentId: string;
   nightOperatorEmploymentId: string;
   serverError?: string;
@@ -73,6 +76,7 @@ const controlClass =
   "min-h-11 w-full rounded-md border border-input bg-background px-3 py-2 text-sm font-medium text-foreground shadow-xs outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/30";
 const decimalPattern = /^(?:0|[1-9]\d{0,11})(?:[.,]\d{1,2})?$/;
 const positiveRatePattern = /^(?:0|[1-9]\d{0,13})(?:[.,]\d{1,2})?$/;
+const specificationPattern = /^(?:0|[1-9]\d{0,6})(?:[.,]\d{1,3})?$/;
 
 function newUnit(): BatchUnit {
   return {
@@ -82,11 +86,10 @@ function newUnit(): BatchUnit {
     companyTag: "",
     meterType: "HOUR_METER",
     initialMeterReading: "0",
-    ownership: "OWNED",
-    lessorName: "",
-    suggestedHourlyRate: "",
-    confirmedHourlyRate: "",
-    monthlyHours: "220",
+    hourlyRate: "",
+    loadCapacity: "",
+    loadCapacityUnitCode: "M3_LOOSE",
+    maxSupportedWeightT: "",
     dayOperatorEmploymentId: "",
     nightOperatorEmploymentId: "",
   };
@@ -252,12 +255,22 @@ export function MachineUnitBatchWizard({
           return false;
         }
         if (
-          unit.ownership === "RENTED" &&
-          (!unit.lessorName.trim() ||
-            !positiveRatePattern.test(unit.suggestedHourlyRate) ||
-            Number(unit.suggestedHourlyRate.replace(",", ".")) <= 0)
+          unit.hourlyRate &&
+          (!positiveRatePattern.test(unit.hourlyRate) ||
+            Number(unit.hourlyRate.replace(",", ".")) <= 0)
         ) {
-          setError(`Unidade ${index + 1}: complete os dados da locação.`);
+          setError(`Unidade ${index + 1}: informe um valor/hora válido.`);
+          return false;
+        }
+        if (
+          [unit.loadCapacity, unit.maxSupportedWeightT].some(
+            (value) =>
+              value &&
+              (!specificationPattern.test(value) ||
+                Number(value.replace(",", ".")) <= 0),
+          )
+        ) {
+          setError(`Unidade ${index + 1}: revise capacidade e peso.`);
           return false;
         }
       }
@@ -287,19 +300,6 @@ export function MachineUnitBatchWizard({
           }
           assignments.add(key);
         }
-        if (
-          unit.ownership === "RENTED" &&
-          (!positiveRatePattern.test(unit.confirmedHourlyRate) ||
-            Number(unit.confirmedHourlyRate.replace(",", ".")) <= 0 ||
-            !/^\d{1,3}$/.test(unit.monthlyHours) ||
-            Number(unit.monthlyHours) < 1 ||
-            Number(unit.monthlyHours) > 744)
-        ) {
-          setError(
-            `Unidade ${index + 1}: confirme valor/hora e horas mensais.`,
-          );
-          return false;
-        }
       }
     }
     return true;
@@ -318,22 +318,20 @@ export function MachineUnitBatchWizard({
       companyTag: unit.companyTag.trim() || undefined,
       meterType: unit.meterType,
       initialMeterReading: unit.initialMeterReading.replace(",", "."),
-      ownership:
-        unit.ownership === "OWNED"
-          ? { kind: "OWNED" as const }
-          : {
-              kind: "RENTED" as const,
-              lessorName: unit.lessorName.trim(),
-              suggestedHourlyRate: unit.suggestedHourlyRate.replace(",", "."),
-            },
+      hourlyRate: unit.hourlyRate
+        ? unit.hourlyRate.replace(",", ".")
+        : undefined,
+      loadCapacity: unit.loadCapacity
+        ? unit.loadCapacity.replace(",", ".")
+        : undefined,
+      loadCapacityUnitCode: unit.loadCapacity
+        ? unit.loadCapacityUnitCode
+        : undefined,
+      maxSupportedWeightT: unit.maxSupportedWeightT
+        ? unit.maxSupportedWeightT.replace(",", ".")
+        : undefined,
       allocation: {
         projectId: projectContext!.id,
-        ...(unit.ownership === "RENTED"
-          ? {
-              confirmedHourlyRate: unit.confirmedHourlyRate.replace(",", "."),
-              monthlyHours: Number(unit.monthlyHours),
-            }
-          : {}),
         operatorAssignments: [
           unit.dayOperatorEmploymentId
             ? {
@@ -452,7 +450,11 @@ export function MachineUnitBatchWizard({
                   />
                 )}
                 {currentStep === 2 && (
-                  <MeasurementStep units={units} updateUnit={updateUnit} />
+                  <MeasurementStep
+                    model={model}
+                    units={units}
+                    updateUnit={updateUnit}
+                  />
                 )}
                 {currentStep === 3 && projectContext && (
                   <AllocationStep
@@ -718,9 +720,11 @@ function IdentificationStep({
 }
 
 function MeasurementStep({
+  model,
   units,
   updateUnit,
 }: {
+  model: NonNullable<MachineActionState["createdModel"]>;
   units: BatchUnit[];
   updateUnit: <K extends keyof BatchUnit>(
     id: string,
@@ -758,35 +762,46 @@ function MeasurementStep({
               }
               inputMode="decimal"
             />
-            <label className="grid gap-1.5 text-sm font-semibold">
-              <span>Propriedade</span>
-              <select
-                className={controlClass}
-                value={unit.ownership}
-                onChange={(event) =>
-                  updateUnit(
-                    unit.id,
-                    "ownership",
-                    event.target.value as BatchUnit["ownership"],
-                  )
-                }
-              >
-                <option value="OWNED">Própria</option>
-                <option value="RENTED">Alugada</option>
-              </select>
-            </label>
-            {unit.ownership === "RENTED" && (
+            <LabeledInput
+              label="Valor/hora (opcional)"
+              value={unit.hourlyRate}
+              onChange={(value) => updateUnit(unit.id, "hourlyRate", value)}
+              inputMode="decimal"
+            />
+            {model.type === "WHITE_LINE" && (
               <>
                 <LabeledInput
-                  label="Locadora"
-                  value={unit.lessorName}
-                  onChange={(value) => updateUnit(unit.id, "lessorName", value)}
-                />
-                <LabeledInput
-                  label="Valor/hora sugerido"
-                  value={unit.suggestedHourlyRate}
+                  label="Capacidade (opcional)"
+                  value={unit.loadCapacity}
                   onChange={(value) =>
-                    updateUnit(unit.id, "suggestedHourlyRate", value)
+                    updateUnit(unit.id, "loadCapacity", value)
+                  }
+                  inputMode="decimal"
+                />
+                <label className="grid gap-1.5 text-sm font-semibold">
+                  <span>Unidade da capacidade</span>
+                  <select
+                    className={controlClass}
+                    value={unit.loadCapacityUnitCode}
+                    onChange={(event) =>
+                      updateUnit(
+                        unit.id,
+                        "loadCapacityUnitCode",
+                        event.target.value as BatchUnit["loadCapacityUnitCode"],
+                      )
+                    }
+                  >
+                    <option value="M3_LOOSE">m³ solto</option>
+                    <option value="M3_COMPACTED">m³ compactado</option>
+                    <option value="LITER">Litro (L)</option>
+                    <option value="CUBIC_YARD">Jarda cúbica (yd³)</option>
+                  </select>
+                </label>
+                <LabeledInput
+                  label="Peso máximo suportado (t, opcional)"
+                  value={unit.maxSupportedWeightT}
+                  onChange={(value) =>
+                    updateUnit(unit.id, "maxSupportedWeightT", value)
                   }
                   inputMode="decimal"
                 />
@@ -883,24 +898,6 @@ function AllocationStep({
               Este modelo não exige operador.
             </p>
           )}
-          {unit.ownership === "RENTED" && (
-            <div className="grid gap-3 md:grid-cols-2">
-              <LabeledInput
-                label="Valor/hora confirmado"
-                value={unit.confirmedHourlyRate}
-                onChange={(value) =>
-                  updateUnit(unit.id, "confirmedHourlyRate", value)
-                }
-                inputMode="decimal"
-              />
-              <LabeledInput
-                label="Horas mensais"
-                value={unit.monthlyHours}
-                onChange={(value) => updateUnit(unit.id, "monthlyHours", value)}
-                inputMode="numeric"
-              />
-            </div>
-          )}
         </UnitCard>
       ))}
     </div>
@@ -941,7 +938,7 @@ function ReviewStep({
               <th className="px-3 py-2">Unidade</th>
               <th className="px-3 py-2">Identificação</th>
               <th className="px-3 py-2">Medição</th>
-              <th className="px-3 py-2">Propriedade</th>
+              <th className="px-3 py-2">Valor/hora</th>
               <th className="px-3 py-2">
                 <span className="sr-only">Ações</span>
               </th>
@@ -959,9 +956,7 @@ function ReviewStep({
                   {meterUnit(unit.meterType)}
                 </td>
                 <td className="px-3 py-3">
-                  {unit.ownership === "OWNED"
-                    ? "Própria"
-                    : `Alugada · ${unit.lessorName}`}
+                  {unit.hourlyRate ? `R$ ${unit.hourlyRate}/h` : "Não informado"}
                 </td>
                 <td className="px-3 py-3">
                   <Button

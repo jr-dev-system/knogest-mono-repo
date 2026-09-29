@@ -38,6 +38,7 @@ type LoadProjectAction = (
 ) => Promise<MachineAllocationProjectContextResult>;
 
 const decimalPattern = /^(?:0|[1-9]\d{0,11})(?:[.,]\d{1,2})?$/;
+const specificationPattern = /^(?:0|[1-9]\d{0,6})(?:[.,]\d{1,3})?$/;
 const hourlyRatePattern = /^(?:0|[1-9]\d{0,13})(?:[.,]\d{1,2})?$/;
 const identifierPattern = /[A-Za-z0-9]/u;
 
@@ -47,20 +48,24 @@ const baseSchema = z.object({
   unitCompanyTag: z.string().trim().max(80, "Use no máximo 80 caracteres."),
   unitMeterType: z.enum(["HOUR_METER", "ODOMETER"]),
   unitInitialMeterReading: z.string().trim(),
-  unitOwnership: z.enum(["OWNED", "RENTED"]),
-  unitLessorName: z.string().trim().max(180, "Use no máximo 180 caracteres."),
-  unitSuggestedHourlyRate: z.string().trim(),
+  unitHourlyRate: z.string().trim(),
+  unitLoadCapacity: z.string().trim(),
+  unitLoadCapacityUnitCode: z.enum([
+    "M3_LOOSE",
+    "M3_COMPACTED",
+    "LITER",
+    "CUBIC_YARD",
+  ]),
+  unitMaxSupportedWeightT: z.string().trim(),
   unitAllocateNow: z.enum(["no", "yes"]),
   unitProjectId: z.string().trim(),
-  unitConfirmedHourlyRate: z.string().trim(),
-  unitMonthlyHours: z.string().trim(),
   unitDayOperatorEmploymentId: z.string().trim(),
   unitNightOperatorEmploymentId: z.string().trim(),
 });
 
 type Values = z.infer<typeof baseSchema>;
 
-function createSchema(requiresOperator: boolean) {
+function createSchema(modelRule: { requiresOperator: boolean; type: string }) {
   return baseSchema.superRefine((values, context) => {
     if (!values.unitPlate && !values.unitCompanyTag) {
       context.addIssue({
@@ -85,21 +90,34 @@ function createSchema(requiresOperator: boolean) {
         message: "Informe uma leitura válida com até duas casas decimais.",
       });
     }
-    if (values.unitOwnership === "RENTED") {
-      if (!values.unitLessorName) {
+    if (values.unitHourlyRate && !isPositiveRate(values.unitHourlyRate)) {
+      context.addIssue({
+        code: "custom",
+        path: ["unitHourlyRate"],
+        message: "Informe um valor positivo com até duas casas decimais.",
+      });
+    }
+    if (modelRule.type !== "WHITE_LINE" && values.unitLoadCapacity) {
+      context.addIssue({
+        code: "custom",
+        path: ["unitLoadCapacity"],
+        message: "Capacidade é permitida somente para linha branca.",
+      });
+    }
+    for (const field of [
+      "unitLoadCapacity",
+      "unitMaxSupportedWeightT",
+    ] as const) {
+      if (
+        values[field] &&
+        (!specificationPattern.test(values[field]) ||
+          Number(values[field].replace(",", ".")) <= 0)
+      )
         context.addIssue({
           code: "custom",
-          path: ["unitLessorName"],
-          message: "Informe a locadora.",
+          path: [field],
+          message: "Informe um valor positivo com até três casas decimais.",
         });
-      }
-      if (!isPositiveRate(values.unitSuggestedHourlyRate)) {
-        context.addIssue({
-          code: "custom",
-          path: ["unitSuggestedHourlyRate"],
-          message: "Informe um valor positivo com até duas casas decimais.",
-        });
-      }
     }
     if (values.unitAllocateNow !== "yes") return;
     if (!values.unitProjectId) {
@@ -110,7 +128,7 @@ function createSchema(requiresOperator: boolean) {
       });
     }
     if (
-      requiresOperator &&
+      modelRule.requiresOperator &&
       !values.unitDayOperatorEmploymentId &&
       !values.unitNightOperatorEmploymentId
     ) {
@@ -119,28 +137,6 @@ function createSchema(requiresOperator: boolean) {
         path: ["unitDayOperatorEmploymentId"],
         message: "Selecione ao menos um operador compatível.",
       });
-    }
-    if (values.unitOwnership === "RENTED") {
-      if (!isPositiveRate(values.unitConfirmedHourlyRate)) {
-        context.addIssue({
-          code: "custom",
-          path: ["unitConfirmedHourlyRate"],
-          message: "Confirme um valor/hora positivo.",
-        });
-      }
-      const monthlyHours = Number(values.unitMonthlyHours);
-      if (
-        !/^\d{1,3}$/.test(values.unitMonthlyHours) ||
-        !Number.isInteger(monthlyHours) ||
-        monthlyHours < 1 ||
-        monthlyHours > 744
-      ) {
-        context.addIssue({
-          code: "custom",
-          path: ["unitMonthlyHours"],
-          message: "Informe horas mensais inteiras entre 1 e 744.",
-        });
-      }
     }
   });
 }
@@ -157,13 +153,12 @@ const defaultValues: Values = {
   unitCompanyTag: "",
   unitMeterType: "HOUR_METER",
   unitInitialMeterReading: "",
-  unitOwnership: "OWNED",
-  unitLessorName: "",
-  unitSuggestedHourlyRate: "",
+  unitHourlyRate: "",
+  unitLoadCapacity: "",
+  unitLoadCapacityUnitCode: "M3_LOOSE",
+  unitMaxSupportedWeightT: "",
   unitAllocateNow: "no",
   unitProjectId: "",
-  unitConfirmedHourlyRate: "",
-  unitMonthlyHours: "220",
   unitDayOperatorEmploymentId: "",
   unitNightOperatorEmploymentId: "",
 };
@@ -174,13 +169,12 @@ const fieldLabels: Record<keyof Values, string> = {
   unitCompanyTag: "Patrimônio",
   unitMeterType: "Medidor",
   unitInitialMeterReading: "Leitura inicial",
-  unitOwnership: "Propriedade",
-  unitLessorName: "Locadora",
-  unitSuggestedHourlyRate: "Valor/hora sugerido",
+  unitHourlyRate: "Valor/hora",
+  unitLoadCapacity: "Capacidade de carga",
+  unitLoadCapacityUnitCode: "Unidade da capacidade",
+  unitMaxSupportedWeightT: "Peso máximo suportado",
   unitAllocateNow: "Alocação imediata",
   unitProjectId: "Obra",
-  unitConfirmedHourlyRate: "Valor/hora confirmado",
-  unitMonthlyHours: "Horas mensais",
   unitDayOperatorEmploymentId: "Operador diurno",
   unitNightOperatorEmploymentId: "Operador noturno",
 };
@@ -247,8 +241,13 @@ function IdentificationStep({ form }: { form: UseFormReturn<Values> }) {
   );
 }
 
-function OperationStep({ form }: { form: UseFormReturn<Values> }) {
-  const ownership = form.watch("unitOwnership");
+function OperationStep({
+  form,
+  isWhiteLine,
+}: {
+  form: UseFormReturn<Values>;
+  isWhiteLine: boolean;
+}) {
   return (
     <div className="space-y-4">
       <FormSection
@@ -277,42 +276,50 @@ function OperationStep({ form }: { form: UseFormReturn<Values> }) {
           />
         </div>
       </FormSection>
-      <FormSection
-        title="Propriedade"
-        description="Unidades alugadas exigem a locadora e o valor/hora sugerido."
-      >
+      <FormSection title="Custo" description="O valor/hora é opcional.">
         <div className="grid gap-3 md:grid-cols-2">
-          <label className="grid gap-1.5 text-sm font-semibold">
-            <span>Propriedade</span>
-            <select
-              className={controlClass}
-              disabled={form.formState.isSubmitting}
-              aria-invalid={Boolean(form.formState.errors.unitOwnership)}
-              {...form.register("unitOwnership")}
-            >
-              <option value="OWNED">Própria</option>
-              <option value="RENTED">Alugada</option>
-            </select>
-          </label>
-          {ownership === "RENTED" && (
-            <>
-              <Field
-                form={form}
-                name="unitLessorName"
-                label="Locadora"
-                placeholder="Razão social ou nome comercial"
-              />
-              <Field
-                form={form}
-                name="unitSuggestedHourlyRate"
-                label="Valor/hora sugerido"
-                inputMode="decimal"
-                placeholder="Ex.: 350,00"
-              />
-            </>
-          )}
+          <Field
+            form={form}
+            name="unitHourlyRate"
+            label="Valor/hora (opcional)"
+            inputMode="decimal"
+            placeholder="Ex.: 350,00"
+          />
         </div>
       </FormSection>
+      {isWhiteLine && (
+        <FormSection
+          title="Capacidade de carga"
+          description="Capacidade e peso são opcionais e pertencem somente a esta unidade."
+        >
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field
+              form={form}
+              name="unitLoadCapacity"
+              label="Capacidade (opcional)"
+              inputMode="decimal"
+            />
+            <label className="grid gap-1.5 text-sm font-semibold">
+              <span>Unidade</span>
+              <select
+                className={controlClass}
+                {...form.register("unitLoadCapacityUnitCode")}
+              >
+                <option value="M3_LOOSE">m³ solto</option>
+                <option value="M3_COMPACTED">m³ compactado</option>
+                <option value="LITER">Litro (L)</option>
+                <option value="CUBIC_YARD">Jarda cúbica (yd³)</option>
+              </select>
+            </label>
+            <Field
+              form={form}
+              name="unitMaxSupportedWeightT"
+              label="Peso máximo suportado (t, opcional)"
+              inputMode="decimal"
+            />
+          </div>
+        </FormSection>
+      )}
     </div>
   );
 }
@@ -328,6 +335,7 @@ function AllocationStep({
   form: UseFormReturn<Values>;
   loadProjectAction: LoadProjectAction;
   modelRule: {
+    type: "YELLOW_LINE" | "WHITE_LINE";
     requiresOperator: boolean;
     requiredJobRoleId: string | null;
     requiredJobRoleName: string | null;
@@ -337,8 +345,6 @@ function AllocationStep({
   setProjectContext: (project: MachineAllocationProjectContext | null) => void;
 }) {
   const allocateNow = form.watch("unitAllocateNow");
-  const ownership = form.watch("unitOwnership");
-  const suggestedRate = form.watch("unitSuggestedHourlyRate");
   const selectedProjectId = form.watch("unitProjectId");
   const [search, setSearch] = React.useState("");
   const [projects, setProjects] = React.useState<
@@ -348,19 +354,6 @@ function AllocationStep({
   const [isSearching, setIsSearching] = React.useState(false);
   const [isLoadingProject, setIsLoadingProject] = React.useState(false);
   const [loadError, setLoadError] = React.useState("");
-
-  React.useEffect(() => {
-    if (
-      ownership === "RENTED" &&
-      allocateNow === "yes" &&
-      !form.getValues("unitConfirmedHourlyRate") &&
-      suggestedRate
-    ) {
-      form.setValue("unitConfirmedHourlyRate", suggestedRate, {
-        shouldDirty: true,
-      });
-    }
-  }, [allocateNow, form, ownership, suggestedRate]);
 
   React.useEffect(() => {
     if (allocateNow !== "yes") return;
@@ -594,29 +587,6 @@ function AllocationStep({
               </div>
             </FormSection>
           )}
-          {projectContext && ownership === "RENTED" && (
-            <FormSection
-              title="Termos da mobilização"
-              description={`Confirme as condições de ${form.getValues("unitLessorName")} para esta obra.`}
-            >
-              <div className="grid gap-3 md:grid-cols-2">
-                <Field
-                  form={form}
-                  name="unitConfirmedHourlyRate"
-                  label="Valor/hora confirmado"
-                  inputMode="decimal"
-                  placeholder="Ex.: 350,00"
-                />
-                <Field
-                  form={form}
-                  name="unitMonthlyHours"
-                  label="Horas mensais"
-                  inputMode="numeric"
-                  placeholder="Ex.: 220"
-                />
-              </div>
-            </FormSection>
-          )}
         </>
       )}
     </div>
@@ -659,10 +629,12 @@ function ChoiceCard({
 function ReviewStep({
   form,
   helpers,
+  hasEligibleProjects,
   projectContext,
 }: {
   form: UseFormReturn<Values>;
   helpers: BaseFormModalRenderHelpers;
+  hasEligibleProjects: boolean;
   projectContext: MachineAllocationProjectContext | null;
 }) {
   const values = form.watch();
@@ -708,26 +680,21 @@ function ReviewStep({
         onEdit={() => helpers.goToStep(1)}
       />
       <ReviewRow
-        label="Propriedade"
-        value={values.unitOwnership === "OWNED" ? "Própria" : "Alugada"}
+        label="Valor/hora"
+        value={values.unitHourlyRate ? `R$ ${values.unitHourlyRate}/h` : "Não informado"}
         onEdit={() => helpers.goToStep(1)}
       />
-      {values.unitOwnership === "RENTED" && (
+      {hasEligibleProjects && (
         <ReviewRow
-          label="Locação"
-          value={`${values.unitLessorName} · R$ ${values.unitSuggestedHourlyRate}/h`}
-          onEdit={() => helpers.goToStep(1)}
+          label="Alocação inicial"
+          value={
+            values.unitAllocateNow === "yes"
+              ? (projectContext?.name ?? "Obra selecionada")
+              : "Não alocar agora"
+          }
+          onEdit={() => helpers.goToStep(2)}
         />
       )}
-      <ReviewRow
-        label="Alocação inicial"
-        value={
-          values.unitAllocateNow === "yes"
-            ? (projectContext?.name ?? "Obra selecionada")
-            : "Não alocar agora"
-        }
-        onEdit={() => helpers.goToStep(2)}
-      />
       {values.unitAllocateNow === "yes" && operatorNames && (
         <ReviewRow
           label="Operadores"
@@ -735,14 +702,6 @@ function ReviewStep({
           onEdit={() => helpers.goToStep(2)}
         />
       )}
-      {values.unitAllocateNow === "yes" &&
-        values.unitOwnership === "RENTED" && (
-          <ReviewRow
-            label="Termos na obra"
-            value={`R$ ${values.unitConfirmedHourlyRate}/h · ${values.unitMonthlyHours} h/mês`}
-            onEdit={() => helpers.goToStep(2)}
-          />
-        )}
     </section>
   );
 }
@@ -778,8 +737,9 @@ function toFormData(values: Values) {
   }
   for (const field of [
     "unitInitialMeterReading",
-    "unitSuggestedHourlyRate",
-    "unitConfirmedHourlyRate",
+    "unitHourlyRate",
+    "unitLoadCapacity",
+    "unitMaxSupportedWeightT",
   ] as const) {
     data.set(field, values[field].trim().replace(",", "."));
   }
@@ -805,6 +765,7 @@ export function MachineUnitCreationWizard({
   loadProjectAction: LoadProjectAction;
   modelName: string;
   modelRule: {
+    type: "YELLOW_LINE" | "WHITE_LINE";
     requiresOperator: boolean;
     requiredJobRoleId: string | null;
     requiredJobRoleName: string | null;
@@ -814,12 +775,13 @@ export function MachineUnitCreationWizard({
   const router = useRouter();
   const [projectContext, setProjectContext] =
     React.useState<MachineAllocationProjectContext | null>(null);
+  const [hasEligibleProjects, setHasEligibleProjects] = React.useState(false);
   const schema = React.useMemo(
-    () => createSchema(modelRule.requiresOperator),
-    [modelRule.requiresOperator],
+    () => createSchema(modelRule),
+    [modelRule],
   );
-  const steps = React.useMemo<WizardStep<Values>[]>(
-    () => [
+  const steps = React.useMemo<WizardStep<Values>[]>(() => {
+    const result: WizardStep<Values>[] = [
       {
         title: "Identificação",
         fields: ["unitName", "unitPlate", "unitCompanyTag"],
@@ -827,24 +789,30 @@ export function MachineUnitCreationWizard({
         component: (form) => <IdentificationStep form={form} />,
       },
       {
-        title: "Medição e propriedade",
+        title: "Medição e custos",
         fields: [
           "unitMeterType",
           "unitInitialMeterReading",
-          "unitOwnership",
-          "unitLessorName",
-          "unitSuggestedHourlyRate",
+          "unitHourlyRate",
+          "unitLoadCapacity",
+          "unitLoadCapacityUnitCode",
+          "unitMaxSupportedWeightT",
         ],
         fieldLabels,
-        component: (form) => <OperationStep form={form} />,
+        component: (form) => (
+          <OperationStep
+            form={form}
+            isWhiteLine={modelRule.type === "WHITE_LINE"}
+          />
+        ),
       },
-      {
+    ];
+    if (hasEligibleProjects)
+      result.push({
         title: "Alocação",
         fields: [
           "unitAllocateNow",
           "unitProjectId",
-          "unitConfirmedHourlyRate",
-          "unitMonthlyHours",
           "unitDayOperatorEmploymentId",
           "unitNightOperatorEmploymentId",
         ],
@@ -859,21 +827,27 @@ export function MachineUnitCreationWizard({
             setProjectContext={setProjectContext}
           />
         ),
-      },
-      {
+      });
+    result.push({
         title: "Revisão",
         fields: [],
         component: (form, helpers) => (
           <ReviewStep
             form={form}
             helpers={helpers}
+            hasEligibleProjects={hasEligibleProjects}
             projectContext={projectContext}
           />
         ),
-      },
-    ],
-    [loadProjectAction, modelRule, projectContext, searchProjectsAction],
-  );
+      });
+    return result;
+  }, [
+    hasEligibleProjects,
+    loadProjectAction,
+    modelRule,
+    projectContext,
+    searchProjectsAction,
+  ]);
 
   return (
     <BaseFormModal<Values>
@@ -886,7 +860,13 @@ export function MachineUnitCreationWizard({
       fieldLabels={fieldLabels}
       steps={steps}
       submitLabel="Criar unidade"
-      onSessionStart={() => setProjectContext(null)}
+      onSessionStart={() => {
+        setProjectContext(null);
+        setHasEligibleProjects(false);
+        void searchProjectsAction().then((result) => {
+          setHasEligibleProjects(result.ok && result.page.data.length > 0);
+        });
+      }}
       onSubmit={async (values) => {
         const result = await action(
           { ok: false, message: "" },

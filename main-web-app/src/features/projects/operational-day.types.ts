@@ -4,6 +4,7 @@ export type OperationalEmployee = {
   employmentId: string;
   name: string;
   jobRole: string;
+  overtimeEnabled?: boolean;
   attendanceStatus?: "present" | "absent";
   absenceReason?: string | null;
   checkInAt?: string | null;
@@ -68,7 +69,12 @@ export type OperationalOptions = {
     technicalResponsibilityEmploymentIds: string[];
   };
   responsibleOptions: Array<{ id: string; name: string }>;
-  employeeOptions: Array<{ id: string; name: string; jobRole: string }>;
+  employeeOptions: Array<{
+    id: string;
+    name: string;
+    jobRole: string;
+    overtimeEnabled: boolean;
+  }>;
   machineOptions: Array<{
     id: string;
     name: string;

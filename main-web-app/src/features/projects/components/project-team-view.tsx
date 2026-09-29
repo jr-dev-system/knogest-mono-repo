@@ -382,7 +382,9 @@ export function ProjectTeamView({
                           Hora extra
                         </dt>
                         <dd className="font-bold">
-                          {formatCurrency(member.overtimeRate)}
+                          {member.overtimeEnabled
+                            ? formatCurrency(member.overtimeRate)
+                            : "Desabilitada"}
                         </dd>
                       </div>
                     </dl>

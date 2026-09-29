@@ -4,6 +4,7 @@ export type MachineActionState = {
   createdModel?: {
     id: string;
     name: string;
+    type: "YELLOW_LINE" | "WHITE_LINE";
     requiresOperator: boolean;
     requiredJobRoleId: string | null;
     requiredJobRoleName: string | null;

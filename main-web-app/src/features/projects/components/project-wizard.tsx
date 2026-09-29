@@ -946,6 +946,7 @@ export const EmployeeMobilization = React.forwardRef<
     compensationMode: ProjectCommand["initialEmployeeAllocations"][number]["compensationMode"];
     compensationValue: string;
     overtimeRate: string;
+    overtimeEnabled: boolean;
     overtimeIsManual: boolean;
   } | null>(null);
   const [jobRoles, setJobRoles] = React.useState(options.jobRoles);
@@ -1048,6 +1049,7 @@ export const EmployeeMobilization = React.forwardRef<
           monthlyHours,
           allocation?.shift ?? "day",
         ),
+      overtimeEnabled: allocation?.overtimeEnabled ?? true,
       overtimeIsManual: Boolean(allocation),
     });
     onDraftStateChange?.(true);
@@ -1102,6 +1104,7 @@ export const EmployeeMobilization = React.forwardRef<
       compensationMode: draft.compensationMode,
       compensationValue: decimalInputToCanonical(draft.compensationValue),
       overtimeRate: decimalInputToCanonical(draft.overtimeRate),
+      overtimeEnabled: draft.overtimeEnabled,
     };
     form.setValue(
       "initialEmployeeAllocations",
@@ -1267,6 +1270,16 @@ export const EmployeeMobilization = React.forwardRef<
                 </>
               )}
             </div>
+            <label className="flex items-center gap-2 text-sm font-semibold">
+              <input
+                type="checkbox"
+                checked={draft.overtimeEnabled}
+                onChange={(event) =>
+                  updateDraft({ overtimeEnabled: event.target.checked })
+                }
+              />
+              Habilitar hora extra
+            </label>
             <div className="grid gap-1.5 text-sm font-semibold">
               <label htmlFor="project-monthly-workload">Carga mensal</label>
               <select

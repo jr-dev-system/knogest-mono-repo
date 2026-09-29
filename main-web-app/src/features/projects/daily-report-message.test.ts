@@ -58,6 +58,7 @@ describe("buildProjectDailyReportMessage", () => {
           completedFullShift: true,
           regularWorkedMinutes: 600,
           overtimeMinutes: 60,
+          overtimeEnabled: true,
         },
       ],
       machines: [

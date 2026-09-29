@@ -74,10 +74,6 @@ const model: MachineModelDetail = {
   manufacturer: "Caterpillar",
   model: "320 GC",
   version: null,
-  loadCapacity: null,
-  loadCapacityUnitCode: null,
-  loadVolumeM3: null,
-  maxSupportedWeightT: null,
   requiresOperator: true,
   requiredJobRole: {
     id: "00000000-0000-4000-8000-000000000002",
@@ -96,8 +92,7 @@ const model: MachineModelDetail = {
       availability: { state: "unavailable", hasOpenAllocation: true },
     }),
     unit(3, {
-      name: "Rolo alugado",
-      availability: { state: "without_rental", hasOpenAllocation: false },
+      name: "Rolo compactador",
     }),
   ],
   createdAt: "2026-09-22T00:00:00.000Z",
@@ -211,6 +206,9 @@ describe("MachineModelDetailPage", () => {
       screen.getByRole("columnheader", { name: "Identificadores" }),
     ).toBeTruthy();
     expect(
+      screen.getByRole("columnheader", { name: "Capacidade" }),
+    ).toBeTruthy();
+    expect(
       screen.getByRole("columnheader", { name: "Última leitura" }),
     ).toBeTruthy();
     expect(
@@ -221,6 +219,31 @@ describe("MachineModelDetailPage", () => {
         .getByRole("link", { name: "Ver unidade Unidade 01" })
         .getAttribute("href"),
     ).toBe("/home/maquinas/00000000-0000-4000-8000-000000000001");
+  });
+
+  it("shows each unit capacity with its measurement unit", () => {
+    renderPage(undefined, {
+      ...model,
+      type: "WHITE_LINE",
+      units: [
+        unit(1, {
+          type: "WHITE_LINE",
+          loadCapacity: "16.000",
+          loadCapacityUnitCode: "M3_LOOSE",
+          loadVolumeM3: "16.000",
+        }),
+        unit(2, {
+          type: "WHITE_LINE",
+          loadCapacity: "8000.000",
+          loadCapacityUnitCode: "LITER",
+        }),
+        unit(3, { type: "WHITE_LINE" }),
+      ],
+    });
+
+    expect(screen.getByText("16 m³ solto")).toBeTruthy();
+    expect(screen.getByText("8.000 L")).toBeTruthy();
+    expect(screen.getByText("Não informada")).toBeTruthy();
   });
 
   it("prefills and submits the model editor", async () => {

@@ -10,5 +10,11 @@ export function formatLoadCapacity(
   unitCode: string | null | undefined,
 ) {
   if (!value) return null;
-  return `${value.replace(".", ",")} ${labels[unitCode ?? ""] ?? unitCode ?? ""}`.trim();
+  const numericValue = Number(value);
+  const formattedValue = Number.isFinite(numericValue)
+    ? new Intl.NumberFormat("pt-BR", {
+        maximumFractionDigits: 3,
+      }).format(numericValue)
+    : value.replace(".", ",");
+  return `${formattedValue} ${labels[unitCode ?? ""] ?? unitCode ?? ""}`.trim();
 }

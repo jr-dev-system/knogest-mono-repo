@@ -115,6 +115,15 @@ normais desmarca esse atalho. Exceções usam duração `HH:MM`; horas extras fi
 sempre separadas. A carga mensal da alocação não define horas diárias e não é
 copiada para o relatório.
 
+Cada alocação de funcionário possui **Habilitar hora extra**, ligado por padrão.
+O valor é copiado para o RDO ao iniciar o turno. Para quem está com a opção
+desligada, o fechamento usa automaticamente o início e o fim reais do turno
+como marcações de frequência, limita os minutos regulares à jornada planejada
+e registra zero minuto de hora extra. A interface não solicita horários ou
+confirmação individual de hora extra para esse funcionário. Para quem está com
+a opção ligada, o preenchimento individual e a conferência de horas extras
+continuam disponíveis.
+
 As linhas do rascunho ainda não são oficiais. A finalização torna as jornadas
 oficiais em conjunto com o RDO; consumidores devem considerar somente jornadas
 cujo relatório pai está `FINALIZED`. Essas horas são declarações operacionais

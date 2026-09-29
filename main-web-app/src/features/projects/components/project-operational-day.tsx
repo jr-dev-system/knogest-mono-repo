@@ -35,7 +35,7 @@ import type {
   OperationalShift,
 } from "../operational-day.types";
 import type { ProjectProductionOptions } from "../productions.types";
-import { ProjectProductionWizard } from "./project-production-wizard";
+import { ProjectProductionWizard } from "./project-production-simple-wizard";
 
 const activityLabels = {
   earthworks: "Terraplanagem",
@@ -991,7 +991,15 @@ function OperationalPanel({
                           : "Presente"}
                       </p>
                     </div>
-                    {employee.attendanceStatus !== "absent" && (
+                    {employee.attendanceStatus !== "absent" &&
+                      employee.overtimeEnabled === false && (
+                        <p className="text-sm font-semibold text-muted-foreground">
+                          Entrada no início e saída ao finalizar o turno. O
+                          excedente será sinalizado sem gerar horas extras.
+                        </p>
+                      )}
+                    {employee.attendanceStatus !== "absent" &&
+                      employee.overtimeEnabled !== false && (
                       <>
                         <div className="grid gap-3 sm:grid-cols-2">
                           <label className="text-sm font-bold">
@@ -1221,9 +1229,11 @@ function OperationalPanel({
                 report.employees.some(
                   (employee) =>
                     employee.attendanceStatus !== "absent" &&
+                    employee.overtimeEnabled !== false &&
                     (!employeeClose[employee.employmentId]?.checkIn ||
                       !employeeClose[employee.employmentId]?.checkOut ||
-                      !employeeClose[employee.employmentId]?.overtimeConfirmed),
+                      !employeeClose[employee.employmentId]
+                        ?.overtimeConfirmed),
                 ) ||
                 report.machines.some(
                   (machine) =>
@@ -1249,7 +1259,8 @@ function OperationalPanel({
                         employees: report.employees.map((value) => ({
                           employmentId: value.employmentId,
                           checkInAt:
-                            value.attendanceStatus === "absent"
+                            value.attendanceStatus === "absent" ||
+                            value.overtimeEnabled === false
                               ? null
                               : instantForClock(
                                   day.reportDate,
@@ -1257,7 +1268,8 @@ function OperationalPanel({
                                   panel.shift,
                                 ),
                           checkOutAt:
-                            value.attendanceStatus === "absent"
+                            value.attendanceStatus === "absent" ||
+                            value.overtimeEnabled === false
                               ? null
                               : instantForClock(
                                   day.reportDate,
@@ -1265,7 +1277,8 @@ function OperationalPanel({
                                   panel.shift,
                                 ),
                           breaks:
-                            value.attendanceStatus === "absent"
+                            value.attendanceStatus === "absent" ||
+                            value.overtimeEnabled === false
                               ? []
                               : employeeClose[value.employmentId].breaks
                                   .filter(
@@ -1286,6 +1299,7 @@ function OperationalPanel({
                                   })),
                           overtimeConfirmed:
                             value.attendanceStatus === "absent" ||
+                            value.overtimeEnabled === false ||
                             employeeClose[value.employmentId].overtimeConfirmed,
                         })),
                         machines: report.machines.map((value) => ({

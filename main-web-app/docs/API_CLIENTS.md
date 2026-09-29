@@ -16,6 +16,11 @@ complete operation catalog.
 
 ## Transporte server-only
 
+Na página da Central operacional do dia, somente uma resposta 404 real da API
+vira `notFound()` no Next.js. Erros de banco, indisponibilidade da API e outras
+falhas são propagados, para não serem apresentados falsamente como "página não
+encontrada".
+
 `src/lib/api/server-client.ts` e o adaptador compartilhado usado por clientes
 gerados e chamadas server-only mantem as credenciais fora do navegador. Todas
 as chamadas devem preservar estas regras:

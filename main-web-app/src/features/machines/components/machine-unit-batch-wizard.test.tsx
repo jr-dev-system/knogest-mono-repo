@@ -59,6 +59,7 @@ describe("MachineUnitBatchWizard", () => {
         model={{
           id: "00000000-0000-4000-8000-000000000001",
           name: "Escavadeira 320",
+          type: "YELLOW_LINE",
           requiresOperator: false,
           requiredJobRoleId: null,
           requiredJobRoleName: null,

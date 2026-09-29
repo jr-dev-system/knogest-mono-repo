@@ -123,6 +123,27 @@ export function MachineModelDetailPage({
         ),
       },
       {
+        id: "loadCapacity",
+        accessorFn: (unit) => capacityLabel(unit),
+        header: "Capacidade",
+        cell: ({ row }) => {
+          const capacity = formatLoadCapacity(
+            row.original.loadCapacity,
+            row.original.loadCapacityUnitCode,
+          );
+          return (
+            <span
+              className={cn(
+                "font-semibold tabular-nums",
+                capacity ? "text-foreground" : "text-muted-foreground",
+              )}
+            >
+              {capacity ?? capacityLabel(row.original)}
+            </span>
+          );
+        },
+      },
+      {
         id: "latestMeterReading",
         accessorFn: (unit) => unit.latestMeterReading?.value ?? "",
         header: "Última leitura",
@@ -217,13 +238,8 @@ export function MachineModelDetailPage({
           </div>
         </div>
 
-        <dl className="grid sm:grid-cols-2 lg:grid-cols-4">
+        <dl className="grid sm:grid-cols-3">
           <ModelFact icon={Truck} label="Tipo" value={typeLabel(model.type)} />
-          <ModelFact
-            icon={Gauge}
-            label="Capacidade"
-            value={capacityLabel(model)}
-          />
           <ModelFact
             icon={Tag}
             label="Regra de operador"
@@ -274,7 +290,6 @@ export function MachineModelDetailPage({
                 <option value="">Todas as situações</option>
                 <option value="available">Disponíveis</option>
                 <option value="unavailable">Indisponíveis</option>
-                <option value="without_rental">Sem locação vigente</option>
               </select>
             </label>
             <label>
@@ -314,6 +329,7 @@ export function MachineModelDetailPage({
             loadProjectAction={loadProjectAction}
             modelName={displayName}
             modelRule={{
+              type: model.type,
               requiresOperator: model.requiresOperator,
               requiredJobRoleId: model.requiredJobRole?.id ?? null,
               requiredJobRoleName: model.requiredJobRole?.name ?? null,
@@ -441,7 +457,6 @@ function AvailabilityBadge({
         state === "available" && "bg-primary text-primary-foreground",
         state === "unavailable" &&
           "border border-border bg-muted text-muted-foreground",
-        state === "without_rental" && "bg-accent text-accent-foreground",
       )}
     >
       {availabilityLabel(state)}
@@ -465,25 +480,20 @@ function identifierLabel(unit: MachineUnit) {
   return identifiers.length > 0 ? identifiers.join(" · ") : "Sem identificador";
 }
 
+function capacityLabel(unit: MachineUnit) {
+  return (
+    formatLoadCapacity(unit.loadCapacity, unit.loadCapacityUnitCode) ??
+    (unit.type === "WHITE_LINE" ? "Não informada" : "Não aplicável")
+  );
+}
+
 function availabilityLabel(state: MachineUnit["availability"]["state"]) {
   if (state === "available") return "Disponível";
-  if (state === "without_rental") return "Sem locação vigente";
   return "Indisponível";
 }
 
 function typeLabel(type: MachineModelDetail["type"]) {
   return type === "YELLOW_LINE" ? "Linha amarela" : "Linha branca";
-}
-
-function capacityLabel(model: MachineModelDetail) {
-  if (model.type !== "WHITE_LINE") return "Não aplicável";
-  const capacity = [
-    formatLoadCapacity(model.loadCapacity, model.loadCapacityUnitCode),
-    model.maxSupportedWeightT
-      ? `${model.maxSupportedWeightT.replace(".", ",")} t`
-      : null,
-  ].filter(Boolean);
-  return capacity.length > 0 ? capacity.join(" · ") : "Não informada";
 }
 
 function formatDate(value: string) {

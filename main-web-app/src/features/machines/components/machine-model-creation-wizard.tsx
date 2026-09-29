@@ -54,14 +54,6 @@ type LoadProjectAction = (
   projectId: string,
 ) => Promise<MachineAllocationProjectContextResult>;
 
-const decimalPattern = /^\d+(?:[.,]\d{1,3})?$/;
-const capacityUnits = {
-  M3_LOOSE: "m³ solto",
-  M3_COMPACTED: "m³ compactado",
-  LITER: "Litro (L)",
-  CUBIC_YARD: "Jarda cúbica (yd³)",
-} as const;
-
 const schema = z
   .object({
     description: z.string().trim().max(500),
@@ -69,14 +61,6 @@ const schema = z
     model: z.string().trim().min(1, "Informe o modelo.").max(120),
     version: z.string().trim().max(120),
     type: z.enum(["YELLOW_LINE", "WHITE_LINE"]),
-    loadCapacity: z.string().trim(),
-    loadCapacityUnitCode: z.enum([
-      "M3_LOOSE",
-      "M3_COMPACTED",
-      "LITER",
-      "CUBIC_YARD",
-    ]),
-    maxSupportedWeightT: z.string().trim(),
     requiresOperator: z.boolean(),
     requiredJobRoleId: z.string().trim(),
   })
@@ -87,26 +71,6 @@ const schema = z
         path: ["requiredJobRoleId"],
         message: "Selecione a função exigida.",
       });
-    if (value.type === "WHITE_LINE") {
-      if (!value.loadCapacity)
-        context.addIssue({
-          code: "custom",
-          path: ["loadCapacity"],
-          message: "Informe a capacidade de carga.",
-        });
-      for (const field of ["loadCapacity", "maxSupportedWeightT"] as const) {
-        const raw = value[field];
-        if (
-          raw &&
-          (!decimalPattern.test(raw) || Number(raw.replace(",", ".")) <= 0)
-        )
-          context.addIssue({
-            code: "custom",
-            path: [field],
-            message: "Informe um valor positivo com até três casas.",
-          });
-      }
-    }
   });
 type Values = z.infer<typeof schema>;
 
@@ -116,9 +80,6 @@ const defaults: Values = {
   model: "",
   version: "",
   type: "YELLOW_LINE",
-  loadCapacity: "",
-  loadCapacityUnitCode: "M3_LOOSE",
-  maxSupportedWeightT: "",
   requiresOperator: true,
   requiredJobRoleId: "",
 };
@@ -128,9 +89,6 @@ const fieldLabels: Partial<Record<keyof Values, string>> = {
   model: "Modelo",
   version: "Versão",
   description: "Descrição",
-  loadCapacity: "Capacidade de carga",
-  loadCapacityUnitCode: "Unidade da capacidade",
-  maxSupportedWeightT: "Peso máximo suportado",
   requiresOperator: "Exige operador",
   requiredJobRoleId: "Função exigida",
 };
@@ -165,10 +123,8 @@ function Field({
 
 function CatalogStep({
   form,
-  onTypeChange,
 }: {
   form: UseFormReturn<Values>;
-  onTypeChange: (type: Values["type"]) => void;
 }) {
   return (
     <FormSection
@@ -180,16 +136,7 @@ function CatalogStep({
           <span>Tipo</span>
           <select
             className={controlClass}
-            value={form.watch("type")}
-            onChange={(event) => {
-              const type = event.target.value as Values["type"];
-              form.setValue("type", type, { shouldDirty: true });
-              if (type === "YELLOW_LINE") {
-                form.setValue("loadCapacity", "");
-                form.setValue("maxSupportedWeightT", "");
-              }
-              onTypeChange(type);
-            }}
+            {...form.register("type")}
           >
             <option value="YELLOW_LINE">Linha amarela</option>
             <option value="WHITE_LINE">Linha branca</option>
@@ -201,43 +148,6 @@ function CatalogStep({
         <div className="md:col-span-2">
           <Field form={form} name="description" label="Descrição (opcional)" />
         </div>
-      </div>
-    </FormSection>
-  );
-}
-
-function CapacityStep({ form }: { form: UseFormReturn<Values> }) {
-  return (
-    <FormSection
-      title="Capacidade de carga"
-      description="A unidade informada será preservada; a produção converte o volume para m³."
-    >
-      <div className="grid gap-3 md:grid-cols-2">
-        <Field
-          form={form}
-          name="loadCapacity"
-          label="Capacidade"
-          inputMode="decimal"
-        />
-        <label className="grid gap-1.5 text-sm font-semibold">
-          <span>Unidade</span>
-          <select
-            className={controlClass}
-            {...form.register("loadCapacityUnitCode")}
-          >
-            {Object.entries(capacityUnits).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <Field
-          form={form}
-          name="maxSupportedWeightT"
-          label="Peso máximo suportado (t, opcional)"
-          inputMode="decimal"
-        />
       </div>
     </FormSection>
   );
@@ -300,12 +210,10 @@ function ReviewStep({
   form,
   helpers,
   jobRoles,
-  isWhiteLine,
 }: {
   form: UseFormReturn<Values>;
   helpers: BaseFormModalRenderHelpers;
   jobRoles: JobRole[];
-  isWhiteLine: boolean;
 }) {
   const values = form.watch();
   const role = jobRoles.find((item) => item.id === values.requiredJobRoleId);
@@ -319,31 +227,15 @@ function ReviewStep({
     },
     {
       label: "Tipo",
-      value: isWhiteLine ? "Linha branca" : "Linha amarela",
+      value: values.type === "WHITE_LINE" ? "Linha branca" : "Linha amarela",
       step: 0,
     },
-    ...(isWhiteLine
-      ? [
-          {
-            label: "Capacidade",
-            value: `${values.loadCapacity} ${capacityUnits[values.loadCapacityUnitCode]}`,
-            step: 1,
-          },
-          {
-            label: "Peso máximo",
-            value: values.maxSupportedWeightT
-              ? `${values.maxSupportedWeightT} t`
-              : "Não informado",
-            step: 1,
-          },
-        ]
-      : []),
     {
       label: "Regra de operador",
       value: values.requiresOperator
         ? `Exige ${role?.name ?? "função selecionada"}`
         : "Não exige operador",
-      step: isWhiteLine ? 2 : 1,
+      step: 1,
     },
   ];
   return (
@@ -387,9 +279,6 @@ function toFormData(values: Values) {
     "model",
     "version",
     "type",
-    "loadCapacity",
-    "loadCapacityUnitCode",
-    "maxSupportedWeightT",
     "requiredJobRoleId",
   ] as const)
     data.set(field, values[field].trim());
@@ -410,8 +299,6 @@ export function MachineModelCreationWizard({
   loadProjectAction: LoadProjectAction;
   searchProjectsAction: SearchProjectsAction;
 }) {
-  const [selectedType, setSelectedType] =
-    React.useState<Values["type"]>("YELLOW_LINE");
   const [createdModel, setCreatedModel] = React.useState<NonNullable<
     MachineActionState["createdModel"]
   > | null>(null);
@@ -419,7 +306,6 @@ export function MachineModelCreationWizard({
   const [batchOpen, setBatchOpen] = React.useState(false);
   const [promptQueued, setPromptQueued] = React.useState(false);
   const [batchQueued, setBatchQueued] = React.useState(false);
-  const isWhiteLine = selectedType === "WHITE_LINE";
 
   React.useEffect(() => {
     if (!promptQueued) return;
@@ -444,18 +330,9 @@ export function MachineModelCreationWizard({
         title: "Modelo",
         fields: ["type", "manufacturer", "model", "version", "description"],
         fieldLabels,
-        component: (form) => (
-          <CatalogStep form={form} onTypeChange={setSelectedType} />
-        ),
+        component: (form) => <CatalogStep form={form} />,
       },
     ];
-    if (isWhiteLine)
-      result.push({
-        title: "Capacidade",
-        fields: ["loadCapacity", "loadCapacityUnitCode", "maxSupportedWeightT"],
-        fieldLabels,
-        component: (form) => <CapacityStep form={form} />,
-      });
     result.push(
       {
         title: "Operador",
@@ -471,20 +348,19 @@ export function MachineModelCreationWizard({
           <ReviewStep
             form={form}
             helpers={helpers}
-            isWhiteLine={isWhiteLine}
             jobRoles={jobRoles}
           />
         ),
       },
     );
     return result;
-  }, [isWhiteLine, jobRoles]);
+  }, [jobRoles]);
 
   return (
     <>
       <BaseFormModal<Values>
         title="Novo modelo"
-        description="Cadastre o modelo, sua capacidade e a regra de operador antes de criar unidades físicas."
+        description="Cadastre o modelo e a regra de operador antes de criar unidades físicas."
         icon={Truck}
         size="lg"
         schema={schema}
@@ -492,7 +368,6 @@ export function MachineModelCreationWizard({
         fieldLabels={fieldLabels}
         steps={steps}
         submitLabel="Criar modelo"
-        onSessionStart={() => setSelectedType("YELLOW_LINE")}
         onSubmit={async (values) => {
           const result = await action(
             { ok: false, message: "" },
@@ -503,8 +378,13 @@ export function MachineModelCreationWizard({
               result.message || "Não foi possível criar o modelo.",
             );
           toast.success(result.message);
-          setCreatedModel(result.createdModel);
-          setPromptQueued(true);
+          const projects = await searchProjectsAction();
+          if (projects.ok && projects.page.data.length > 0) {
+            setCreatedModel(result.createdModel);
+            setPromptQueued(true);
+          } else {
+            setCreatedModel(null);
+          }
         }}
         trigger={
           <Button type="button">
@@ -565,9 +445,6 @@ export function MachineModelEditWizard({
   model: MachineModelDetail;
 }) {
   const router = useRouter();
-  const [selectedType, setSelectedType] =
-    React.useState<Values["type"]>(model.type);
-  const isWhiteLine = selectedType === "WHITE_LINE";
   const defaultValues = React.useMemo<Values>(
     () => ({
       description: model.description ?? "",
@@ -575,10 +452,6 @@ export function MachineModelEditWizard({
       model: model.model,
       version: model.version ?? "",
       type: model.type,
-      loadCapacity: model.loadCapacity ?? "",
-      loadCapacityUnitCode:
-        model.loadCapacityUnitCode ?? "M3_LOOSE",
-      maxSupportedWeightT: model.maxSupportedWeightT ?? "",
       requiresOperator: model.requiresOperator,
       requiredJobRoleId: model.requiredJobRole?.id ?? "",
     }),
@@ -590,18 +463,9 @@ export function MachineModelEditWizard({
         title: "Modelo",
         fields: ["type", "manufacturer", "model", "version", "description"],
         fieldLabels,
-        component: (form) => (
-          <CatalogStep form={form} onTypeChange={setSelectedType} />
-        ),
+        component: (form) => <CatalogStep form={form} />,
       },
     ];
-    if (isWhiteLine)
-      result.push({
-        title: "Capacidade",
-        fields: ["loadCapacity", "loadCapacityUnitCode", "maxSupportedWeightT"],
-        fieldLabels,
-        component: (form) => <CapacityStep form={form} />,
-      });
     result.push(
       {
         title: "Operador",
@@ -617,14 +481,13 @@ export function MachineModelEditWizard({
           <ReviewStep
             form={form}
             helpers={helpers}
-            isWhiteLine={isWhiteLine}
             jobRoles={jobRoles}
           />
         ),
       },
     );
     return result;
-  }, [isWhiteLine, jobRoles]);
+  }, [jobRoles]);
 
   return (
     <BaseFormModal<Values>
@@ -637,7 +500,6 @@ export function MachineModelEditWizard({
       fieldLabels={fieldLabels}
       steps={steps}
       submitLabel="Salvar alterações"
-      onSessionStart={() => setSelectedType(model.type)}
       onSubmit={async (values) => {
         const result = await action(
           { ok: false, message: "" },

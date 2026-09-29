@@ -239,6 +239,7 @@ const employeeAllocationSchema = z
     ]),
     compensationValue: decimal(2, 16, false),
     overtimeRate: decimal(2, 16, false),
+    overtimeEnabled: z.boolean().default(true),
   })
   .superRefine((allocation, context) => {
     const hasExistingRole = Boolean(
