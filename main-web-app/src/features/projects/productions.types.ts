@@ -1,11 +1,19 @@
 import type { GetApiV1ProjectsProjectidProductionsQueryResponse } from "@/generated/models/GetApiV1ProjectsProjectidProductions";
 import type { PostApiV1ProjectsProjectidProductionsMutationRequest } from "@/generated/models/PostApiV1ProjectsProjectidProductions";
+import type { GetApiV1ProjectsProjectidProductionsTruckOptionsQueryResponse } from "@/generated/models/GetApiV1ProjectsProjectidProductionsTruckOptions";
+import type { PostApiV1ProjectsProjectidProductionsCutFillPairMutationRequest } from "@/generated/models/PostApiV1ProjectsProjectidProductionsCutFillPair";
 
 export type ProjectProductionsPage =
   GetApiV1ProjectsProjectidProductionsQueryResponse["data"];
 export type ProjectProductionSummary = ProjectProductionsPage["data"][number];
 export type ProjectProductionCommand =
   PostApiV1ProjectsProjectidProductionsMutationRequest;
+export type ProjectProductionPairCommand =
+  PostApiV1ProjectsProjectidProductionsCutFillPairMutationRequest;
+export type ProjectProductionTruckOptionsPage =
+  GetApiV1ProjectsProjectidProductionsTruckOptionsQueryResponse["data"];
+export type ProjectProductionTruckOption =
+  ProjectProductionTruckOptionsPage["data"][number];
 
 export type ProjectProductionOptions = {
   project: { id: string; name: string; status: string };
@@ -44,6 +52,7 @@ export type ProjectProductionOptions = {
       model: string;
       meterType: "hour_meter" | "odometer";
       identifier: string | null;
+      identifierKind?: "PLATE" | "COMPANY_TAG" | null;
       nominalCapacity: string;
       effectiveCapacity: string;
       capacityUnitCode: string;
@@ -109,6 +118,9 @@ export type ProjectProductionDetail = {
     quantityMethod: "manual" | "topography" | "laboratory";
     exceptionalFromMovement: boolean;
     exceptionReason: string | null;
+    destinationKind: "fill" | "disposal" | "other" | null;
+    destinationWorkFrontId: string | null;
+    compactionReductionPercent: string | null;
   } | null;
   materialMovement: {
     materialRevisionId: string | null;
@@ -156,6 +168,9 @@ export type ProjectProductionDetail = {
     actualWeightT: string | null;
     loadFactor: string;
     averageCycleMinutes: number | null;
+    averageLoadingMinutes: string | null;
+    averageUnloadingMinutes: string | null;
+    dmtKm: string | null;
     occurrenceNotes: string | null;
     calculatedVolume: string;
   }>;

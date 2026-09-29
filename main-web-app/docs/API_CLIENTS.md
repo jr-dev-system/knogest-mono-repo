@@ -82,6 +82,18 @@ viagens legadas. `productions.actions.ts` é a fronteira server-only;
 componentes não repetem tipos de transporte gerados. O wizard envia
 `individualActivity` ou `materialMovement`, nunca `officialQuantity`.
 
+O wizard atual possui quatro passos. Ao entrar no passo de caminhões, a
+interface consulta automaticamente
+`GET /projects/:projectId/productions/truck-options` em páginas de 25, mantém as
+seleções fora das páginas carregadas e reinicia os cursores quando data ou turno
+muda. Cada resumo envia viagens, carga e descarga médias no formato decimal
+`minutos.segundos`, com segundos entre `00` e `59`, e DMT em km.
+Quando um corte destina material a uma frente com aterro, a action chama
+`POST /projects/:projectId/productions/cut-fill-pair`; a API recalcula o volume
+do aterro aplicando `compactionReductionPercent`, de `0.00` a `100.00`, sobre o
+volume solto e cria os dois lançamentos na mesma transação. Um erro nunca é
+tratado pelo componente como sucesso parcial.
+
 Rotas criadas inline passam primeiro pelas rotas versionadas do catálogo e o
 comando de produção recebe o ID da revisão retornada. Material e seu cadastro
 inline permanecem ocultos, e `materialName` pode ser `null`. O

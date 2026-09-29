@@ -9,11 +9,13 @@ import { getApiV1ProjectsProjectidEarthworkMaterials } from "@/generated/clients
 import { getApiV1ProjectsProjectidHaulRoutes } from "@/generated/clients/getApiV1ProjectsProjectidHaulRoutes";
 import { getApiV1ProjectsProjectidProductions } from "@/generated/clients/getApiV1ProjectsProjectidProductions";
 import { getApiV1ProjectsProjectidProductionsOptions } from "@/generated/clients/getApiV1ProjectsProjectidProductionsOptions";
+import { getApiV1ProjectsProjectidProductionsTruckOptions } from "@/generated/clients/getApiV1ProjectsProjectidProductionsTruckOptions";
 import { getApiV1ProjectsProjectidProductionsProductionid } from "@/generated/clients/getApiV1ProjectsProjectidProductionsProductionid";
 import { postApiV1ProjectsProjectidDailyReportsReportidProductionsConfirm } from "@/generated/clients/postApiV1ProjectsProjectidDailyReportsReportidProductionsConfirm";
 import { postApiV1ProjectsProjectidEarthworkMaterials } from "@/generated/clients/postApiV1ProjectsProjectidEarthworkMaterials";
 import { postApiV1ProjectsProjectidHaulRoutes } from "@/generated/clients/postApiV1ProjectsProjectidHaulRoutes";
 import { postApiV1ProjectsProjectidProductions } from "@/generated/clients/postApiV1ProjectsProjectidProductions";
+import { postApiV1ProjectsProjectidProductionsCutFillPair } from "@/generated/clients/postApiV1ProjectsProjectidProductionsCutFillPair";
 import { postApiV1ProjectsProjectidProductionsProductionidApprove } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidApprove";
 import { postApiV1ProjectsProjectidProductionsProductionidCheck } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidCheck";
 import { postApiV1ProjectsProjectidProductionsProductionidQualityChecks } from "@/generated/clients/postApiV1ProjectsProjectidProductionsProductionidQualityChecks";
@@ -34,6 +36,8 @@ import type {
   ProjectProductionDetail,
   ProjectProductionMutationResult,
   ProjectProductionOptions,
+  ProjectProductionPairCommand,
+  ProjectProductionTruckOptionsPage,
 } from "./productions.types";
 
 export async function getEarthworkCatalogOptionsAction(input: {
@@ -135,6 +139,26 @@ export async function getProjectProductionOptionsAction(input: {
   return response.data as ProjectProductionOptions;
 }
 
+export async function getProjectProductionTruckOptionsAction(input: {
+  projectId: string;
+  productionDate: string;
+  shift: "day" | "night";
+  cursor?: string;
+}): Promise<ProjectProductionTruckOptionsPage> {
+  const response = await getApiV1ProjectsProjectidProductionsTruckOptions({
+    projectId: uuid.parse(input.projectId),
+    params: {
+      productionDate: z.iso.date().parse(input.productionDate),
+      shift: input.shift,
+      limit: 25,
+      cursor: input.cursor
+        ? z.string().min(1).max(2048).parse(input.cursor)
+        : undefined,
+    },
+  });
+  return response.data;
+}
+
 export async function getProjectProductionAction(
   projectId: string,
   productionId: string,
@@ -218,6 +242,38 @@ export async function saveProjectProductionAction(input: {
     return {
       kind: "success",
       production: response.data as ProjectProductionDetail,
+    };
+  } catch (error) {
+    return failure(error);
+  }
+}
+
+export async function saveProjectProductionPairAction(input: {
+  projectId: string;
+  command: ProjectProductionPairCommand;
+}): Promise<
+  | {
+      kind: "success";
+      productions: {
+        cut: ProjectProductionDetail;
+        fill: ProjectProductionDetail;
+      };
+    }
+  | Exclude<ProjectProductionMutationResult, { kind: "success" }>
+> {
+  const projectId = uuid.parse(input.projectId);
+  try {
+    const response = await postApiV1ProjectsProjectidProductionsCutFillPair({
+      projectId,
+      data: input.command,
+    });
+    revalidate(projectId);
+    return {
+      kind: "success",
+      productions: response.data as {
+        cut: ProjectProductionDetail;
+        fill: ProjectProductionDetail;
+      },
     };
   } catch (error) {
     return failure(error);
@@ -479,7 +535,9 @@ function revalidate(projectId: string) {
   revalidatePath(`/home/obras/${projectId}`);
 }
 
-function failure(error: unknown): ProjectProductionMutationResult {
+function failure(
+  error: unknown,
+): Extract<ProjectProductionMutationResult, { kind: "failure" }> {
   if (!(error instanceof ApiClientError))
     return {
       kind: "failure",

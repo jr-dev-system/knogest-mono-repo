@@ -25,7 +25,9 @@ vi.mock("../productions.actions", () => ({
     routes: { data: [], pageInfo: { hasNextPage: false, nextCursor: null } },
   }),
   getProjectProductionOptionsAction: vi.fn(),
+  getProjectProductionTruckOptionsAction: vi.fn(),
   saveProjectProductionAction: vi.fn(),
+  saveProjectProductionPairAction: vi.fn(),
 }));
 
 import { ProjectOperationalDay } from "./project-operational-day";
@@ -60,7 +62,14 @@ function operationalDay(withResources = true): OperationalDay {
           },
           responsibleOptions: [],
           employeeOptions: withResources
-            ? [{ id: "employee-1", name: "Bianca Souza", jobRole: "Operadora", overtimeEnabled: true }]
+            ? [
+                {
+                  id: "employee-1",
+                  name: "Bianca Souza",
+                  jobRole: "Operadora",
+                  overtimeEnabled: true,
+                },
+              ]
             : [],
           machineOptions: withResources
             ? [
@@ -282,10 +291,14 @@ describe("ProjectOperationalDay", () => {
       "Inicie uma frente de serviço antes de registrar produção.",
     );
     expect(
-      (screen.getByRole("button", {
-        name: "Revisar produção",
-      }) as HTMLButtonElement).disabled,
+      (
+        screen.getByRole("button", {
+          name: "Avançar",
+        }) as HTMLButtonElement
+      ).disabled,
     ).toBe(true);
-    expect((screen.getByLabelText("Frente") as HTMLSelectElement).options).toHaveLength(0);
+    expect(
+      (screen.getByLabelText("Frente") as HTMLSelectElement).options,
+    ).toHaveLength(0);
   });
 });

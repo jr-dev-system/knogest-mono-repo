@@ -212,7 +212,38 @@ A distinção entre um card e outro ainda causa um certo peso cgnitivo, não é 
 
 [] O funcionário da equipe dentro da obra deve ter um checkbox chamado "Habilitar hora extra" que por padrão vem habilitado. Quando estiver desabilitada esse funcionário quando selecionado na hora de iniciar o turno ele recebe somente as horas certa de início e final do turno no controle de frequencia.
 
-[] - Uma frente não exige máquinas ou equipes mobilizadas ela recebe apenas os quantitativos de produção igual já recebe. Os funcionários e máquinas são da obra
+[x] - Uma frente não exige máquinas ou equipes mobilizadas ela recebe apenas os quantitativos de produção igual já recebe. Os funcionários e máquinas são da obra
 
-[] - Para adcionar uma produção na página do dia do calendário no caso do manual é necessário somente adcionar a atividade,
+[x] - Para adcionar uma produção na página do dia do calendário no caso do manual é necessário somente adcionar a atividade,
 selecionar os caminhões, quantidade de viagens. Não vai existir qualidade e evidencia, evidencias por URL, selecionar a atividade que a máquina, local e material, quantidade operacional. No resumo na hora de confirmar o registro de produção o calculo de m3 cúbico deve ser automático pela quantidade de viagens feita pelos caminhões selecionados e o DMT médio. Para o caso de aterro deve ter 2 opções ou adcionar direto a quantidade do volume ou a quantidade de carradas em m3 e o fator de empolamento. Não vai ter a opção de movimentação de material.
+
+[] - Na página de máquinas, mesmo uma máquina sendo usada em uma obra em andamento está trazendo ela como disponível.
+
+[x] - Não deve mostrar o campo "Outras máquinas" no modal de adcionar produção.
+
+[x] - Modal de adcionar produção deve ser um wizard guiado com 4 passos onde o último é a revisão que deve ter uma pencil em cada item com um CTA de pencil para voltar para o step exato de onde edita a informação.
+
+[x] - Quando clicar em adcionar máquina, deve aparecer um formulário igual de selecionar funcionários na equipe no modal de editar equipe. para selecionar a quantidade de viagens e, tempo médio de carregamento, tempo médio para descarregar e DMT médio. Isso para cada caminhão. Na listagem de caminhões nesse modal também deve aparecer identificação da placa, se não tiver mostrar o patrimonio, fabricante e modelo, e mostrar também qual é o funcionário que está naquela máquina atualmente.
+
+[x] - A listagem de caminhões deve ser paginada via cursor no step de caminhões ao adcionar produção.
+
+[x] - Na atividade de corte, o terceiro step deve selecionar qual destino do material, se é aterro, descarte e outro, por enquanto. Se ele selecionar que é aterro, deve selecionar uma frente iniciada que possui aterro como produção, dizer qual o fator de empolamento e conferir no mesmo step o volume final em m3 de aterro. E dessa forma conseguir adcionar também a produção de aterro junto com o corte.
+
+[] - Ao iniciar turno, confirmar horário de início antes dos checklists
+[] - Ao finalizar turno confirmar horário final do turno e horário excedente.
+[] - Confirmar horário de todos os funcionários preenchidos automaticamente (inicio e final) que iniciaram o turno.
+[] - Confirmar odometro final de todas as máquinas que participaram do turno.
+[] - Não deve ser possível iniciar um mesmo turno caso já tenha um em aberto em outro dia ou no mesmo dia. Depois de um turno fechado, deve ser impossível rabrir ou algo do tipo.
+
+[] - Quando adcionar uma máquina à obra deve ter um input para o valor/hora (tomando como default, mas não permanente, o valor adcionado ao criar unidade) da máquina e horas/mês disponível daquela máquina.
+[] - O botão de engrenagem no componente da máquina na listagem de máquinas da obra deve abrir o modal justamente de configuração de valor/hora e horas/mes disponível daquela máquina. Os valores devem ser apenas atualizados e nunca atualizar o histórico passado, somente o futuro. Se o número de horas exceder o disponível, não bloqueie as ações, só mostre um indicador na listagem que a máquina está excedendo "tantas horas".
+
+[] - Ao invés da nomeclatura de itens fornecidos seja "Insumos"
+[] - Atualmente Não é possível ajustar ciclos de pagamento após uma obra em andamento
+
+[] - Adcionar step para confirmar todos os gastos ao finalizar turno.
+
+## Manutenção
+
+- Rotina de gastos durante a manutenção e popular o financeiro.
+-
