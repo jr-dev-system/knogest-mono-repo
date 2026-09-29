@@ -7,6 +7,12 @@ const decimal = z.string().regex(/^(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/u);
 const positiveDecimal = z
   .string()
   .regex(/^(?=[0-9.]*[1-9])(?:0|[1-9]\d{0,11})(?:\.\d{1,6})?$/u);
+const minuteSecondDuration = z
+  .string()
+  .regex(
+    /^(?!0\.00$)(?:(?:0|[1-9]\d{0,2}|1[0-3]\d{2}|14[0-3]\d)\.[0-5]\d|1440\.00)$/u,
+  );
+const percentage = z.string().regex(/^(?:(?:0|[1-9]\d?)\.\d{2}|100\.00)$/u);
 
 export const productionParamsSchema = z
   .object({
@@ -51,6 +57,20 @@ export const productionOptionsQuerySchema = z
   .object({
     productionDate: date,
     shift: z.enum(["day", "night"]),
+  })
+  .strict();
+
+export const productionTruckOptionsQuerySchema = z
+  .object({
+    productionDate: date,
+    shift: z.enum(["day", "night"]),
+    limit: z.coerce.number().int().min(1).max(100).default(25),
+    cursor: z
+      .string()
+      .min(1)
+      .max(2048)
+      .regex(/^[A-Za-z0-9_-]+$/u)
+      .optional(),
   })
   .strict();
 
@@ -154,12 +174,18 @@ const individualActivitySchema = z
     operationalQuantity: decimal.nullable().default(null),
     dmtKm: decimal.nullable().default(null),
     swellFactor: positiveDecimal.nullable().default(null),
+    compactionReductionPercent: percentage.nullable().default(null),
     conversionFactor: positiveDecimal.nullable().default(null),
     layerThicknessCm: decimal.nullable().default(null),
     compactionPasses: z.number().int().min(0).max(100).nullable().default(null),
     moistureCondition: z.string().trim().max(120).nullable().default(null),
     exceptionalFromMovement: z.boolean().default(false),
     exceptionReason: z.string().trim().min(3).max(500).nullable().default(null),
+    destinationKind: z
+      .enum(["fill", "disposal", "other"])
+      .nullable()
+      .default(null),
+    destinationWorkFrontId: uuid.nullable().default(null),
   })
   .strict()
   .superRefine((value, context) => {
@@ -168,6 +194,12 @@ const individualActivitySchema = z
         code: "custom",
         path: ["exceptionReason"],
         message: "An exception reason is required",
+      });
+    if (value.swellFactor && value.compactionReductionPercent !== null)
+      context.addIssue({
+        code: "custom",
+        path: ["compactionReductionPercent"],
+        message: "Swell and compaction factors cannot be combined",
       });
   });
 
@@ -234,6 +266,9 @@ const truckSummarySchema = z
       .max(1440)
       .nullable()
       .default(null),
+    averageLoadingMinutes: minuteSecondDuration.nullable().default(null),
+    averageUnloadingMinutes: minuteSecondDuration.nullable().default(null),
+    dmtKm: positiveDecimal.nullable().default(null),
     occurrenceNotes: z.string().trim().max(500).nullable().default(null),
   })
   .strict()
@@ -251,7 +286,9 @@ export const productionCommandSchema = z
     productionCommandBase
       .extend({
         kind: z.literal("individual_activity"),
-        entryMode: z.enum(["direct_total", "truck_summary"]).default("direct_total"),
+        entryMode: z
+          .enum(["direct_total", "truck_summary"])
+          .default("direct_total"),
         individualActivity: individualActivitySchema,
         truckSummaries: z.array(truckSummarySchema).max(100).default([]),
       })
@@ -310,6 +347,13 @@ export const productionCommandSchema = z
       truckIds.add(truck.machineId);
     });
   });
+
+export const productionPairCommandSchema = z
+  .object({
+    cut: productionCommandSchema,
+    fill: productionCommandSchema,
+  })
+  .strict();
 
 export const productionDecisionSchema = z
   .object({
@@ -403,6 +447,10 @@ export type ProductionListQuery = z.infer<typeof productionListQuerySchema>;
 export type ProductionOptionsQuery = z.infer<
   typeof productionOptionsQuerySchema
 >;
+export type ProductionTruckOptionsQuery = z.infer<
+  typeof productionTruckOptionsQuerySchema
+>;
+export type ProductionPairCommand = z.infer<typeof productionPairCommandSchema>;
 export type ProductionHistoryQuery = z.infer<
   typeof productionHistoryQuerySchema
 >;

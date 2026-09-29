@@ -30,6 +30,21 @@ export function calculateTruckSummaryVolume(
   return scaledToDecimal(fullVolume + partialVolume, 3);
 }
 
+export function calculateCompactedVolumeFromReduction(
+  looseVolume: string,
+  reductionPercent: string,
+): string {
+  const retainedBasisPoints =
+    BigInt(10_000) - decimalToScaled(reductionPercent, 2);
+  return scaledToDecimal(
+    divideRounded(
+      decimalToScaled(looseVolume, 3) * retainedBasisPoints,
+      BigInt(10_000),
+    ),
+    3,
+  );
+}
+
 export function calculateEarthworkMovement(
   input: EarthworkMovementCalculationInput,
 ) {

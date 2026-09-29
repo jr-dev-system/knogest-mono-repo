@@ -92,6 +92,15 @@ Produção de terraplenagem usa os seguintes códigos públicos:
 - `IDEMPOTENCY_PAYLOAD_CONFLICT`: chave de viagem reutilizada com outro
   payload.
 
+A paginação de caminhões disponíveis usa o contrato opaco de cursor; cursor de
+outra obra, data ou turno retorna `400 VALIDATION_ERROR`. A criação conjunta de
+corte e aterro é transacional: erros de validação, indisponibilidade de frente,
+serviço, caminhão ou limite do turno desfazem ambos os lançamentos e usam os
+códigos de produção existentes, sem resposta de sucesso parcial.
+Tempos médios de carga e descarga fora do formato `minutos.segundos`, com a
+parcela de segundos entre `00` e `59`, e percentuais de redução por compactação
+fora de `0.00` a `100.00` retornam `400 VALIDATION_ERROR`.
+
 Conflitos retornam apenas identificadores, campos pendentes, limites e
 categorias seguras.
 

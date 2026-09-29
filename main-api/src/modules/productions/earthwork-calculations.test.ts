@@ -1,11 +1,21 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  calculateCompactedVolumeFromReduction,
   calculateEarthworkMovement,
   calculateTruckSummaryVolume,
 } from "./earthwork-calculations";
 
 describe("earthwork production calculations", () => {
+  it("applies the compaction reduction percentage to loose truck volume", () => {
+    expect(calculateCompactedVolumeFromReduction("23.000", "20.00")).toBe(
+      "18.400",
+    );
+    expect(calculateCompactedVolumeFromReduction("23.000", "0.00")).toBe(
+      "23.000",
+    );
+  });
+
   it("sums full and partial accepted trips without rejected trips", () => {
     expect(
       calculateTruckSummaryVolume({

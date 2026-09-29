@@ -244,6 +244,14 @@ enum ProjectProductionKind {
   @@map("project_production_kind")
 }
 
+enum ProjectProductionDestinationKind {
+  FILL
+  DISPOSAL
+  OTHER
+
+  @@map("project_production_destination_kind")
+}
+
 enum ProjectProductionComponentType {
   INDIVIDUAL
   CUT
@@ -1759,17 +1767,20 @@ model ProjectProduction {
 }
 
 model ProjectProductionIndividualActivity {
-  id                      String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  productionId            String                          @unique @map("production_id") @db.Uuid
-  quantityMethod          ProjectProductionQuantityMethod @map("quantity_method")
-  location                String?                         @db.VarChar(240)
-  startStation            String?                         @map("start_station") @db.VarChar(80)
-  endStation              String?                         @map("end_station") @db.VarChar(80)
-  layer                   String?                         @db.VarChar(80)
-  elevation               String?                         @db.VarChar(80)
-  exceptionalFromMovement Boolean                         @default(false) @map("exceptional_from_movement")
-  exceptionReason         String?                         @map("exception_reason") @db.VarChar(500)
-  production              ProjectProduction               @relation(fields: [productionId], references: [id], onDelete: Cascade)
+  id                         String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  productionId               String                            @unique @map("production_id") @db.Uuid
+  quantityMethod             ProjectProductionQuantityMethod   @map("quantity_method")
+  location                   String?                           @db.VarChar(240)
+  startStation               String?                           @map("start_station") @db.VarChar(80)
+  endStation                 String?                           @map("end_station") @db.VarChar(80)
+  layer                      String?                           @db.VarChar(80)
+  elevation                  String?                           @db.VarChar(80)
+  exceptionalFromMovement    Boolean                           @default(false) @map("exceptional_from_movement")
+  exceptionReason            String?                           @map("exception_reason") @db.VarChar(500)
+  destinationKind            ProjectProductionDestinationKind? @map("destination_kind")
+  destinationWorkFrontId     String?                           @map("destination_work_front_id") @db.Uuid
+  compactionReductionPercent Decimal?                          @map("compaction_reduction_percent") @db.Decimal(5, 2)
+  production                 ProjectProduction                 @relation(fields: [productionId], references: [id], onDelete: Cascade)
 
   @@map("project_production_individual_activities")
 }
@@ -1844,6 +1855,9 @@ model ProjectProductionTruckSummary {
   actualWeightT            Decimal?          @map("actual_weight_t") @db.Decimal(18, 3)
   loadFactor               Decimal           @default(1) @map("load_factor") @db.Decimal(12, 6)
   averageCycleMinutes      Int?              @map("average_cycle_minutes")
+  averageLoadingMinutes    Decimal?          @map("average_loading_minutes") @db.Decimal(6, 2)
+  averageUnloadingMinutes  Decimal?          @map("average_unloading_minutes") @db.Decimal(6, 2)
+  dmtKm                    Decimal?          @map("dmt_km") @db.Decimal(10, 3)
   occurrenceNotes          String?           @map("occurrence_notes") @db.VarChar(500)
   createdAt                DateTime          @default(now()) @map("created_at") @db.Timestamptz(3)
   updatedAt                DateTime          @updatedAt @map("updated_at") @db.Timestamptz(3)

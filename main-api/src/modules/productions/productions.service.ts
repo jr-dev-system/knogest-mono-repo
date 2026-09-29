@@ -16,6 +16,8 @@ import type {
   ProductionHistoryQuery,
   ProductionListQuery,
   ProductionOptionsQuery,
+  ProductionPairCommand,
+  ProductionTruckOptionsQuery,
   ProductionQualityCheck,
   ProductionReopen,
   ProductionTransition,
@@ -31,6 +33,7 @@ import {
   findProductionHandler,
   findProductionByFingerprintHandler,
   findProductionOptionsContextHandler,
+  listProductionTruckOptionsHandler,
   listProductionsHandler,
   listProductionHistoryHandler,
   listShiftProductionsHandler,
@@ -41,6 +44,7 @@ import {
   type ProductionWriteData,
 } from "./handlers/productions.handler";
 import {
+  calculateCompactedVolumeFromReduction,
   calculateEarthworkMovement,
   calculateTruckSummaryVolume,
 } from "./earthwork-calculations";
@@ -144,76 +148,100 @@ export class ProductionsService {
             ).toLowerCase(),
             dmtPolicy: service.dmtPolicy.toLowerCase(),
           })),
-        equipment: availableMachines.flatMap(
-          (assignment) =>
-            assignment.machine.isActive
-              ? [
-                  {
-                    id: assignment.machine.id,
-                    name: assignment.machine.name,
-                    manufacturer: assignment.machine.manufacturer,
-                    model: assignment.machine.model,
-                    meterType: assignment.machine.meterType.toLowerCase(),
-                    machineType: assignment.machine.type.toLowerCase(),
-                    loadVolumeM3:
-                      assignment.machine.transportSpecification?.effectiveCapacity.toFixed(
-                        3,
-                      ) ??
-                      assignment.machine.loadVolumeM3?.toFixed(3) ??
-                      null,
-                    maxSupportedWeightT:
-                      assignment.machine.transportSpecification?.maxSupportedWeightT?.toFixed(
-                        3,
-                      ) ??
-                      assignment.machine.maxSupportedWeightT?.toFixed(3) ??
-                      null,
-                    identifier:
-                      assignment.machine.identifiers[0]?.value ?? null,
-                    operator: assignment.operator
-                      ? {
-                          id: assignment.operator.id,
-                          name: assignment.operator.person.displayName,
-                        }
-                      : null,
-                  },
-                ]
-              : [],
+        equipment: availableMachines.flatMap((assignment) =>
+          assignment.machine.isActive
+            ? [
+                {
+                  id: assignment.machine.id,
+                  name: assignment.machine.name,
+                  manufacturer: assignment.machine.manufacturer,
+                  model: assignment.machine.model,
+                  meterType: assignment.machine.meterType.toLowerCase(),
+                  machineType: assignment.machine.type.toLowerCase(),
+                  loadVolumeM3:
+                    assignment.machine.transportSpecification?.effectiveCapacity.toFixed(
+                      3,
+                    ) ??
+                    assignment.machine.loadVolumeM3?.toFixed(3) ??
+                    null,
+                  maxSupportedWeightT:
+                    assignment.machine.transportSpecification?.maxSupportedWeightT?.toFixed(
+                      3,
+                    ) ??
+                    assignment.machine.maxSupportedWeightT?.toFixed(3) ??
+                    null,
+                  identifier: assignment.machine.identifiers[0]?.value ?? null,
+                  identifierKind:
+                    assignment.machine.identifiers[0]?.kind ?? null,
+                  operator: assignment.operator
+                    ? {
+                        id: assignment.operator.id,
+                        name: assignment.operator.person.displayName,
+                      }
+                    : null,
+                },
+              ]
+            : [],
         ),
-        trucks: availableMachines.flatMap(
-          (assignment) => {
-            const specification = assignment.machine.transportSpecification;
-            return assignment.machine.isActive &&
-              specification &&
-              specification.capacityUnitCode !== "LITER" &&
-              specification.effectiveCapacity.gt(0)
-              ? [
-                  {
-                    id: assignment.machine.id,
-                    name: assignment.machine.name,
-                    manufacturer: assignment.machine.manufacturer,
-                    model: assignment.machine.model,
-                    meterType: assignment.machine.meterType.toLowerCase(),
-                    identifier:
-                      assignment.machine.identifiers[0]?.value ?? null,
-                    nominalCapacity: specification.nominalCapacity.toFixed(3),
-                    effectiveCapacity:
-                      specification.effectiveCapacity.toFixed(3),
-                    capacityUnitCode: specification.capacityUnitCode,
-                    maxSupportedWeightT:
-                      specification.maxSupportedWeightT?.toFixed(3) ?? null,
-                    driver: assignment.operator
-                      ? {
-                          id: assignment.operator.id,
-                          name: assignment.operator.person.displayName,
-                        }
-                      : null,
-                  },
-                ]
-              : [];
-          },
-        ),
+        trucks: availableMachines.flatMap((assignment) => {
+          const specification = assignment.machine.transportSpecification;
+          return assignment.machine.isActive &&
+            specification &&
+            specification.capacityUnitCode !== "LITER" &&
+            specification.effectiveCapacity.gt(0)
+            ? [
+                {
+                  id: assignment.machine.id,
+                  name: assignment.machine.name,
+                  manufacturer: assignment.machine.manufacturer,
+                  model: assignment.machine.model,
+                  meterType: assignment.machine.meterType.toLowerCase(),
+                  identifier: assignment.machine.identifiers[0]?.value ?? null,
+                  identifierKind:
+                    assignment.machine.identifiers[0]?.kind ?? null,
+                  nominalCapacity: specification.nominalCapacity.toFixed(3),
+                  effectiveCapacity: specification.effectiveCapacity.toFixed(3),
+                  capacityUnitCode: specification.capacityUnitCode,
+                  maxSupportedWeightT:
+                    specification.maxSupportedWeightT?.toFixed(3) ?? null,
+                  driver: assignment.operator
+                    ? {
+                        id: assignment.operator.id,
+                        name: assignment.operator.person.displayName,
+                      }
+                    : null,
+                },
+              ]
+            : [];
+        }),
       })),
     };
+  }
+
+  async truckOptions(
+    scope: ProductionScope,
+    projectId: string,
+    query: ProductionTruckOptionsQuery,
+  ) {
+    const result = await listProductionTruckOptionsHandler(
+      this.context,
+      scope,
+      projectId,
+      {
+        interval: shiftInterval(query.productionDate, query.shift),
+        shift: shiftToDb(query.shift),
+        productionDate: query.productionDate,
+        limit: query.limit,
+        cursor: query.cursor,
+      },
+    );
+    if (!result) throw projectUnavailable();
+    assertProductionDateAllowed(
+      query.productionDate,
+      result.project.actualStartedAt,
+    );
+    if (!result.shiftEnabled) throw shiftNotEnabled();
+    return { data: result.data, pageInfo: result.pageInfo };
   }
 
   async create(
@@ -299,6 +327,169 @@ export class ProductionsService {
       );
       if (!submitted) throw changedConcurrently();
       return toDetailDto(submitted);
+    });
+  }
+
+  async createPair(
+    scope: ProductionScope,
+    projectId: string,
+    pair: ProductionPairCommand,
+  ) {
+    assertCapability(scope, "createDraft");
+    if (pair.cut.submitNow || pair.fill.submitNow)
+      assertCapability(scope, "submit");
+    if (
+      pair.cut.kind !== "individual_activity" ||
+      pair.fill.kind !== "individual_activity"
+    )
+      throw resourceUnavailable("production-pair-kind");
+    const cutCommand = pair.cut as Extract<
+      ProductionCommand,
+      { kind: "individual_activity" }
+    >;
+    const requestedFillCommand = pair.fill as Extract<
+      ProductionCommand,
+      { kind: "individual_activity" }
+    >;
+    if (
+      pair.cut.productionDate !== pair.fill.productionDate ||
+      pair.cut.shift !== pair.fill.shift ||
+      pair.cut.submitNow !== pair.fill.submitNow
+    )
+      throw resourceUnavailable("production-pair-context");
+    const compactionReductionPercent =
+      requestedFillCommand.individualActivity.compactionReductionPercent;
+    if (compactionReductionPercent === null)
+      throw resourceUnavailable("compaction-factor");
+    return this.context.transaction(async (transactionContext) => {
+      const cutData = await this.resolveWriteData(
+        transactionContext,
+        scope,
+        projectId,
+        cutCommand,
+      );
+      if (
+        cutData.serviceCodeSnapshot !== "cut" ||
+        cutCommand.individualActivity.destinationKind !== "fill" ||
+        cutCommand.individualActivity.destinationWorkFrontId !==
+          requestedFillCommand.individualActivity.workFrontId
+      )
+        throw resourceUnavailable("cut-fill-destination");
+      const compactedQuantity = calculateCompactedVolumeFromReduction(
+        cutData.officialQuantity,
+        compactionReductionPercent,
+      );
+      const fillCommand: Extract<
+        ProductionCommand,
+        { kind: "individual_activity" }
+      > = {
+        ...requestedFillCommand,
+        entryMode: "direct_total",
+        truckSummaries: [],
+        individualActivity: {
+          ...requestedFillCommand.individualActivity,
+          operationalQuantity: compactedQuantity,
+          volumeCondition: "compacted",
+        },
+      };
+      const fillData = await this.resolveWriteData(
+        transactionContext,
+        scope,
+        projectId,
+        fillCommand,
+      );
+      if (fillData.serviceCodeSnapshot !== "fill")
+        throw resourceUnavailable("fill-service");
+      const count = await countShiftProductionsHandler(
+        transactionContext,
+        scope,
+        projectId,
+        cutData.productionDate,
+        cutData.shift,
+      );
+      if (count > 198)
+        throw new AppError({
+          code: "PRODUCTION_SHIFT_LIMIT_EXCEEDED",
+          message: "The production limit for this project shift was reached",
+          statusCode: 409,
+          data: { limit: 200 },
+        });
+      if (pair.cut.submitNow) {
+        validateApprovalData(cutData, {
+          operationalQuantity: cutData.officialQuantity,
+          tripCount: cutData.truckSummaries.reduce(
+            (sum, truck) => sum + truck.acceptedTrips,
+            0,
+          ),
+        });
+        validateApprovalData(fillData, {
+          operationalQuantity: fillData.officialQuantity,
+          tripCount: 0,
+        });
+      }
+      const cutRecord = await createProductionHandler(
+        transactionContext,
+        scope,
+        projectId,
+        cutData,
+        {
+          approved: false,
+          event: "CREATED",
+          snapshot: snapshotOf(pair.cut, "created"),
+        },
+      );
+      const fillRecord = await createProductionHandler(
+        transactionContext,
+        scope,
+        projectId,
+        fillData,
+        {
+          approved: false,
+          event: "CREATED",
+          snapshot: snapshotOf(fillCommand, "created"),
+        },
+      );
+      if (!pair.cut.submitNow)
+        return { cut: toDetailDto(cutRecord), fill: toDetailDto(fillRecord) };
+      const [submittedCut, submittedFill] = await Promise.all([
+        transitionProductionHandler(
+          transactionContext,
+          scope,
+          projectId,
+          cutRecord.id,
+          {
+            expectedRevision: cutRecord.revision,
+            from: ["DRAFT"],
+            to: "SUBMITTED",
+            event: "SUBMITTED",
+            phase: "SUBMISSION",
+            decision: "SUBMITTED",
+            reason: null,
+            snapshot: snapshotOf(pair.cut, "submitted"),
+          },
+        ),
+        transitionProductionHandler(
+          transactionContext,
+          scope,
+          projectId,
+          fillRecord.id,
+          {
+            expectedRevision: fillRecord.revision,
+            from: ["DRAFT"],
+            to: "SUBMITTED",
+            event: "SUBMITTED",
+            phase: "SUBMISSION",
+            decision: "SUBMITTED",
+            reason: null,
+            snapshot: snapshotOf(fillCommand, "submitted"),
+          },
+        ),
+      ]);
+      if (!submittedCut || !submittedFill) throw changedConcurrently();
+      return {
+        cut: toDetailDto(submittedCut),
+        fill: toDetailDto(submittedFill),
+      };
     });
   }
 
@@ -561,8 +752,12 @@ export class ProductionsService {
     assertCapability(scope, "approve");
     if (
       current.status !== "AWAITING_TECHNICAL" &&
-      !(current.kind === "INDIVIDUAL_ACTIVITY" && current.status === "FIELD_CHECKED")
-    ) throw immutable();
+      !(
+        current.kind === "INDIVIDUAL_ACTIVITY" &&
+        current.status === "FIELD_CHECKED"
+      )
+    )
+      throw immutable();
     validateTechnicalApproval(current);
     const record = await this.context.transaction((transactionContext) =>
       transitionProductionHandler(
@@ -572,9 +767,10 @@ export class ProductionsService {
         productionId,
         {
           expectedRevision: command.expectedRevision,
-          from: current.kind === "INDIVIDUAL_ACTIVITY"
-            ? ["FIELD_CHECKED", "AWAITING_TECHNICAL"]
-            : ["AWAITING_TECHNICAL"],
+          from:
+            current.kind === "INDIVIDUAL_ACTIVITY"
+              ? ["FIELD_CHECKED", "AWAITING_TECHNICAL"]
+              : ["AWAITING_TECHNICAL"],
           to: "APPROVED",
           event: "APPROVED",
           phase: "TECHNICAL_CHECK",
@@ -1063,15 +1259,18 @@ export class ProductionsService {
         usesTrucks &&
         (!isVolumetric(service.unitCode) ||
           !command.truckSummaries.length ||
-          !command.individualActivity.dmtKm ||
-          Number(command.individualActivity.dmtKm) <= 0)
+          (!command.individualActivity.dmtKm &&
+            command.truckSummaries.some((truck) => !truck.dmtKm)))
       )
         throw resourceUnavailable("truck-summary");
       if (
-        (usesTrucks && isFill &&
-          (!command.individualActivity.swellFactor ||
-            Number(command.individualActivity.swellFactor) <= 1)) ||
-        (command.individualActivity.swellFactor && !isFill)
+        (usesTrucks &&
+          isFill &&
+          command.individualActivity.swellFactor === null &&
+          command.individualActivity.compactionReductionPercent === null) ||
+        ((command.individualActivity.swellFactor ||
+          command.individualActivity.compactionReductionPercent !== null) &&
+          !isFill)
       )
         throw resourceUnavailable("swell-factor");
     }
@@ -1210,12 +1409,13 @@ export class ProductionsService {
       service.productionProfile,
       service.serviceCode,
     );
-    if (command.kind === "material_movement") validateDmt(service.dmtPolicy, {
-      ...normalized,
-      origin: effectiveRoute?.origin ?? normalized.origin,
-      destination: effectiveRoute?.destination ?? normalized.destination,
-      dmtKm: effectiveRoute?.loadedDistanceKm ?? normalized.dmtKm,
-    });
+    if (command.kind === "material_movement")
+      validateDmt(service.dmtPolicy, {
+        ...normalized,
+        origin: effectiveRoute?.origin ?? normalized.origin,
+        destination: effectiveRoute?.destination ?? normalized.destination,
+        dmtKm: effectiveRoute?.loadedDistanceKm ?? normalized.dmtKm,
+      });
     const directQuantity = normalized.directQuantity
       ? normalizeDecimal(normalized.directQuantity, 3)
       : null;
@@ -1282,7 +1482,11 @@ export class ProductionsService {
         ? command.truckSummaries.map((truck) => {
             const specification = assignmentByMachine.get(truck.machineId)
               ?.machine.transportSpecification;
-            if (!specification || specification.capacityUnitCode === "LITER" || truck.acceptedTrips < 1)
+            if (
+              !specification ||
+              specification.capacityUnitCode === "LITER" ||
+              truck.acceptedTrips < 1
+            )
               throw resourceUnavailable("truck");
             return calculateTruckSummaryVolume({
               capacity: transportCapacityInM3(
@@ -1304,18 +1508,43 @@ export class ProductionsService {
       ),
       3,
     );
+    const activityDmtKm =
+      command.kind === "individual_activity" &&
+      command.entryMode === "truck_summary" &&
+      command.truckSummaries.every((truck) => truck.dmtKm)
+        ? (() => {
+            const volume = activityTruckVolumes.reduce(
+              (sum, value) => sum + decimalToScaled(value, 3),
+              BigInt(0),
+            );
+            if (volume === BigInt(0)) return null;
+            const weighted = activityTruckVolumes.reduce(
+              (sum, value, index) =>
+                sum +
+                decimalToScaled(value, 3) *
+                  decimalToScaled(command.truckSummaries[index]!.dmtKm!, 3),
+              BigInt(0),
+            );
+            return scaledToDecimal((weighted + volume / BigInt(2)) / volume, 3);
+          })()
+        : normalized.dmtKm;
     const activityQuantity =
       command.kind === "individual_activity" &&
       command.entryMode === "truck_summary"
-        ? command.individualActivity.swellFactor
-          ? scaledToDecimal(
-              (decimalToScaled(activityLooseVolume, 3) * BigInt(1_000_000) +
-                decimalToScaled(command.individualActivity.swellFactor, 6) /
-                  BigInt(2)) /
-                decimalToScaled(command.individualActivity.swellFactor, 6),
-              3,
+        ? command.individualActivity.compactionReductionPercent !== null
+          ? calculateCompactedVolumeFromReduction(
+              activityLooseVolume,
+              command.individualActivity.compactionReductionPercent,
             )
-          : activityLooseVolume
+          : command.individualActivity.swellFactor
+            ? scaledToDecimal(
+                (decimalToScaled(activityLooseVolume, 3) * BigInt(1_000_000) +
+                  decimalToScaled(command.individualActivity.swellFactor, 6) /
+                    BigInt(2)) /
+                  decimalToScaled(command.individualActivity.swellFactor, 6),
+                3,
+              )
+            : activityLooseVolume
         : null;
     const effectiveDirectQuantity =
       movementCalculation?.actualWeightT ??
@@ -1395,7 +1624,7 @@ export class ProductionsService {
       destination: effectiveRoute?.destination ?? normalized.destination,
       dmtKm: effectiveRoute?.loadedDistanceKm
         ? normalizeDecimal(effectiveRoute.loadedDistanceKm, 3)
-        : normalized.dmtKm,
+        : activityDmtKm,
       layerThicknessCm: normalized.layerThicknessCm
         ? normalizeDecimal(normalized.layerThicknessCm, 2)
         : null,
@@ -1428,6 +1657,16 @@ export class ProductionsService {
               exceptionalFromMovement:
                 command.individualActivity.exceptionalFromMovement,
               exceptionReason: command.individualActivity.exceptionReason,
+              destinationKind: command.individualActivity.destinationKind
+                ? (command.individualActivity.destinationKind.toUpperCase() as
+                    | "FILL"
+                    | "DISPOSAL"
+                    | "OTHER")
+                : null,
+              destinationWorkFrontId:
+                command.individualActivity.destinationWorkFrontId,
+              compactionReductionPercent:
+                command.individualActivity.compactionReductionPercent,
             }
           : null,
       materialMovement:
@@ -1463,43 +1702,49 @@ export class ProductionsService {
         movementCalculation,
         activityQuantity,
       ),
-      truckSummaries:
-        command.truckSummaries.length
-          ? command.truckSummaries.map((truck) => {
-              const assignment = assignmentByMachine.get(truck.machineId);
-              const specification = assignment?.machine.transportSpecification;
-              if (!assignment || !specification)
-                throw resourceUnavailable("truck");
-              if (
-                truck.driverEmploymentId &&
-                truck.driverEmploymentId !== assignment.operatorEmploymentId
-              )
-                throw resourceUnavailable("driver");
-              return {
-                machineId: truck.machineId,
-                driverEmploymentId: truck.driverEmploymentId,
-                driverNameSnapshot:
-                  truck.driverEmploymentId && assignment.operator
-                    ? assignment.operator.person.displayName
-                    : null,
-                machineNameSnapshot: assignment.machine.name,
-                identifierSnapshot:
-                  assignment.machine.identifiers[0]?.value ?? null,
-                capacitySnapshot: specification.effectiveCapacity.toFixed(3),
-                capacityUnitCodeSnapshot: specification.capacityUnitCode,
-                acceptedTrips: truck.acceptedTrips,
-                rejectedTrips: truck.rejectedTrips,
-                partialTripCount: truck.partialTripCount,
-                partialVolume: normalizeDecimal(truck.partialVolume, 3),
-                actualWeightT: truck.actualWeightT
-                  ? normalizeDecimal(truck.actualWeightT, 3)
+      truckSummaries: command.truckSummaries.length
+        ? command.truckSummaries.map((truck) => {
+            const assignment = assignmentByMachine.get(truck.machineId);
+            const specification = assignment?.machine.transportSpecification;
+            if (!assignment || !specification)
+              throw resourceUnavailable("truck");
+            if (
+              truck.driverEmploymentId &&
+              truck.driverEmploymentId !== assignment.operatorEmploymentId
+            )
+              throw resourceUnavailable("driver");
+            return {
+              machineId: truck.machineId,
+              driverEmploymentId: truck.driverEmploymentId,
+              driverNameSnapshot:
+                truck.driverEmploymentId && assignment.operator
+                  ? assignment.operator.person.displayName
                   : null,
-                loadFactor: normalizeDecimal(truck.loadFactor, 6),
-                averageCycleMinutes: truck.averageCycleMinutes,
-                occurrenceNotes: truck.occurrenceNotes,
-              };
-            })
-          : [],
+              machineNameSnapshot: assignment.machine.name,
+              identifierSnapshot:
+                assignment.machine.identifiers[0]?.value ?? null,
+              capacitySnapshot: specification.effectiveCapacity.toFixed(3),
+              capacityUnitCodeSnapshot: specification.capacityUnitCode,
+              acceptedTrips: truck.acceptedTrips,
+              rejectedTrips: truck.rejectedTrips,
+              partialTripCount: truck.partialTripCount,
+              partialVolume: normalizeDecimal(truck.partialVolume, 3),
+              actualWeightT: truck.actualWeightT
+                ? normalizeDecimal(truck.actualWeightT, 3)
+                : null,
+              loadFactor: normalizeDecimal(truck.loadFactor, 6),
+              averageCycleMinutes: truck.averageCycleMinutes,
+              averageLoadingMinutes: truck.averageLoadingMinutes
+                ? normalizeDecimal(truck.averageLoadingMinutes, 2)
+                : null,
+              averageUnloadingMinutes: truck.averageUnloadingMinutes
+                ? normalizeDecimal(truck.averageUnloadingMinutes, 2)
+                : null,
+              dmtKm: truck.dmtKm ? normalizeDecimal(truck.dmtKm, 3) : null,
+              occurrenceNotes: truck.occurrenceNotes,
+            };
+          })
+        : [],
       equipment,
     };
   }
@@ -1561,6 +1806,13 @@ export function toDetailDto(record: ProductionRecord) {
           exceptionalFromMovement:
             record.individualActivity.exceptionalFromMovement,
           exceptionReason: record.individualActivity.exceptionReason,
+          destinationKind:
+            record.individualActivity.destinationKind?.toLowerCase() ?? null,
+          destinationWorkFrontId:
+            record.individualActivity.destinationWorkFrontId,
+          compactionReductionPercent:
+            record.individualActivity.compactionReductionPercent?.toFixed(2) ??
+            null,
         }
       : null,
     materialMovement: record.materialMovement
@@ -1618,6 +1870,10 @@ export function toDetailDto(record: ProductionRecord) {
       actualWeightT: truck.actualWeightT?.toFixed(3) ?? null,
       loadFactor: truck.loadFactor.toFixed(6),
       averageCycleMinutes: truck.averageCycleMinutes,
+      averageLoadingMinutes: truck.averageLoadingMinutes?.toFixed(2) ?? null,
+      averageUnloadingMinutes:
+        truck.averageUnloadingMinutes?.toFixed(2) ?? null,
+      dmtKm: truck.dmtKm?.toFixed(3) ?? null,
       occurrenceNotes: truck.occurrenceNotes,
       calculatedVolume: calculateTruckSummaryVolume({
         capacity: truck.capacitySnapshot.toFixed(3),
@@ -1968,10 +2224,10 @@ function validateTechnicalApproval(record: ProductionRecord) {
     record.kind === "INDIVIDUAL_ACTIVITY"
       ? []
       : record.productionProfileSnapshot === "COMPACTION"
-      ? ["COMPACTION"]
-      : record.productionProfileSnapshot === "GRADING"
-        ? ["FINISHING"]
-        : [];
+        ? ["COMPACTION"]
+        : record.productionProfileSnapshot === "GRADING"
+          ? ["FINISHING"]
+          : [];
   const missing = requiredTypes.filter(
     (type) =>
       latestByType.get(type as "COMPACTION" | "FINISHING")?.status !==
@@ -2380,38 +2636,39 @@ function resolveComponents(
           activity.volumeCondition,
         ),
         volumeCondition,
-        quantities: (activityQuantity ?? activity.operationalQuantity)
-          ? [
-              {
-                kind: "OPERATIONAL",
-                method: activityQuantity
-                  ? "TRUCK_SUMMARY"
-                  : (activity.quantityMethod.toUpperCase() as
-                      | "MANUAL"
-                      | "TOPOGRAPHY"
-                      | "LABORATORY"),
-                value: normalizeDecimal(
-                  activityQuantity ?? activity.operationalQuantity!,
-                  3,
-                ),
-                unitCode: explicitUnitCode(
-                  service.unitCode,
-                  activity.volumeCondition,
-                ),
-                volumeCondition,
-                sourceSnapshot: {
-                  enteredBy: "wizard",
-                  accepted: false,
-                  ...(activityQuantity
-                    ? {
-                        truckSummary: true,
-                        swellFactor: activity.swellFactor,
-                      }
-                    : {}),
+        quantities:
+          (activityQuantity ?? activity.operationalQuantity)
+            ? [
+                {
+                  kind: "OPERATIONAL",
+                  method: activityQuantity
+                    ? "TRUCK_SUMMARY"
+                    : (activity.quantityMethod.toUpperCase() as
+                        | "MANUAL"
+                        | "TOPOGRAPHY"
+                        | "LABORATORY"),
+                  value: normalizeDecimal(
+                    activityQuantity ?? activity.operationalQuantity!,
+                    3,
+                  ),
+                  unitCode: explicitUnitCode(
+                    service.unitCode,
+                    activity.volumeCondition,
+                  ),
+                  volumeCondition,
+                  sourceSnapshot: {
+                    enteredBy: "wizard",
+                    accepted: false,
+                    ...(activityQuantity
+                      ? {
+                          truckSummary: true,
+                          swellFactor: activity.swellFactor,
+                        }
+                      : {}),
+                  },
                 },
-              },
-            ]
-          : [],
+              ]
+            : [],
       },
     ];
   }

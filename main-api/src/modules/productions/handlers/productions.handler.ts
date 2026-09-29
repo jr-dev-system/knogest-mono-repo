@@ -4,7 +4,11 @@ import type {
   CursorBoundary,
   SortDirection,
 } from "../../../lib/utils/cursor-pagination";
-import { invalidCursorError } from "../../../lib/utils/cursor-pagination";
+import {
+  buildCursorPage,
+  invalidCursorError,
+  parseBoundCursor,
+} from "../../../lib/utils/cursor-pagination";
 
 export type ProductionScope = {
   corporationId: string;
@@ -96,6 +100,9 @@ export type ProductionWriteData = {
     elevation: string | null;
     exceptionalFromMovement: boolean;
     exceptionReason: string | null;
+    destinationKind: "FILL" | "DISPOSAL" | "OTHER" | null;
+    destinationWorkFrontId: string | null;
+    compactionReductionPercent: string | null;
   } | null;
   materialMovement: {
     materialRevisionId: string | null;
@@ -159,6 +166,9 @@ export type ProductionWriteData = {
     actualWeightT: string | null;
     loadFactor: string;
     averageCycleMinutes: number | null;
+    averageLoadingMinutes: string | null;
+    averageUnloadingMinutes: string | null;
+    dmtKm: string | null;
     occurrenceNotes: string | null;
   }>;
   equipment: Array<{
@@ -269,15 +279,15 @@ export async function findProductionOptionsContextHandler(
   const machineIds = shiftAssignments.map((item) => item.machineId);
   const [employments, machines] = await Promise.all([
     employmentIds.length
-    ? await context.prisma.employment.findMany({
-        where: {
-          corporationId: scope.corporationId,
-          companyId: scope.companyId,
-          id: { in: employmentIds },
-        },
-        include: { person: true },
-      })
-    : [],
+      ? await context.prisma.employment.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            companyId: scope.companyId,
+            id: { in: employmentIds },
+          },
+          include: { person: true },
+        })
+      : [],
     machineIds.length
       ? context.prisma.machine.findMany({
           where: {
@@ -295,7 +305,7 @@ export async function findProductionOptionsContextHandler(
                   { releasedAt: { gt: interval.startAt } },
                 ],
               },
-              orderBy: { createdAt: "desc" },
+              orderBy: [{ kind: "asc" }, { createdAt: "desc" }],
               take: 1,
             },
           },
@@ -312,19 +322,125 @@ export async function findProductionOptionsContextHandler(
     assignments: shiftAssignments.flatMap((assignment) => {
       const machine = machineMap.get(assignment.machineId);
       if (!machine) return [];
-      return [{
-        machineId: assignment.machineId,
-        operatorEmploymentId: assignment.operatorEmploymentId,
-        machine,
-        operator: assignment.operatorEmploymentId
-          ? employmentMap.get(assignment.operatorEmploymentId) ?? null
-          : null,
-      }];
+      return [
+        {
+          machineId: assignment.machineId,
+          operatorEmploymentId: assignment.operatorEmploymentId,
+          machine,
+          operator: assignment.operatorEmploymentId
+            ? (employmentMap.get(assignment.operatorEmploymentId) ?? null)
+            : null,
+        },
+      ];
     }),
     employeeAllocations: employeeAllocations.flatMap((allocation) => {
       const employment = employmentMap.get(allocation.employmentId);
       return employment ? [{ ...allocation, employment }] : [];
     }),
+  };
+}
+
+export async function listProductionTruckOptionsHandler(
+  context: HandlerContext,
+  scope: ProductionScope,
+  projectId: string,
+  input: {
+    interval: { startAt: Date; endAt: Date };
+    shift: "DAY" | "NIGHT";
+    productionDate: string;
+    limit: number;
+    cursor?: string;
+  },
+) {
+  const options = await findProductionOptionsContextHandler(
+    context,
+    scope,
+    projectId,
+    input.interval,
+    input.shift,
+  );
+  if (!options) return null;
+  const cursorScope = {
+    corporationId: scope.corporationId,
+    companyId: scope.companyId,
+    projectId,
+  };
+  const cursorQuery = {
+    productionDate: input.productionDate,
+    shift: input.shift,
+  };
+  const boundary = parseBoundCursor({
+    cursor: input.cursor,
+    resource: "production-truck-options",
+    scope: cursorScope,
+    query: cursorQuery,
+    sortBy: "name",
+    sortDirection: "asc",
+  });
+  const unique = new Map(
+    options.assignments.flatMap((assignment) => {
+      const specification = assignment.machine.transportSpecification;
+      if (
+        !specification ||
+        specification.capacityUnitCode === "LITER" ||
+        !specification.effectiveCapacity.gt(0)
+      )
+        return [];
+      return [[assignment.machine.id, assignment] as const];
+    }),
+  );
+  const ordered = [...unique.values()]
+    .sort(
+      (left, right) =>
+        left.machine.name.localeCompare(right.machine.name, "pt-BR") ||
+        left.machine.id.localeCompare(right.machine.id),
+    )
+    .filter(
+      (assignment) =>
+        !boundary ||
+        assignment.machine.name.localeCompare(String(boundary.value), "pt-BR") >
+          0 ||
+        (assignment.machine.name === String(boundary.value) &&
+          assignment.machine.id > boundary.id),
+    )
+    .slice(0, input.limit + 1);
+  const page = buildCursorPage({
+    items: ordered,
+    limit: input.limit,
+    resource: "production-truck-options",
+    scope: cursorScope,
+    query: cursorQuery,
+    sortBy: "name",
+    sortDirection: "asc",
+    getLast: (assignment) => ({
+      value: assignment.machine.name,
+      id: assignment.machine.id,
+    }),
+  });
+  return {
+    project: options.project,
+    shiftEnabled: options.shiftEnabled,
+    data: page.data.map((assignment) => {
+      const specification = assignment.machine.transportSpecification!;
+      const identifier = assignment.machine.identifiers[0] ?? null;
+      return {
+        id: assignment.machine.id,
+        name: assignment.machine.name,
+        manufacturer: assignment.machine.manufacturer,
+        model: assignment.machine.model,
+        identifier: identifier?.value ?? null,
+        identifierKind: identifier?.kind ?? null,
+        effectiveCapacity: specification.effectiveCapacity.toFixed(3),
+        capacityUnitCode: specification.capacityUnitCode,
+        driver: assignment.operator
+          ? {
+              id: assignment.operator.id,
+              name: assignment.operator.person.displayName,
+            }
+          : null,
+      };
+    }),
+    pageInfo: page.pageInfo,
   };
 }
 

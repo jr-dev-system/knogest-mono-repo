@@ -2,7 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import {
   productionCommandSchema,
+  productionPairCommandSchema,
   productionQualityCheckSchema,
+  productionTruckOptionsQuerySchema,
   productionTripSchema,
 } from "./productions.dto";
 import { calculateProductionMetrics } from "./productions.service";
@@ -45,13 +47,124 @@ describe("production command", () => {
         volumeCondition: "bank",
         dmtKm: "2.400",
       },
-      truckSummaries: [{ machineId, acceptedTrips: 2 }],
+      truckSummaries: [
+        {
+          machineId,
+          acceptedTrips: 2,
+          averageLoadingMinutes: "5.30",
+          averageUnloadingMinutes: "3.15",
+          dmtKm: "2.400",
+        },
+      ],
     });
     expect(command).toMatchObject({
       kind: "individual_activity",
       entryMode: "truck_summary",
       equipment: [],
-      truckSummaries: [{ machineId, acceptedTrips: 2 }],
+      truckSummaries: [
+        {
+          machineId,
+          acceptedTrips: 2,
+          averageLoadingMinutes: "5.30",
+          averageUnloadingMinutes: "3.15",
+          dmtKm: "2.400",
+        },
+      ],
+    });
+  });
+
+  it("accepts the atomic cut and fill pair contract", () => {
+    const common = {
+      kind: "individual_activity" as const,
+      productionDate: "2026-07-28",
+      shift: "day" as const,
+      responsibleEmploymentId: frontId,
+    };
+    expect(
+      productionPairCommandSchema.parse({
+        cut: {
+          ...common,
+          entryMode: "truck_summary",
+          individualActivity: {
+            workFrontId: frontId,
+            workFrontServiceId: serviceId,
+            volumeCondition: "loose",
+            dmtKm: "2.400",
+            destinationKind: "fill",
+            destinationWorkFrontId: machineId,
+          },
+          truckSummaries: [{ machineId, acceptedTrips: 2, dmtKm: "2.400" }],
+        },
+        fill: {
+          ...common,
+          individualActivity: {
+            workFrontId: machineId,
+            workFrontServiceId: serviceId,
+            operationalQuantity: "19.167",
+            volumeCondition: "compacted",
+            compactionReductionPercent: "20.00",
+          },
+        },
+      }),
+    ).toMatchObject({
+      cut: { individualActivity: { destinationKind: "fill" } },
+      fill: {
+        individualActivity: { compactionReductionPercent: "20.00" },
+      },
+    });
+  });
+
+  it("rejects impossible minute-second values and out-of-range swell percentages", () => {
+    const base = {
+      kind: "individual_activity" as const,
+      entryMode: "truck_summary" as const,
+      productionDate: "2026-07-28",
+      shift: "day" as const,
+      responsibleEmploymentId: frontId,
+      individualActivity: {
+        workFrontId: frontId,
+        workFrontServiceId: serviceId,
+        volumeCondition: "loose" as const,
+        dmtKm: "2.400",
+      },
+      truckSummaries: [
+        {
+          machineId,
+          acceptedTrips: 2,
+          averageLoadingMinutes: "2.89",
+          averageUnloadingMinutes: "3.15",
+          dmtKm: "2.400",
+        },
+      ],
+    };
+    expect(productionCommandSchema.safeParse(base).success).toBe(false);
+    expect(
+      productionCommandSchema.safeParse({
+        ...base,
+        individualActivity: {
+          ...base.individualActivity,
+          compactionReductionPercent: "100.01",
+        },
+        truckSummaries: [
+          {
+            ...base.truckSummaries[0],
+            averageLoadingMinutes: "2.30",
+          },
+        ],
+      }).success,
+    ).toBe(false);
+  });
+
+  it("binds truck option cursors to a bounded page query", () => {
+    expect(
+      productionTruckOptionsQuerySchema.parse({
+        productionDate: "2026-07-28",
+        shift: "night",
+      }),
+    ).toEqual({
+      productionDate: "2026-07-28",
+      shift: "night",
+      limit: 25,
     });
   });
 

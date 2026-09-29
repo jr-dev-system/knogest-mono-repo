@@ -15,7 +15,9 @@ import {
   productionHistoryQuerySchema,
   productionListQuerySchema,
   productionOptionsQuerySchema,
+  productionPairCommandSchema,
   productionParamsSchema,
+  productionTruckOptionsQuerySchema,
   productionReopenSchema,
   productionQualityCheckSchema,
   productionTransitionSchema,
@@ -31,6 +33,20 @@ const decimal = {
   pattern: "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
 } as const;
 const nullableDecimal = { ...decimal, nullable: true } as const;
+const nullableMinuteSecondDuration = {
+  type: "string",
+  nullable: true,
+  pattern:
+    "^(?!0\\.00$)(?:(?:0|[1-9]\\d{0,2}|1[0-3]\\d{2}|14[0-3]\\d)\\.[0-5]\\d|1440\\.00)$",
+  description:
+    "Minutes and seconds encoded as MM.SS; the two fractional digits range from 00 to 59.",
+} as const;
+const nullablePercentage = {
+  type: "string",
+  nullable: true,
+  pattern: "^(?:(?:0|[1-9]\\d?)\\.\\d{2}|100\\.00)$",
+  description: "Percentage from 0.00 to 100.00.",
+} as const;
 const shift = { type: "string", enum: ["day", "night"] } as const;
 const productionStatus = {
   type: "string",
@@ -219,6 +235,7 @@ const individualActivityCommandSchema = {
     operationalQuantity: nullableDecimal,
     dmtKm: nullableDecimal,
     swellFactor: nullableDecimal,
+    compactionReductionPercent: nullablePercentage,
     conversionFactor: nullableDecimal,
     layerThicknessCm: nullableDecimal,
     compactionPasses: {
@@ -230,6 +247,12 @@ const individualActivityCommandSchema = {
     moistureCondition: { type: "string", nullable: true, maxLength: 120 },
     exceptionalFromMovement: { type: "boolean" },
     exceptionReason: { type: "string", nullable: true, maxLength: 500 },
+    destinationKind: {
+      type: "string",
+      nullable: true,
+      enum: ["fill", "disposal", "other"],
+    },
+    destinationWorkFrontId: { ...uuid, nullable: true },
   },
 } as const;
 const movementComponentCommandSchema = {
@@ -330,6 +353,9 @@ const truckSummaryCommandSchema = {
       minimum: 0,
       maximum: 1440,
     },
+    averageLoadingMinutes: nullableMinuteSecondDuration,
+    averageUnloadingMinutes: nullableMinuteSecondDuration,
+    dmtKm: nullableDecimal,
     occurrenceNotes: { type: "string", nullable: true, maxLength: 500 },
   },
 } as const;
@@ -794,6 +820,102 @@ export const v1ProductionsController = async (app: FastifyInstance) => {
   );
 
   app.get(
+    "/projects/:projectId/productions/truck-options",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(productionParamsSchema),
+        validateQuery(productionTruckOptionsQuerySchema),
+      ],
+      schema: {
+        tags: ["Project productions"],
+        summary: "List available trucks for a production shift",
+        security: [{ bearerAuth: [] }],
+        params: projectParams,
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          required: ["productionDate", "shift"],
+          properties: {
+            productionDate: { type: "string", format: "date" },
+            shift,
+            limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+            cursor: { type: "string", maxLength: 2048 },
+          },
+        },
+        response: {
+          200: successSchema({
+            type: "object",
+            additionalProperties: false,
+            required: ["data", "pageInfo"],
+            properties: {
+              data: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: false,
+                  required: [
+                    "id",
+                    "name",
+                    "manufacturer",
+                    "model",
+                    "identifier",
+                    "identifierKind",
+                    "effectiveCapacity",
+                    "capacityUnitCode",
+                    "driver",
+                  ],
+                  properties: {
+                    id: uuid,
+                    name: { type: "string" },
+                    manufacturer: { type: "string" },
+                    model: { type: "string" },
+                    identifier: nullableString,
+                    identifierKind: {
+                      type: "string",
+                      nullable: true,
+                      enum: ["PLATE", "COMPANY_TAG"],
+                    },
+                    effectiveCapacity: decimal,
+                    capacityUnitCode: { type: "string" },
+                    driver: {
+                      type: "object",
+                      nullable: true,
+                      required: ["id", "name"],
+                      properties: { id: uuid, name: { type: "string" } },
+                    },
+                  },
+                },
+              },
+              pageInfo: {
+                type: "object",
+                additionalProperties: false,
+                required: ["hasNextPage", "nextCursor"],
+                properties: {
+                  hasNextPage: { type: "boolean" },
+                  nextCursor: { type: "string", nullable: true },
+                },
+              },
+            },
+          }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId } = request.params as z.infer<
+        typeof productionParamsSchema
+      >;
+      const data = await service.truckOptions(
+        scopeFromRequest(request),
+        projectId,
+        request.query as z.infer<typeof productionTruckOptionsQuerySchema>,
+      );
+      return jsonResponse.success({ reply, data });
+    },
+  );
+
+  app.get(
     "/projects/:projectId/productions/:productionId",
     {
       preHandler: [
@@ -920,6 +1042,55 @@ export const v1ProductionsController = async (app: FastifyInstance) => {
         scopeFromRequest(request),
         projectId,
         request.body as z.infer<typeof productionCommandSchema>,
+      );
+      return jsonResponse.success({ reply, data, statusCode: 201 });
+    },
+  );
+
+  app.post(
+    "/projects/:projectId/productions/cut-fill-pair",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(productionParamsSchema),
+        validateBody(productionPairCommandSchema),
+      ],
+      schema: {
+        tags: ["Project productions"],
+        summary: "Create an atomic cut and fill production pair",
+        security: [{ bearerAuth: [] }],
+        params: projectParams,
+        body: {
+          type: "object",
+          additionalProperties: false,
+          required: ["cut", "fill"],
+          properties: {
+            cut: productionCommandOpenApiSchema,
+            fill: productionCommandOpenApiSchema,
+          },
+        },
+        response: {
+          201: successSchema({
+            type: "object",
+            additionalProperties: false,
+            required: ["cut", "fill"],
+            properties: {
+              cut: productionDetailSchema,
+              fill: productionDetailSchema,
+            },
+          }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId } = request.params as z.infer<
+        typeof productionParamsSchema
+      >;
+      const data = await service.createPair(
+        scopeFromRequest(request),
+        projectId,
+        request.body as z.infer<typeof productionPairCommandSchema>,
       );
       return jsonResponse.success({ reply, data, statusCode: 201 });
     },
