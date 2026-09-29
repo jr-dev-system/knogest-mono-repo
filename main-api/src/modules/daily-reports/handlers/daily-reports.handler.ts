@@ -54,6 +54,7 @@ export type DailyReportWriteData = {
     absenceReason?: string | null;
     checkInAt?: Date | null;
     overtimeConfirmed?: boolean;
+    overtimeEnabled?: boolean;
   }>;
   machines: Array<{
     machineId: string;
@@ -153,6 +154,7 @@ export async function findProjectDailyReportContextHandler(
       select: {
         employmentId: true,
         jobRole: true,
+        overtimeEnabled: true,
       },
     }),
     context.prisma.projectMachineAllocation.findMany({

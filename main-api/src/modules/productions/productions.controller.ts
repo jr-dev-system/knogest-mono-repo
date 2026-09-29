@@ -217,6 +217,8 @@ const individualActivityCommandSchema = {
     materialCategory: { type: "string", nullable: true, maxLength: 120 },
     volumeCondition,
     operationalQuantity: nullableDecimal,
+    dmtKm: nullableDecimal,
+    swellFactor: nullableDecimal,
     conversionFactor: nullableDecimal,
     layerThicknessCm: nullableDecimal,
     compactionPasses: {
@@ -340,7 +342,7 @@ const productionCommandOpenApiSchema = {
       properties: {
         ...productionCommandCommonProperties,
         kind: { type: "string", const: "individual_activity" },
-        entryMode: { type: "string", const: "direct_total" },
+        entryMode: { type: "string", enum: ["direct_total", "truck_summary"] },
         individualActivity: individualActivityCommandSchema,
         truckSummaries: {
           type: "array",

@@ -322,6 +322,7 @@ const reportDetailSchema = {
           "completedFullShift",
           "regularWorkedMinutes",
           "overtimeMinutes",
+          "overtimeEnabled",
         ],
         properties: {
           employmentId: uuid,
@@ -330,6 +331,7 @@ const reportDetailSchema = {
           completedFullShift: { type: "boolean" },
           regularWorkedMinutes: { type: "integer" },
           overtimeMinutes: { type: "integer" },
+          overtimeEnabled: { type: "boolean" },
         },
       },
     },
@@ -466,11 +468,12 @@ const optionsSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: ["id", "name", "jobRole"],
+        required: ["id", "name", "jobRole", "overtimeEnabled"],
         properties: {
           id: uuid,
           name: { type: "string" },
           jobRole: { type: "string" },
+          overtimeEnabled: { type: "boolean" },
         },
       },
     },

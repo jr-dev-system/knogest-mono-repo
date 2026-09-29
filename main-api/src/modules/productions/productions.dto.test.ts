@@ -31,6 +31,30 @@ describe("production command", () => {
     });
   });
 
+  it("accepts a simple individual truck summary without quality or evidence", () => {
+    const command = productionCommandSchema.parse({
+      kind: "individual_activity",
+      entryMode: "truck_summary",
+      productionDate: "2026-07-28",
+      shift: "day",
+      submitNow: true,
+      responsibleEmploymentId: frontId,
+      individualActivity: {
+        workFrontId: frontId,
+        workFrontServiceId: serviceId,
+        volumeCondition: "bank",
+        dmtKm: "2.400",
+      },
+      truckSummaries: [{ machineId, acceptedTrips: 2 }],
+    });
+    expect(command).toMatchObject({
+      kind: "individual_activity",
+      entryMode: "truck_summary",
+      equipment: [],
+      truckSummaries: [{ machineId, acceptedTrips: 2 }],
+    });
+  });
+
   it("requires a reason for an individual activity exceptional to a movement", () => {
     expect(() =>
       productionCommandSchema.parse({
@@ -197,6 +221,27 @@ describe("production metrics", () => {
     });
     expect(metrics.officialQuantity).toBe("800.000");
     expect(metrics.transportMomentM3Km).toBeNull();
+  });
+
+  it("calculates the moment from loose truck volume even when fill quantity is compacted", () => {
+    const metrics = calculateProductionMetrics({
+      tripVolumesM3: ["23.000"],
+      measuredQuantity: null,
+      directQuantity: "18.400",
+      conversionFactor: null,
+      entryMode: "TRUCK_SUMMARY",
+      summaryTripCount: 2,
+      dmtKm: "2.400",
+      unitCode: "M3_COMPACTED",
+      startTime: null,
+      endTime: null,
+      endDayOffset: 0,
+      workedMinutes: 0,
+      stoppedMinutes: 0,
+    });
+    expect(metrics.officialQuantity).toBe("18.400");
+    expect(metrics.operationalVolumeM3).toBe("23.000");
+    expect(metrics.transportMomentM3Km).toBe("55.200");
   });
 
   it("uses an explicit conversion factor for trip-based non-volumetric services", () => {

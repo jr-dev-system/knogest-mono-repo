@@ -152,6 +152,8 @@ const individualActivitySchema = z
     materialCategory: z.string().trim().max(120).nullable().default(null),
     volumeCondition: volumeConditionSchema,
     operationalQuantity: decimal.nullable().default(null),
+    dmtKm: decimal.nullable().default(null),
+    swellFactor: positiveDecimal.nullable().default(null),
     conversionFactor: positiveDecimal.nullable().default(null),
     layerThicknessCm: decimal.nullable().default(null),
     compactionPasses: z.number().int().min(0).max(100).nullable().default(null),
@@ -249,7 +251,7 @@ export const productionCommandSchema = z
     productionCommandBase
       .extend({
         kind: z.literal("individual_activity"),
-        entryMode: z.literal("direct_total").default("direct_total"),
+        entryMode: z.enum(["direct_total", "truck_summary"]).default("direct_total"),
         individualActivity: individualActivitySchema,
         truckSummaries: z.array(truckSummarySchema).max(100).default([]),
       })

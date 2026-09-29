@@ -205,6 +205,7 @@ export class DailyReportsService {
           employmentId: item.employmentId,
           employeeNameSnapshot: employee.name,
           jobRoleSnapshot: employee.jobRole,
+          overtimeEnabled: employee.overtimeEnabled,
           completedFullShift: false,
           regularWorkedMinutes: 0,
           overtimeMinutes: 0,
@@ -394,18 +395,30 @@ export class DailyReportsService {
             if (!item) throw incomplete("employees");
             if (
               entry.attendanceStatus === "PRESENT" &&
-              (!item.checkInAt || !item.checkOutAt || !item.overtimeConfirmed)
+              (entry.overtimeEnabled &&
+                (!item.checkInAt || !item.checkOutAt || !item.overtimeConfirmed))
             )
               throw incomplete("employee-hours");
-            const start = item.checkInAt ? new Date(item.checkInAt) : null;
-            const end = item.checkOutAt ? new Date(item.checkOutAt) : null;
+            const fixedAttendance =
+              entry.attendanceStatus === "PRESENT" && !entry.overtimeEnabled;
+            const start = fixedAttendance
+              ? record.startedAt
+              : item.checkInAt
+                ? new Date(item.checkInAt)
+                : null;
+            const end = fixedAttendance
+              ? endedAt
+              : item.checkOutAt
+                ? new Date(item.checkOutAt)
+                : null;
+            const breaks = fixedAttendance ? [] : item.breaks;
             if (
               (start && end && end <= start) ||
               (start && start < record.startedAt) ||
               (end && end > endedAt)
             )
               throw incomplete("employee-hours");
-            const orderedBreaks = [...item.breaks].sort(
+            const orderedBreaks = [...breaks].sort(
               (left, right) =>
                 new Date(left.startAt).getTime() -
                 new Date(right.startAt).getTime(),
@@ -425,7 +438,7 @@ export class DailyReportsService {
               )
                 throw incomplete("employee-breaks");
             }
-            const breakMinutes = item.breaks.reduce(
+            const breakMinutes = breaks.reduce(
               (total, current) =>
                 total +
                 Math.round(
@@ -461,10 +474,14 @@ export class DailyReportsService {
                 checkInAt: start,
                 checkOutAt: end,
                 regularWorkedMinutes: Math.min(worked, planned),
-                overtimeMinutes: Math.max(0, worked - planned),
+                overtimeMinutes: entry.overtimeEnabled
+                  ? Math.max(0, worked - planned)
+                  : 0,
                 completedFullShift: worked >= planned,
-                overtimeConfirmed: item.overtimeConfirmed,
-                breaks: item.breaks.map((value) => ({
+                overtimeConfirmed: entry.overtimeEnabled
+                  ? item.overtimeConfirmed
+                  : true,
+                breaks: breaks.map((value) => ({
                   startAt: new Date(value.startAt),
                   endAt: new Date(value.endAt),
                 })),
@@ -668,6 +685,7 @@ export class DailyReportsService {
                 id: allocation.employmentId,
                 name: employment.person.displayName,
                 jobRole: allocation.jobRole,
+                overtimeEnabled: allocation.overtimeEnabled,
               },
             ]
           : [];
@@ -1201,6 +1219,7 @@ function toDetailDto(record: DailyReportRecord) {
       completedFullShift: item.completedFullShift,
       regularWorkedMinutes: item.regularWorkedMinutes,
       overtimeMinutes: item.overtimeMinutes,
+      overtimeEnabled: item.overtimeEnabled,
       attendanceStatus: item.attendanceStatus.toLowerCase(),
       absenceReason: item.absenceReason,
       checkInAt: item.checkInAt?.toISOString() ?? null,

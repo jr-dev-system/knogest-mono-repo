@@ -1673,6 +1673,7 @@ async function replaceEmployeeAllocations(
         compensationMode: allocation.compensationMode,
         compensationValue: allocation.compensationValue,
         overtimeRate: allocation.overtimeRate,
+        overtimeEnabled: allocation.overtimeEnabled,
         createdByUserId: scope.userId,
       },
     });
@@ -2847,6 +2848,7 @@ async function buildProjectSnapshot(
     compensationMode: allocation.compensationMode,
     compensationValue: decimalString(allocation.compensationValue, 2),
     overtimeRate: decimalString(allocation.overtimeRate, 2),
+    overtimeEnabled: allocation.overtimeEnabled,
     effectiveFrom: allocation.effectiveFrom.toISOString(),
   }));
 
@@ -3027,8 +3029,6 @@ async function buildProjectSnapshot(
       return [];
     });
     if (!services.length) planningBlockers.push("Informe ao menos um serviço.");
-    if (!front.requiresEmployees && !front.requiresMachines)
-      planningBlockers.push("Defina ao menos uma exigência de mobilização.");
     const employeeAssignments = workFrontEmployeeAssignments
       .filter((assignment) => assignment.workFrontId === front.id)
       .map((assignment) => ({
@@ -3063,10 +3063,6 @@ async function buildProjectSnapshot(
     const startBlockers = [...planningBlockers];
     if (project.status !== "ACTIVE")
       startBlockers.push("Inicie a obra antes de preparar esta frente.");
-    if (front.requiresEmployees && employeeAssignments.length === 0)
-      startBlockers.push("Mobilize ao menos uma pessoa nesta frente.");
-    if (front.requiresMachines && machineAssignments.length === 0)
-      startBlockers.push("Mobilize ao menos uma máquina nesta frente.");
     return {
       id: front.id,
       name: front.name,
@@ -3454,6 +3450,7 @@ export class ProjectsHandler {
               compensationMode: allocation.compensationMode,
               compensationValue: allocation.compensationValue,
               overtimeRate: allocation.overtimeRate,
+              overtimeEnabled: allocation.overtimeEnabled,
               createdByUserId: scope.userId,
             },
           });
@@ -3843,8 +3840,8 @@ export class ProjectsHandler {
           plannedEndDate: command.plannedEndDate
             ? new Date(`${command.plannedEndDate}T00:00:00.000Z`)
             : null,
-          requiresEmployees: command.requiresEmployees,
-          requiresMachines: command.requiresMachines,
+          requiresEmployees: false,
+          requiresMachines: false,
         },
         select: { id: true },
       });
@@ -3907,8 +3904,8 @@ export class ProjectsHandler {
           plannedEndDate: command.plannedEndDate
             ? new Date(`${command.plannedEndDate}T00:00:00.000Z`)
             : null,
-          requiresEmployees: command.requiresEmployees,
-          requiresMachines: command.requiresMachines,
+          requiresEmployees: false,
+          requiresMachines: false,
         },
       });
       await reconcileWorkFrontServices(
@@ -4082,6 +4079,7 @@ export class ProjectsHandler {
               item.compensationMode as ReadinessEmployeeAllocation["compensationMode"],
             compensationValue: item.compensationValue.toFixed(2),
             overtimeRate: item.overtimeRate.toFixed(2),
+            overtimeEnabled: item.overtimeEnabled,
           }))
       : command.allocations;
     const selectedEmploymentIds = new Set(
@@ -4104,6 +4102,7 @@ export class ProjectsHandler {
             item.compensationMode as ReadinessEmployeeAllocation["compensationMode"],
           compensationValue: item.compensationValue.toFixed(2),
           overtimeRate: item.overtimeRate.toFixed(2),
+          overtimeEnabled: item.overtimeEnabled,
         })),
       ...selectedAllocations,
     ];
@@ -5301,6 +5300,7 @@ export class ProjectsHandler {
         monthlyWorkloadHours: allocation.monthlyWorkloadHours,
         compensationMode: allocation.compensationMode,
         overtimeRate: allocation.overtimeRate.toFixed(2),
+        overtimeEnabled: allocation.overtimeEnabled,
       })),
       jobRoles: [...new Set(jobRoleRows.map((item) => item.jobRole))].sort(
         (left, right) => left.localeCompare(right, "pt-BR"),

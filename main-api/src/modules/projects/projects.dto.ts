@@ -238,6 +238,7 @@ const projectEmployeeAllocationSchema = z
     ]),
     compensationValue: decimal(2, 16),
     overtimeRate: decimal(2, 16),
+    overtimeEnabled: z.boolean().default(true),
   })
   .strict()
   .superRefine((allocation, context) => {
@@ -538,8 +539,6 @@ export const projectWorkFrontCommandSchema = z
     notes: optionalNullableText(1000),
     plannedStartDate: z.iso.date().nullable().optional(),
     plannedEndDate: z.iso.date().nullable().optional(),
-    requiresEmployees: z.boolean(),
-    requiresMachines: z.boolean(),
     services: z.array(workFrontServiceSchema).min(1).max(20),
   })
   .strict()
@@ -560,12 +559,6 @@ export const projectWorkFrontCommandSchema = z
         code: "custom",
         path: ["plannedEndDate"],
         message: "Planned end date must be after planned start date",
-      });
-    if (!command.requiresEmployees && !command.requiresMachines)
-      context.addIssue({
-        code: "custom",
-        path: ["requiresEmployees"],
-        message: "At least one resource requirement must be enabled",
       });
   });
 

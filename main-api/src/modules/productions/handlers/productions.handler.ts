@@ -238,7 +238,7 @@ export async function findProductionOptionsContextHandler(
     });
   const shiftEnabled =
     shift === "DAY" || Boolean(scheduleRevision?.nightShiftEnabled);
-  const [services, assignments, employeeAllocations] = await Promise.all([
+  const [services, shiftAssignments, employeeAllocations] = await Promise.all([
     frontIds.length
       ? context.prisma.projectWorkFrontService.findMany({
           where: {
@@ -248,48 +248,27 @@ export async function findProductionOptionsContextHandler(
           orderBy: [{ workFrontId: "asc" }, { serviceCode: "asc" }],
         })
       : [],
-    frontIds.length
-      ? context.prisma.projectWorkFrontMachineAssignment.findMany({
-          where: {
-            ...scopeWhere(scope, projectId),
-            workFrontId: { in: frontIds },
-            ...overlap,
-            shift,
-            machine: {
-              is: {
-                isActive: true,
-              },
-            },
-          },
-          orderBy: { effectiveFrom: "desc" },
-          include: {
-            machine: {
-              include: {
-                transportSpecification: true,
-                identifiers: {
-                  where: {
-                    companyId: scope.companyId,
-                    OR: [
-                      { releasedAt: null },
-                      { releasedAt: { gt: interval.startAt } },
-                    ],
-                  },
-                  orderBy: { createdAt: "desc" },
-                  take: 1,
-                },
-              },
-            },
-            operator: { include: { person: true } },
-          },
-        })
-      : [],
+    context.prisma.projectMachineShiftAssignment.findMany({
+      where: {
+        ...scopeWhere(scope, projectId),
+        ...overlap,
+        shift,
+        projectMachineAllocation: { ...overlap },
+      },
+      orderBy: { effectiveFrom: "desc" },
+    }),
     context.prisma.projectEmployeeAllocation.findMany({
       where: { ...scopeWhere(scope, projectId), ...overlap, shift },
       orderBy: { effectiveFrom: "asc" },
     }),
   ]);
-  const employmentIds = employeeAllocations.map((item) => item.employmentId);
-  const employments = employmentIds.length
+  const employmentIds = [
+    ...employeeAllocations.map((item) => item.employmentId),
+    ...shiftAssignments.map((item) => item.operatorEmploymentId),
+  ].filter((id): id is string => Boolean(id));
+  const machineIds = shiftAssignments.map((item) => item.machineId);
+  const [employments, machines] = await Promise.all([
+    employmentIds.length
     ? await context.prisma.employment.findMany({
         where: {
           corporationId: scope.corporationId,
@@ -298,14 +277,50 @@ export async function findProductionOptionsContextHandler(
         },
         include: { person: true },
       })
-    : [];
+    : [],
+    machineIds.length
+      ? context.prisma.machine.findMany({
+          where: {
+            corporationId: scope.corporationId,
+            id: { in: machineIds },
+            isActive: true,
+          },
+          include: {
+            transportSpecification: true,
+            identifiers: {
+              where: {
+                companyId: scope.companyId,
+                OR: [
+                  { releasedAt: null },
+                  { releasedAt: { gt: interval.startAt } },
+                ],
+              },
+              orderBy: { createdAt: "desc" },
+              take: 1,
+            },
+          },
+        })
+      : [],
+  ]);
   const employmentMap = new Map(employments.map((item) => [item.id, item]));
+  const machineMap = new Map(machines.map((item) => [item.id, item]));
   return {
     project,
     shiftEnabled,
     fronts,
     services,
-    assignments,
+    assignments: shiftAssignments.flatMap((assignment) => {
+      const machine = machineMap.get(assignment.machineId);
+      if (!machine) return [];
+      return [{
+        machineId: assignment.machineId,
+        operatorEmploymentId: assignment.operatorEmploymentId,
+        machine,
+        operator: assignment.operatorEmploymentId
+          ? employmentMap.get(assignment.operatorEmploymentId) ?? null
+          : null,
+      }];
+    }),
     employeeAllocations: employeeAllocations.flatMap((allocation) => {
       const employment = employmentMap.get(allocation.employmentId);
       return employment ? [{ ...allocation, employment }] : [];

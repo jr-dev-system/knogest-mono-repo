@@ -709,8 +709,6 @@ describe("project work-front quantities", () => {
       headers: { authorization },
       payload: {
         name,
-        requiresEmployees: true,
-        requiresMachines: true,
         services: [{ serviceCode: "cut", unitCode: "M3", quantity }],
       },
     });
@@ -830,6 +828,7 @@ describe("project work-front quantities", () => {
       url: `/api/v1/projects/${scope.projectId}/mobilization/employees/night`,
       headers: { authorization: scope.authorization },
       payload: {
+        nightShiftEnabled: true,
         allocations: [
           {
             employmentId: secondEmploymentId,
@@ -959,8 +958,6 @@ describe("project work-front quantities", () => {
       headers: { authorization: scope.authorization },
       payload: {
         name: "Frente editável",
-        requiresEmployees: true,
-        requiresMachines: true,
         services: [{ serviceCode: "cut", unitCode: "M3", quantity: "100.00" }],
       },
     });
@@ -1390,8 +1387,8 @@ describe("project work-front quantities", () => {
       .data.workFronts.find((front: { id: string }) => front.id === frontId);
     expect(preparedFront).toEqual(
       expect.objectContaining({
-        requiresEmployees: true,
-        requiresMachines: true,
+        requiresEmployees: false,
+        requiresMachines: false,
         eligibility: { canStart: true, blockers: [] },
         employeeAssignments: [
           expect.objectContaining({ source: "machine_operator" }),

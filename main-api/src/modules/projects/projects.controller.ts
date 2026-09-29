@@ -274,6 +274,7 @@ const projectCommandOpenApiSchema = {
           },
           compensationValue: { type: "string" },
           overtimeRate: { type: "string" },
+          overtimeEnabled: { type: "boolean", default: true },
         },
       },
     },
@@ -528,15 +529,13 @@ const projectQuantityBaselineRevisionCommandOpenApiSchema = {
 const projectWorkFrontCommandOpenApiSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["name", "requiresEmployees", "requiresMachines", "services"],
+  required: ["name", "services"],
   properties: {
     name: { type: "string", minLength: 1, maxLength: 160 },
     location: { type: "string", nullable: true, maxLength: 240 },
     notes: { type: "string", nullable: true, maxLength: 1000 },
     plannedStartDate: { type: "string", format: "date", nullable: true },
     plannedEndDate: { type: "string", format: "date", nullable: true },
-    requiresEmployees: { type: "boolean" },
-    requiresMachines: { type: "boolean" },
     services: {
       type: "array",
       minItems: 1,
@@ -702,6 +701,7 @@ const projectEmployeeAllocationSnapshotSchema = {
     },
     compensationValue: { type: "string" },
     overtimeRate: { type: "string" },
+    overtimeEnabled: { type: "boolean" },
     effectiveFrom: { type: "string", format: "date-time" },
   },
 } as const;
@@ -1131,6 +1131,7 @@ const projectTeamMembersPageSchema = {
             enum: ["daily", "hourly", "weekly", "fortnightly", "monthly"],
           },
           overtimeRate: { type: "string" },
+          overtimeEnabled: { type: "boolean" },
         },
       },
     },

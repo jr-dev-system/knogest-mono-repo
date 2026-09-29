@@ -598,6 +598,7 @@ describe("fleet Machine registry and meter readings", () => {
             compensationMode: "monthly",
             compensationValue: "0.00",
             overtimeRate: "0.00",
+            overtimeEnabled: true,
           },
         ],
         initialMachineAllocations: [

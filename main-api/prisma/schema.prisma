@@ -1097,6 +1097,7 @@ model ProjectEmployeeAllocation {
   compensationMode          String                   @map("compensation_mode") @db.VarChar(16)
   compensationValue         Decimal                  @map("compensation_value") @db.Decimal(18, 2)
   overtimeRate              Decimal                  @map("overtime_rate") @db.Decimal(18, 2)
+  overtimeEnabled           Boolean                  @default(true) @map("overtime_enabled")
   effectiveFrom             DateTime                 @map("effective_from") @db.Timestamptz(3)
   effectiveTo               DateTime?                @map("effective_to") @db.Timestamptz(3)
   createdByUserId           String?                  @map("created_by_user_id") @db.Uuid
@@ -1274,8 +1275,8 @@ model ProjectWorkFront {
   notes               String?                              @db.VarChar(1000)
   plannedStartDate    DateTime?                            @map("planned_start_date") @db.Date
   plannedEndDate      DateTime?                            @map("planned_end_date") @db.Date
-  requiresEmployees   Boolean                              @default(true) @map("requires_employees")
-  requiresMachines    Boolean                              @default(true) @map("requires_machines")
+  requiresEmployees   Boolean                              @default(false) @map("requires_employees")
+  requiresMachines    Boolean                              @default(false) @map("requires_machines")
   status              ProjectWorkFrontStatus               @default(PLANNED)
   actualStartedAt     DateTime?                            @map("actual_started_at") @db.Timestamptz(3)
   createdAt           DateTime                             @default(now()) @map("created_at") @db.Timestamptz(3)
@@ -1608,6 +1609,7 @@ model ProjectDailyReportEmployee {
   checkInAt            DateTime?                          @map("check_in_at") @db.Timestamptz(3)
   checkOutAt           DateTime?                          @map("check_out_at") @db.Timestamptz(3)
   overtimeConfirmed    Boolean                            @default(false) @map("overtime_confirmed")
+  overtimeEnabled      Boolean                            @default(true) @map("overtime_enabled")
   dailyReport          ProjectDailyReport                 @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdre_report_fkey")
   employment           Employment                         @relation("ProjectDailyReportEmployeeEmployment", fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdre_employment_fkey")
   breaks               ProjectDailyReportEmployeeBreak[]

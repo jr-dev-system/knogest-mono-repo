@@ -16020,7 +16020,11 @@
                           ]
                         },
                         "compensationValue": { "type": "string" },
-                        "overtimeRate": { "type": "string" }
+                        "overtimeRate": { "type": "string" },
+                        "overtimeEnabled": {
+                          "type": "boolean",
+                          "default": true
+                        }
                       }
                     }
                   },
@@ -16601,6 +16605,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -16856,7 +16861,8 @@
                                   "monthly"
                                 ]
                               },
-                              "overtimeRate": { "type": "string" }
+                              "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" }
                             }
                           }
                         },
@@ -18016,6 +18022,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -18450,7 +18457,11 @@
                           ]
                         },
                         "compensationValue": { "type": "string" },
-                        "overtimeRate": { "type": "string" }
+                        "overtimeRate": { "type": "string" },
+                        "overtimeEnabled": {
+                          "type": "boolean",
+                          "default": true
+                        }
                       }
                     }
                   },
@@ -18639,6 +18650,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -19013,6 +19025,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -19261,12 +19274,7 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "name",
-                  "requiresEmployees",
-                  "requiresMachines",
-                  "services"
-                ],
+                "required": ["name", "services"],
                 "properties": {
                   "name": {
                     "type": "string",
@@ -19293,8 +19301,6 @@
                     "format": "date",
                     "nullable": true
                   },
-                  "requiresEmployees": { "type": "boolean" },
-                  "requiresMachines": { "type": "boolean" },
                   "services": {
                     "type": "array",
                     "minItems": 1,
@@ -19442,6 +19448,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -19690,12 +19697,7 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": [
-                  "name",
-                  "requiresEmployees",
-                  "requiresMachines",
-                  "services"
-                ],
+                "required": ["name", "services"],
                 "properties": {
                   "name": {
                     "type": "string",
@@ -19722,8 +19724,6 @@
                     "format": "date",
                     "nullable": true
                   },
-                  "requiresEmployees": { "type": "boolean" },
-                  "requiresMachines": { "type": "boolean" },
                   "services": {
                     "type": "array",
                     "minItems": 1,
@@ -19877,6 +19877,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -20280,6 +20281,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -20576,7 +20578,11 @@
                           ]
                         },
                         "compensationValue": { "type": "string" },
-                        "overtimeRate": { "type": "string" }
+                        "overtimeRate": { "type": "string" },
+                        "overtimeEnabled": {
+                          "type": "boolean",
+                          "default": true
+                        }
                       }
                     }
                   },
@@ -20760,6 +20766,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -21056,7 +21063,11 @@
                           ]
                         },
                         "compensationValue": { "type": "string" },
-                        "overtimeRate": { "type": "string" }
+                        "overtimeRate": { "type": "string" },
+                        "overtimeEnabled": {
+                          "type": "boolean",
+                          "default": true
+                        }
                       }
                     }
                   },
@@ -21246,6 +21257,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -21659,6 +21671,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -22425,6 +22438,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -22818,6 +22832,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -23205,6 +23220,7 @@
                               },
                               "compensationValue": { "type": "string" },
                               "overtimeRate": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" },
                               "effectiveFrom": {
                                 "type": "string",
                                 "format": "date-time"
@@ -25681,7 +25697,8 @@
                               "jobRole",
                               "completedFullShift",
                               "regularWorkedMinutes",
-                              "overtimeMinutes"
+                              "overtimeMinutes",
+                              "overtimeEnabled"
                             ],
                             "properties": {
                               "employmentId": {
@@ -25692,7 +25709,8 @@
                               "jobRole": { "type": "string" },
                               "completedFullShift": { "type": "boolean" },
                               "regularWorkedMinutes": { "type": "integer" },
-                              "overtimeMinutes": { "type": "integer" }
+                              "overtimeMinutes": { "type": "integer" },
+                              "overtimeEnabled": { "type": "boolean" }
                             }
                           }
                         },
@@ -26104,11 +26122,17 @@
                           "items": {
                             "type": "object",
                             "additionalProperties": false,
-                            "required": ["id", "name", "jobRole"],
+                            "required": [
+                              "id",
+                              "name",
+                              "jobRole",
+                              "overtimeEnabled"
+                            ],
                             "properties": {
                               "id": { "type": "string", "format": "uuid" },
                               "name": { "type": "string" },
-                              "jobRole": { "type": "string" }
+                              "jobRole": { "type": "string" },
+                              "overtimeEnabled": { "type": "boolean" }
                             }
                           }
                         },
@@ -26515,7 +26539,8 @@
                               "jobRole",
                               "completedFullShift",
                               "regularWorkedMinutes",
-                              "overtimeMinutes"
+                              "overtimeMinutes",
+                              "overtimeEnabled"
                             ],
                             "properties": {
                               "employmentId": {
@@ -26526,7 +26551,8 @@
                               "jobRole": { "type": "string" },
                               "completedFullShift": { "type": "boolean" },
                               "regularWorkedMinutes": { "type": "integer" },
-                              "overtimeMinutes": { "type": "integer" }
+                              "overtimeMinutes": { "type": "integer" },
+                              "overtimeEnabled": { "type": "boolean" }
                             }
                           }
                         },
@@ -27149,7 +27175,8 @@
                               "jobRole",
                               "completedFullShift",
                               "regularWorkedMinutes",
-                              "overtimeMinutes"
+                              "overtimeMinutes",
+                              "overtimeEnabled"
                             ],
                             "properties": {
                               "employmentId": {
@@ -27160,7 +27187,8 @@
                               "jobRole": { "type": "string" },
                               "completedFullShift": { "type": "boolean" },
                               "regularWorkedMinutes": { "type": "integer" },
-                              "overtimeMinutes": { "type": "integer" }
+                              "overtimeMinutes": { "type": "integer" },
+                              "overtimeEnabled": { "type": "boolean" }
                             }
                           }
                         },
@@ -27612,7 +27640,8 @@
                               "jobRole",
                               "completedFullShift",
                               "regularWorkedMinutes",
-                              "overtimeMinutes"
+                              "overtimeMinutes",
+                              "overtimeEnabled"
                             ],
                             "properties": {
                               "employmentId": {
@@ -27623,7 +27652,8 @@
                               "jobRole": { "type": "string" },
                               "completedFullShift": { "type": "boolean" },
                               "regularWorkedMinutes": { "type": "integer" },
-                              "overtimeMinutes": { "type": "integer" }
+                              "overtimeMinutes": { "type": "integer" },
+                              "overtimeEnabled": { "type": "boolean" }
                             }
                           }
                         },
@@ -28519,7 +28549,7 @@
                       },
                       "entryMode": {
                         "type": "string",
-                        "enum": ["direct_total"]
+                        "enum": ["direct_total", "truck_summary"]
                       },
                       "individualActivity": {
                         "type": "object",
@@ -28576,6 +28606,16 @@
                             "enum": ["bank", "loose", "compacted", "placed"]
                           },
                           "operationalQuantity": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                            "nullable": true
+                          },
+                          "dmtKm": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                            "nullable": true
+                          },
+                          "swellFactor": {
                             "type": "string",
                             "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
                             "nullable": true
@@ -30338,7 +30378,7 @@
                       },
                       "entryMode": {
                         "type": "string",
-                        "enum": ["direct_total"]
+                        "enum": ["direct_total", "truck_summary"]
                       },
                       "individualActivity": {
                         "type": "object",
@@ -30395,6 +30435,16 @@
                             "enum": ["bank", "loose", "compacted", "placed"]
                           },
                           "operationalQuantity": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                            "nullable": true
+                          },
+                          "dmtKm": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
+                            "nullable": true
+                          },
+                          "swellFactor": {
                             "type": "string",
                             "pattern": "^(?:0|[1-9]\\d{0,11})(?:\\.\\d{1,6})?$",
                             "nullable": true

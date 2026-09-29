@@ -102,13 +102,10 @@ export class ProductionsService {
       context.project.actualStartedAt,
     );
     if (!context.shiftEnabled) throw shiftNotEnabled();
-    const assignmentByFront = new Map<string, typeof context.assignments>();
-    for (const assignment of context.assignments) {
-      const current = assignmentByFront.get(assignment.workFrontId) ?? [];
-      if (!current.some((item) => item.machineId === assignment.machineId))
-        current.push(assignment);
-      assignmentByFront.set(assignment.workFrontId, current);
-    }
+    const availableMachines = uniqueBy(
+      context.assignments,
+      (assignment) => assignment.machineId,
+    );
     return {
       project: context.project,
       defaults: {
@@ -147,7 +144,7 @@ export class ProductionsService {
             ).toLowerCase(),
             dmtPolicy: service.dmtPolicy.toLowerCase(),
           })),
-        equipment: (assignmentByFront.get(front.id) ?? []).flatMap(
+        equipment: availableMachines.flatMap(
           (assignment) =>
             assignment.machine.isActive
               ? [
@@ -182,11 +179,12 @@ export class ProductionsService {
                 ]
               : [],
         ),
-        trucks: (assignmentByFront.get(front.id) ?? []).flatMap(
+        trucks: availableMachines.flatMap(
           (assignment) => {
             const specification = assignment.machine.transportSpecification;
             return assignment.machine.isActive &&
               specification &&
+              specification.capacityUnitCode !== "LITER" &&
               specification.effectiveCapacity.gt(0)
               ? [
                   {
@@ -561,7 +559,10 @@ export class ProductionsService {
     );
     if (!current) throw notFound();
     assertCapability(scope, "approve");
-    if (current.status !== "AWAITING_TECHNICAL") throw immutable();
+    if (
+      current.status !== "AWAITING_TECHNICAL" &&
+      !(current.kind === "INDIVIDUAL_ACTIVITY" && current.status === "FIELD_CHECKED")
+    ) throw immutable();
     validateTechnicalApproval(current);
     const record = await this.context.transaction((transactionContext) =>
       transitionProductionHandler(
@@ -571,7 +572,9 @@ export class ProductionsService {
         productionId,
         {
           expectedRevision: command.expectedRevision,
-          from: ["AWAITING_TECHNICAL"],
+          from: current.kind === "INDIVIDUAL_ACTIVITY"
+            ? ["FIELD_CHECKED", "AWAITING_TECHNICAL"]
+            : ["AWAITING_TECHNICAL"],
           to: "APPROVED",
           event: "APPROVED",
           phase: "TECHNICAL_CHECK",
@@ -1053,6 +1056,25 @@ export class ProductionsService {
         item.workFrontId === normalized.workFrontId,
     );
     if (!front || !service) throw resourceUnavailable("work-front-service");
+    if (command.kind === "individual_activity") {
+      const usesTrucks = command.entryMode === "truck_summary";
+      const isFill = ["fill", "replacement_fill"].includes(service.serviceCode);
+      if (
+        usesTrucks &&
+        (!isVolumetric(service.unitCode) ||
+          !command.truckSummaries.length ||
+          !command.individualActivity.dmtKm ||
+          Number(command.individualActivity.dmtKm) <= 0)
+      )
+        throw resourceUnavailable("truck-summary");
+      if (
+        (usesTrucks && isFill &&
+          (!command.individualActivity.swellFactor ||
+            Number(command.individualActivity.swellFactor) <= 1)) ||
+        (command.individualActivity.swellFactor && !isFill)
+      )
+        throw resourceUnavailable("swell-factor");
+    }
     if (command.kind === "material_movement" && !destinationFront)
       throw resourceUnavailable("destination-work-front");
     if (
@@ -1062,9 +1084,7 @@ export class ProductionsService {
       )
     )
       throw resourceUnavailable("destination-work-front-service");
-    const assignments = options.assignments.filter(
-      (item) => item.workFrontId === normalized.workFrontId,
-    );
+    const assignments = options.assignments;
     const assignmentByMachine = new Map(
       assignments.map((item) => [item.machineId, item]),
     );
@@ -1190,7 +1210,7 @@ export class ProductionsService {
       service.productionProfile,
       service.serviceCode,
     );
-    validateDmt(service.dmtPolicy, {
+    if (command.kind === "material_movement") validateDmt(service.dmtPolicy, {
       ...normalized,
       origin: effectiveRoute?.origin ?? normalized.origin,
       destination: effectiveRoute?.destination ?? normalized.destination,
@@ -1256,9 +1276,51 @@ export class ProductionsService {
               null,
           })
         : null;
+    const activityTruckVolumes =
+      command.kind === "individual_activity" &&
+      command.entryMode === "truck_summary"
+        ? command.truckSummaries.map((truck) => {
+            const specification = assignmentByMachine.get(truck.machineId)
+              ?.machine.transportSpecification;
+            if (!specification || specification.capacityUnitCode === "LITER" || truck.acceptedTrips < 1)
+              throw resourceUnavailable("truck");
+            return calculateTruckSummaryVolume({
+              capacity: transportCapacityInM3(
+                specification.effectiveCapacity.toFixed(3),
+                specification.capacityUnitCode,
+              ),
+              acceptedTrips: truck.acceptedTrips,
+              partialTripCount: truck.partialTripCount,
+              partialVolume: normalizeDecimal(truck.partialVolume, 3),
+              loadFactor: normalizeDecimal(truck.loadFactor, 6),
+              actualWeightT: null,
+            });
+          })
+        : [];
+    const activityLooseVolume = scaledToDecimal(
+      activityTruckVolumes.reduce(
+        (sum, volume) => sum + decimalToScaled(volume, 3),
+        BigInt(0),
+      ),
+      3,
+    );
+    const activityQuantity =
+      command.kind === "individual_activity" &&
+      command.entryMode === "truck_summary"
+        ? command.individualActivity.swellFactor
+          ? scaledToDecimal(
+              (decimalToScaled(activityLooseVolume, 3) * BigInt(1_000_000) +
+                decimalToScaled(command.individualActivity.swellFactor, 6) /
+                  BigInt(2)) /
+                decimalToScaled(command.individualActivity.swellFactor, 6),
+              3,
+            )
+          : activityLooseVolume
+        : null;
     const effectiveDirectQuantity =
       movementCalculation?.actualWeightT ??
       movementCalculation?.looseVolumeM3 ??
+      activityQuantity ??
       directQuantity;
     const officialQuantity = calculateProductionMetrics({
       tripVolumesM3,
@@ -1325,12 +1387,15 @@ export class ProductionsService {
       directQuantity: effectiveDirectQuantity,
       measuredQuantity,
       officialQuantity,
-      conversionFactor,
+      conversionFactor:
+        command.kind === "individual_activity"
+          ? command.individualActivity.swellFactor
+          : conversionFactor,
       origin: effectiveRoute?.origin ?? normalized.origin,
       destination: effectiveRoute?.destination ?? normalized.destination,
       dmtKm: effectiveRoute?.loadedDistanceKm
         ? normalizeDecimal(effectiveRoute.loadedDistanceKm, 3)
-        : null,
+        : normalized.dmtKm,
       layerThicknessCm: normalized.layerThicknessCm
         ? normalizeDecimal(normalized.layerThicknessCm, 2)
         : null,
@@ -1396,9 +1461,10 @@ export class ProductionsService {
         command,
         options.services,
         movementCalculation,
+        activityQuantity,
       ),
       truckSummaries:
-        command.kind === "material_movement"
+        command.truckSummaries.length
           ? command.truckSummaries.map((truck) => {
               const assignment = assignmentByMachine.get(truck.machineId);
               const specification = assignment?.machine.transportSpecification;
@@ -1710,7 +1776,10 @@ function calculateOfficialQuantity(
 function calculateMetrics(record: ProductionRecord) {
   const truckSummaryVolumes = record.truckSummaries.map((truck) =>
     calculateTruckSummaryVolume({
-      capacity: truck.capacitySnapshot.toFixed(3),
+      capacity: transportCapacityInM3(
+        truck.capacitySnapshot.toFixed(3),
+        truck.capacityUnitCodeSnapshot,
+      ),
       acceptedTrips: truck.acceptedTrips,
       partialTripCount: truck.partialTripCount,
       partialVolume: truck.partialVolume.toFixed(3),
@@ -1849,6 +1918,7 @@ function validateApproval(record: ProductionRecord) {
   validateApprovalData(
     {
       unitCodeSnapshot: record.unitCodeSnapshot,
+      kind: record.kind,
       entryMode: record.entryMode,
       volumeCondition:
         record.volumeCondition === "CUT" ? "BANK" : record.volumeCondition,
@@ -1895,7 +1965,9 @@ function validateTechnicalApproval(record: ProductionRecord) {
       data: { types: rejected.map((check) => check.type.toLowerCase()) },
     });
   const requiredTypes =
-    record.productionProfileSnapshot === "COMPACTION"
+    record.kind === "INDIVIDUAL_ACTIVITY"
+      ? []
+      : record.productionProfileSnapshot === "COMPACTION"
       ? ["COMPACTION"]
       : record.productionProfileSnapshot === "GRADING"
         ? ["FINISHING"]
@@ -1919,6 +1991,7 @@ function validateApprovalData(
     Pick<
       ProductionWriteData,
       | "unitCodeSnapshot"
+      | "kind"
       | "entryMode"
       | "volumeCondition"
       | "responsibleEmploymentId"
@@ -1945,11 +2018,13 @@ function validateApprovalData(
 ) {
   const missing: string[] = [];
   if (!data.responsibleEmploymentId) missing.push("responsible");
-  if (!data.equipment.length) missing.push("equipment");
+  if (data.kind === "MATERIAL_MOVEMENT" && !data.equipment.length)
+    missing.push("equipment");
   if (Number(metrics.operationalQuantity) <= 0) missing.push("quantity");
   if (isVolumetric(data.unitCodeSnapshot) && !data.volumeCondition)
     missing.push("volume-condition");
   if (
+    data.kind === "MATERIAL_MOVEMENT" &&
     data.productionProfileSnapshot === "TRANSPORT" &&
     !data.equipment.some((item) => item.role === "TRANSPORT")
   )
@@ -1972,15 +2047,19 @@ function validateApprovalData(
   }
   if (
     data.dmtPolicySnapshot === "REQUIRED" &&
-    (!data.dmtKm || !data.origin || !data.destination)
+    (!data.dmtKm ||
+      (data.kind === "MATERIAL_MOVEMENT" &&
+        (!data.origin || !data.destination)))
   )
     missing.push("route-dmt");
   if (
+    data.kind === "MATERIAL_MOVEMENT" &&
     ["SPREADING", "COMPACTION"].includes(data.productionProfileSnapshot) &&
     !data.layerThicknessCm
   )
     missing.push("layer-thickness");
   if (
+    data.kind === "MATERIAL_MOVEMENT" &&
     data.productionProfileSnapshot === "COMPACTION" &&
     data.compactionPasses === null
   )
@@ -2237,7 +2316,7 @@ function normalizeProductionCommand(command: ProductionCommand) {
       conversionFactor: activity.conversionFactor,
       origin: null,
       destination: null,
-      dmtKm: null,
+      dmtKm: activity.dmtKm,
       layerThicknessCm: activity.layerThicknessCm,
       compactionPasses: activity.compactionPasses,
       moistureCondition: activity.moistureCondition,
@@ -2278,6 +2357,7 @@ function resolveComponents(
     unitCode: string;
   }>,
   movementCalculation: ReturnType<typeof calculateEarthworkMovement> | null,
+  activityQuantity: string | null,
 ): ProductionWriteData["components"] {
   if (command.kind === "individual_activity") {
     const activity = command.individualActivity;
@@ -2300,15 +2380,20 @@ function resolveComponents(
           activity.volumeCondition,
         ),
         volumeCondition,
-        quantities: activity.operationalQuantity
+        quantities: (activityQuantity ?? activity.operationalQuantity)
           ? [
               {
                 kind: "OPERATIONAL",
-                method: activity.quantityMethod.toUpperCase() as
-                  | "MANUAL"
-                  | "TOPOGRAPHY"
-                  | "LABORATORY",
-                value: normalizeDecimal(activity.operationalQuantity, 3),
+                method: activityQuantity
+                  ? "TRUCK_SUMMARY"
+                  : (activity.quantityMethod.toUpperCase() as
+                      | "MANUAL"
+                      | "TOPOGRAPHY"
+                      | "LABORATORY"),
+                value: normalizeDecimal(
+                  activityQuantity ?? activity.operationalQuantity!,
+                  3,
+                ),
                 unitCode: explicitUnitCode(
                   service.unitCode,
                   activity.volumeCondition,
@@ -2317,6 +2402,12 @@ function resolveComponents(
                 sourceSnapshot: {
                   enteredBy: "wizard",
                   accepted: false,
+                  ...(activityQuantity
+                    ? {
+                        truckSummary: true,
+                        swellFactor: activity.swellFactor,
+                      }
+                    : {}),
                 },
               },
             ]

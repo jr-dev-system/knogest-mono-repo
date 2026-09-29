@@ -228,4 +228,21 @@ describe("operational shift commands", () => {
       }).success,
     ).toBe(true);
   });
+
+  it("accepts automatic hours for an employee with overtime disabled", () => {
+    expect(
+      operationalShiftCloseSchema.safeParse({
+        endedAt: "2026-09-24T20:00:00.000Z",
+        earlyClosureReason: null,
+        employees: [{
+          employmentId: id("1"),
+          checkInAt: null,
+          checkOutAt: null,
+          breaks: [],
+          overtimeConfirmed: false,
+        }],
+        machines: [],
+      }).success,
+    ).toBe(true);
+  });
 });
