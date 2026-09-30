@@ -74,6 +74,8 @@ export type ProjectProductionDetail = {
   dmtPolicy: "not_applicable" | "optional" | "required";
   productionDate: string;
   shift: "day" | "night";
+  source: "production_page" | "operational_center";
+  climateConditions: Array<"dry" | "rain" | "waterlogged_soil">;
   status:
     | "draft"
     | "submitted"

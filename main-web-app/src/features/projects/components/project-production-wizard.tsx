@@ -44,6 +44,10 @@ const wizardSchema = z.object({
   kind: z.enum(["individual_activity", "material_movement"]),
   productionDate: z.string().date(),
   shift: z.enum(["day", "night"]),
+  source: z.enum(["production_page", "operational_center"]),
+  climateConditions: z
+    .array(z.enum(["dry", "rain", "waterlogged_soil"]))
+    .min(1),
   responsibleEmploymentId: z.string(),
   startTime: z.string(),
   endTime: z.string(),
@@ -137,6 +141,8 @@ export function LegacyProductionWizard({
   open,
   options,
   projectId,
+  lockActivityIdentity = false,
+  preventDismissal = false,
   workflowActions,
 }: {
   contextualEntry?: {
@@ -154,6 +160,8 @@ export function LegacyProductionWizard({
   open: boolean;
   options: ProjectProductionOptions;
   projectId: string;
+  lockActivityIdentity?: boolean;
+  preventDismissal?: boolean;
   workflowActions?: React.ReactNode;
 }) {
   const [currentStep, setCurrentStep] = React.useState(0);
@@ -366,6 +374,7 @@ export function LegacyProductionWizard({
     <OperationsModal
       open={open}
       onOpenChange={(next) => (next ? onOpenChange(true) : requestClose())}
+      preventDismissal={preventDismissal}
       size="xl"
       icon={Shovel}
       title={detail ? "Produção de terraplanagem" : "Nova produção"}
@@ -393,23 +402,36 @@ export function LegacyProductionWizard({
             )}
             {editable && currentStep === steps.length - 1 && (
               <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void save(false)}
-                  disabled={busy}
-                >
-                  {busy ? <Loader2 className="animate-spin" /> : <Save />}{" "}
-                  Salvar rascunho
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => void save(true)}
-                  disabled={busy}
-                >
-                  {busy ? <Loader2 className="animate-spin" /> : <Check />}{" "}
-                  Enviar produção
-                </Button>
+                {contextualEntry || detail?.source === "operational_center" ? (
+                  <Button
+                    type="button"
+                    onClick={() => void save(false)}
+                    disabled={busy}
+                  >
+                    {busy ? <Loader2 className="animate-spin" /> : <Save />}{" "}
+                    Salvar produção
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void save(false)}
+                      disabled={busy}
+                    >
+                      {busy ? <Loader2 className="animate-spin" /> : <Save />}{" "}
+                      Salvar rascunho
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => void save(true)}
+                      disabled={busy}
+                    >
+                      {busy ? <Loader2 className="animate-spin" /> : <Check />}{" "}
+                      Enviar produção
+                    </Button>
+                  </>
+                )}
               </>
             )}
             {currentStep < steps.length - 1 && (
@@ -457,6 +479,7 @@ export function LegacyProductionWizard({
             form={form}
             changeContext={changeContext}
             changeKind={changeKind}
+            lockActivityIdentity={lockActivityIdentity}
           />
         )}
         {values.kind === "individual_activity" ? (
@@ -467,6 +490,7 @@ export function LegacyProductionWizard({
                 options={options}
                 selectedFront={selectedFront}
                 editable={editable}
+                lockActivityIdentity={lockActivityIdentity}
               />
             )}
             {currentStep === 2 && (
@@ -555,6 +579,7 @@ function ContextStep({
   form,
   changeContext,
   changeKind,
+  lockActivityIdentity,
 }: {
   contextual: boolean;
   values: WizardValues;
@@ -563,6 +588,7 @@ function ContextStep({
   form: FormApi;
   changeContext: (date: string, shift: "day" | "night") => Promise<void>;
   changeKind: (kind: WizardValues["kind"]) => void;
+  lockActivityIdentity: boolean;
 }) {
   return (
     <FormSection
@@ -573,7 +599,7 @@ function ContextStep({
           <select
             className={controlClass}
             value={values.kind}
-            disabled={!editable}
+            disabled={!editable || lockActivityIdentity}
             onChange={(event) =>
               changeKind(event.target.value as WizardValues["kind"])
             }
@@ -643,6 +669,42 @@ function ContextStep({
           </>
         )}
       </div>
+      <fieldset className="grid gap-2">
+        <legend className="text-sm font-bold">Condição climática</legend>
+        <div className="grid gap-2 sm:grid-cols-3">
+          {(
+            [
+              ["dry", "Seco"],
+              ["rain", "Chuva"],
+              ["waterlogged_soil", "Solo encharcado"],
+            ] as const
+          ).map(([condition, label]) => (
+            <label
+              key={condition}
+              className="flex min-h-11 items-center gap-3 rounded-md border px-3 text-sm font-semibold"
+            >
+              <input
+                type="checkbox"
+                className="size-4 accent-primary"
+                disabled={!editable}
+                checked={values.climateConditions.includes(condition)}
+                onChange={(event) => {
+                  const next = event.target.checked
+                    ? [...values.climateConditions, condition]
+                    : values.climateConditions.filter(
+                        (value) => value !== condition,
+                      );
+                  form.setValue("climateConditions", next, {
+                    shouldDirty: true,
+                    shouldValidate: true,
+                  });
+                }}
+              />
+              {label}
+            </label>
+          ))}
+        </div>
+      </fieldset>
     </FormSection>
   );
 }
@@ -652,11 +714,13 @@ function ServiceStep({
   options,
   selectedFront,
   editable,
+  lockActivityIdentity,
 }: {
   form: FormApi;
   options: ProjectProductionOptions;
   selectedFront: ProjectProductionOptions["workFronts"][number] | undefined;
   editable: boolean;
+  lockActivityIdentity: boolean;
 }) {
   return (
     <FormSection
@@ -667,7 +731,7 @@ function ServiceStep({
         <Field label="Frente">
           <select
             className={controlClass}
-            disabled={!editable}
+            disabled={!editable || lockActivityIdentity}
             {...form.register("workFrontId", {
               onChange: (event) => {
                 const front = options.workFronts.find(
@@ -699,7 +763,7 @@ function ServiceStep({
         <Field label="Serviço">
           <select
             className={controlClass}
-            disabled={!editable}
+            disabled={!editable || lockActivityIdentity}
             {...form.register("workFrontServiceId", {
               onChange: (event) => {
                 const service = selectedFront?.services.find(
@@ -1453,6 +1517,10 @@ function valuesFrom(
       contextualEntry?.productionDate ??
       options.defaults.productionDate,
     shift: detail?.shift ?? contextualEntry?.shift ?? options.defaults.shift,
+    source:
+      detail?.source ??
+      (contextualEntry ? "operational_center" : "production_page"),
+    climateConditions: detail?.climateConditions ?? [],
     responsibleEmploymentId:
       detail?.responsible?.employmentId ??
       contextualEntry?.responsibleEmploymentId ??
@@ -1544,6 +1612,11 @@ function validateStep(
       issues.push({
         field: "Responsável",
         message: "Selecione o responsável.",
+      });
+    if (!values.climateConditions.length)
+      issues.push({
+        field: "Condição climática",
+        message: "Selecione ao menos uma condição climática.",
       });
     if (!contextual && (!values.startTime || !values.endTime))
       issues.push({ field: "Horário", message: "Informe início e fim." });
@@ -1646,6 +1719,8 @@ function toCommand(
     endTime: blank(values.endTime),
     endDayOffset: 0,
     responsibleEmploymentId: blank(values.responsibleEmploymentId),
+    source: values.source,
+    climateConditions: values.climateConditions,
     evidence: evidenceFrom(values),
     notes: blank(values.notes),
     equipment: values.selectedEquipmentIds.map((machineId) => {

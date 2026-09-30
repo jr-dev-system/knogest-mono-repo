@@ -68,6 +68,12 @@ const roleToDb = {
   support: "SUPPORT",
 } as const;
 
+const productionClimateToDb = {
+  rain: "RAIN",
+  dry: "DRY",
+  waterlogged_soil: "WATERLOGGED_SOIL",
+} as const;
+
 const profileByServiceCode: Record<
   string,
   ProductionWriteData["productionProfileSnapshot"]
@@ -249,6 +255,13 @@ export class ProductionsService {
     projectId: string,
     command: ProductionCommand,
   ) {
+    if (command.source === "operational_center" && command.submitNow)
+      throw new AppError({
+        code: "PRODUCTION_RDO_CONFIRMATION_REQUIRED",
+        message:
+          "Productions created in the operational center are confirmed when the shift closes",
+        statusCode: 409,
+      });
     assertCapability(scope, "createDraft");
     if (command.submitNow || command.approveNow)
       assertCapability(scope, "submit");
@@ -512,6 +525,13 @@ export class ProductionsService {
         productionId,
       );
       if (!current) throw notFound();
+      if (current.source === "OPERATIONAL_CENTER" && command.submitNow)
+        throw new AppError({
+          code: "PRODUCTION_RDO_CONFIRMATION_REQUIRED",
+          message:
+            "Productions created in the operational center are confirmed when the shift closes",
+          statusCode: 409,
+        });
       if (current.status !== "DRAFT") throw immutable();
       assertEquipmentWithTripsPreserved(current, command);
       const data = await this.resolveWriteData(
@@ -798,7 +818,11 @@ export class ProductionsService {
       productionId,
     );
     if (!current) throw notFound();
-    if (!["REJECTED", "APPROVED", "RELEASED"].includes(current.status))
+    if (
+      !["SUBMITTED", "REJECTED", "APPROVED", "RELEASED"].includes(
+        current.status,
+      )
+    )
       throw immutable();
     const record = await this.context.transaction((transactionContext) =>
       transitionProductionHandler(
@@ -808,7 +832,7 @@ export class ProductionsService {
         productionId,
         {
           expectedRevision: command.expectedRevision,
-          from: ["REJECTED", "APPROVED", "RELEASED"],
+          from: ["SUBMITTED", "REJECTED", "APPROVED", "RELEASED"],
           to: "DRAFT",
           event: "REOPENED",
           phase: "REOPEN",
@@ -832,6 +856,13 @@ export class ProductionsService {
     assertCapability(scope, "submit");
     const current = await this.detailRecord(scope, projectId, productionId);
     if (current.status !== "DRAFT") throw immutable();
+    if (current.source === "OPERATIONAL_CENTER")
+      throw new AppError({
+        statusCode: 409,
+        code: "PRODUCTION_RDO_CONFIRMATION_REQUIRED",
+        message:
+          "Productions registered in the operational center are confirmed when the shift is closed.",
+      });
     validateApproval(current);
     return this.transition(scope, projectId, current, {
       ...command,
@@ -1567,6 +1598,13 @@ export class ProductionsService {
     }).officialQuantity;
 
     return {
+      source:
+        command.source === "operational_center"
+          ? "OPERATIONAL_CENTER"
+          : "PRODUCTION_PAGE",
+      climateConditions: command.climateConditions.map(
+        (condition) => productionClimateToDb[condition],
+      ),
       kind:
         command.kind === "material_movement"
           ? "MATERIAL_MOVEMENT"
@@ -1765,6 +1803,10 @@ export function toDetailDto(record: ProductionRecord) {
     productionDate: civilDate(record.productionDate),
     shift: record.shift.toLowerCase(),
     status: record.status.toLowerCase(),
+    source: record.source.toLowerCase(),
+    climateConditions: record.climateConditions.map((item) =>
+      item.toLowerCase(),
+    ),
     entryMode: record.entryMode.toLowerCase(),
     revision: record.revision,
     operationalRevision: record.operationalRevision,
@@ -1972,11 +2014,15 @@ function toSummaryDto(record: ProductionRecord) {
   return {
     id: detail.id,
     kind: detail.kind,
+    workFrontId: detail.workFrontId,
+    workFrontServiceId: detail.workFrontServiceId,
     serviceCode: detail.serviceCode,
     unitCode: detail.unitCode,
     productionDate: detail.productionDate,
     shift: detail.shift,
     status: detail.status,
+    source: detail.source,
+    climateConditions: detail.climateConditions,
     revision: detail.revision,
     operationalRevision: detail.operationalRevision,
     location: detail.location,

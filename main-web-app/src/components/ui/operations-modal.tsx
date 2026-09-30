@@ -37,6 +37,7 @@ export function OperationsModal({
   icon: Icon,
   onOpenChange,
   open,
+  preventDismissal = false,
   size = "lg",
   title,
   trigger,
@@ -49,12 +50,24 @@ export function OperationsModal({
   icon?: LucideIcon;
   onOpenChange?: (open: boolean) => void;
   open?: boolean;
+  preventDismissal?: boolean;
   size?: OperationsModalSize;
   title: string;
   trigger?: ReactElement;
 }) {
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen, eventDetails) => {
+        if (
+          preventDismissal &&
+          !nextOpen &&
+          eventDetails.reason === "escape-key"
+        )
+          return;
+        onOpenChange?.(nextOpen);
+      }}
+    >
       {trigger && <DialogTrigger render={trigger} />}
       <DialogContent
         className={cn(

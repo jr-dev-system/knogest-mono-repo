@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 
 import {
   dailyReportCommandSchema,
+  operationalInterferenceParamsSchema,
+  operationalReportParamsSchema,
   operationalShiftCloseSchema,
   operationalShiftStartSchema,
 } from "./daily-reports.dto";
@@ -163,6 +165,27 @@ describe("dailyReportCommandSchema", () => {
       activityEndDayOffset: 1,
     });
     expect(result.success).toBe(false);
+  });
+});
+
+describe("operational route params", () => {
+  it("accepts report routes without a reportDate parameter", () => {
+    expect(
+      operationalReportParamsSchema.safeParse({
+        projectId: id("1"),
+        reportId: id("2"),
+      }).success,
+    ).toBe(true);
+  });
+
+  it("requires the interference id only on confirmation routes", () => {
+    expect(
+      operationalInterferenceParamsSchema.safeParse({
+        projectId: id("1"),
+        reportId: id("2"),
+        interferenceId: id("3"),
+      }).success,
+    ).toBe(true);
   });
 });
 

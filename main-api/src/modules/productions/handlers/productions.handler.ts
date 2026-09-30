@@ -47,6 +47,8 @@ export const productionDetailInclude = {
 } satisfies Prisma.ProjectProductionInclude;
 
 export type ProductionWriteData = {
+  source: "PRODUCTION_PAGE" | "OPERATIONAL_CENTER";
+  climateConditions: Array<"RAIN" | "DRY" | "WATERLOGGED_SOIL">;
   kind: "INDIVIDUAL_ACTIVITY" | "MATERIAL_MOVEMENT";
   workFrontId: string;
   workFrontServiceId: string;

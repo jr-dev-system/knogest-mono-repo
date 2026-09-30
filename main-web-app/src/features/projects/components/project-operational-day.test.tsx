@@ -7,7 +7,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { OperationalDay } from "../operational-day.types";
 import type { ProjectProductionOptions } from "../productions.types";
@@ -30,10 +30,13 @@ vi.mock("../productions.actions", () => ({
     materials: { data: [], pageInfo: { hasNextPage: false, nextCursor: null } },
     routes: { data: [], pageInfo: { hasNextPage: false, nextCursor: null } },
   }),
+  getDailyReportProductionsAction: vi.fn(),
+  getProjectProductionAction: vi.fn(),
   getProjectProductionOptionsAction: vi.fn(),
   getProjectProductionTruckOptionsAction: vi.fn(),
   saveProjectProductionAction: vi.fn(),
   saveProjectProductionPairAction: vi.fn(),
+  reopenProjectProductionAction: vi.fn(),
 }));
 
 import { ProjectOperationalDay } from "./project-operational-day";
@@ -41,9 +44,26 @@ import {
   closeOperationalShiftAction,
   startOperationalShiftAction,
 } from "../operational-day.actions";
-import { getProjectProductionOptionsAction } from "../productions.actions";
+import {
+  getDailyReportProductionsAction,
+  getProjectProductionOptionsAction,
+} from "../productions.actions";
 
 afterEach(cleanup);
+
+beforeEach(() => {
+  vi.mocked(getDailyReportProductionsAction).mockResolvedValue({
+    reportId: "report-1",
+    productions: [],
+    groups: [],
+    hasDrafts: false,
+    hasPendingQuality: false,
+    needsReconfirmation: false,
+  });
+  vi.mocked(getProjectProductionOptionsAction).mockResolvedValue(
+    productionOptions,
+  );
+});
 
 function operationalDay(withResources = true): OperationalDay {
   return {
@@ -111,6 +131,41 @@ function operationalDay(withResources = true): OperationalDay {
       },
     ],
   };
+}
+
+function operationalDayWithNight(): OperationalDay {
+  const value = operationalDay();
+  const day = value.shifts[0]!;
+  const night = value.shifts[1]!;
+  night.enabled = true;
+  night.suggestedStartedAt = "2026-09-25T09:00:00.000Z";
+  night.options = {
+    ...day.options!,
+    defaults: {
+      ...day.options!.defaults,
+      schedulePeriods: [
+        {
+          startTime: "18:00",
+          endTime: "06:00",
+          startDayOffset: 0,
+          endDayOffset: 1,
+        },
+      ],
+      activityStartTime: "18:00",
+      activityEndTime: "06:00",
+      activityEndDayOffset: 1,
+    },
+  };
+  return value;
+}
+
+function nightOperationalDay(): OperationalDay {
+  const value = operationalDayWithNight();
+  const day = value.shifts[0]!;
+  day.enabled = false;
+  day.suggestedStartedAt = null;
+  day.options = null;
+  return value;
 }
 
 const productionOptions: ProjectProductionOptions = {
@@ -190,6 +245,29 @@ function runningOperationalDay(): OperationalDay {
   return value;
 }
 
+function runningDayWithNightAvailable(): OperationalDay {
+  const value = runningOperationalDay();
+  value.shifts[1] = operationalDayWithNight().shifts[1]!;
+  return value;
+}
+
+function overlappingOperationalDay(): OperationalDay {
+  const value = runningDayWithNightAvailable();
+  const dayReport = value.shifts[0]!.report!;
+  value.shifts[1]!.report = {
+    ...dayReport,
+    id: "33333333-3333-4333-8333-333333333333",
+    shift: "night",
+    startedAt: "2026-09-24T21:00:00.000Z",
+    activityWindow: {
+      startTime: "18:00",
+      endTime: "06:00",
+      endDayOffset: 1,
+    },
+  };
+  return value;
+}
+
 function closingOperationalDay(machineCount = 1, employeeCount = 1) {
   const value = runningOperationalDay();
   const report = value.shifts[0]!.report!;
@@ -232,6 +310,173 @@ function closingOperationalDay(machineCount = 1, employeeCount = 1) {
 
 describe("ProjectOperationalDay", () => {
   afterEach(() => vi.clearAllMocks());
+
+  it("never exposes a disabled night shift", () => {
+    render(
+      <ProjectOperationalDay
+        initialDay={operationalDay()}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Turno diurno" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Turno noturno" }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole("button", { name: "Iniciar turno noturno" }),
+    ).toBeNull();
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("offers an enabled night shift as a discreet action", () => {
+    render(
+      <ProjectOperationalDay
+        initialDay={operationalDayWithNight()}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(
+      screen.queryByRole("heading", { name: "Turno noturno" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Iniciar turno noturno" }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Iniciar turno" }),
+    ).toBeTruthy();
+    expect(screen.getByLabelText("Horário de início")).toBeTruthy();
+  });
+
+  it("alternates overlapping shifts without rendering both panels", () => {
+    const value = overlappingOperationalDay();
+    value.shifts[0]!.report!.interferenceEntries = [
+      {
+        id: "day-interference",
+        category: "weather",
+        description: "Chuva no turno diurno",
+        impact: "Ritmo reduzido",
+        startedAt: "2026-09-24T12:00:00.000Z",
+        endedAt: null,
+        confirmedAt: null,
+      },
+    ];
+    value.shifts[1]!.report!.interferenceEntries = [
+      {
+        id: "night-interference",
+        category: "equipment",
+        description: "Parada no turno noturno",
+        impact: "Máquina indisponível",
+        startedAt: "2026-09-24T22:00:00.000Z",
+        endedAt: null,
+        confirmedAt: null,
+      },
+    ];
+    render(
+      <ProjectOperationalDay
+        initialDay={value}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Turno diurno" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Turno noturno" }),
+    ).toBeNull();
+    expect(screen.getByText("Chuva no turno diurno")).toBeTruthy();
+    expect(screen.queryByText("Parada no turno noturno")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /Exibir turno noturno/u }),
+    );
+
+    expect(
+      screen.getByRole("heading", { name: "Turno noturno" }),
+    ).toBeTruthy();
+    expect(
+      screen.queryByRole("heading", { name: "Turno diurno" }),
+    ).toBeNull();
+    expect(screen.getByText("Parada no turno noturno")).toBeTruthy();
+    expect(screen.queryByText("Chuva no turno diurno")).toBeNull();
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+  });
+
+  it("focuses the night panel after starting it", async () => {
+    const before = runningDayWithNightAvailable();
+    const after = overlappingOperationalDay();
+    vi.mocked(startOperationalShiftAction).mockResolvedValue({
+      kind: "success",
+      day: after,
+    });
+    render(
+      <ProjectOperationalDay
+        initialDay={before}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("button", { name: "Iniciar turno noturno" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirmar horário e continuar" }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Confirmar checklists e iniciar" }),
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Turno noturno" }),
+      ).toBeTruthy(),
+    );
+    expect(startOperationalShiftAction).toHaveBeenCalledWith(
+      expect.objectContaining({ shift: "night" }),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Turno diurno" }),
+    ).toBeNull();
+  });
+
+  it("reconciles the focused shift when refreshed data disables it", async () => {
+    const view = render(
+      <ProjectOperationalDay
+        initialDay={runningOperationalDay()}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+    const nightOnly = nightOperationalDay();
+    nightOnly.shifts[1]!.report = overlappingOperationalDay().shifts[1]!.report;
+
+    view.rerender(
+      <ProjectOperationalDay
+        initialDay={nightOnly}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Turno noturno" }),
+      ).toBeTruthy(),
+    );
+    expect(
+      screen.queryByRole("heading", { name: "Turno diurno" }),
+    ).toBeNull();
+  });
 
   it("shows the allocated employees and machines in the start checklist", () => {
     render(
@@ -326,13 +571,52 @@ describe("ProjectOperationalDay", () => {
     await waitFor(() =>
       expect(startOperationalShiftAction).toHaveBeenCalledWith(
         expect.objectContaining({
-          startedAt: "2026-09-24T07:30:00-03:00",
+          startedAt: "2026-09-24T10:30:00.000Z",
         }),
       ),
     );
   });
 
-  it("guides machine and employee batches and returns edits to review", () => {
+  it("normalizes a night shift start after midnight to the next UTC day", async () => {
+    const day = nightOperationalDay();
+    vi.mocked(startOperationalShiftAction).mockResolvedValue({
+      kind: "success",
+      day,
+    });
+    render(
+      <ProjectOperationalDay
+        initialDay={day}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Iniciar turno" }));
+    fireEvent.change(screen.getByLabelText("Horário de início"), {
+      target: { value: "06:30" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Confirmar horário e continuar",
+      }),
+    );
+    fireEvent.click(
+      screen.getByRole("button", {
+        name: "Confirmar checklists e iniciar",
+      }),
+    );
+
+    await waitFor(() =>
+      expect(startOperationalShiftAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          shift: "night",
+          startedAt: "2026-09-25T09:30:00.000Z",
+        }),
+      ),
+    );
+  });
+
+  it("guides machine and employee batches and returns edits to review", async () => {
     render(
       <ProjectOperationalDay
         initialDay={closingOperationalDay(7, 11)}
@@ -364,6 +648,11 @@ describe("ProjectOperationalDay", () => {
     );
     expect(screen.getByText("11–11 de 11")).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox"));
+    fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
+
+    expect(
+      await screen.findByRole("heading", { name: "Atividades executadas" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
 
     expect(
@@ -416,6 +705,10 @@ describe("ProjectOperationalDay", () => {
     expect(screen.getByText("Hora extra conferida: 01:00")).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
+    expect(
+      await screen.findByRole("heading", { name: "Atividades executadas" }),
+    ).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
     fireEvent.click(
       screen.getByRole("button", {
         name: "Confirmar e finalizar turno",
@@ -426,10 +719,11 @@ describe("ProjectOperationalDay", () => {
       expect(closeOperationalShiftAction).toHaveBeenCalledWith(
         expect.objectContaining({
           data: expect.objectContaining({
-            endedAt: "2026-09-24T18:00:00-03:00",
+            endedAt: "2026-09-24T21:00:00.000Z",
             employees: [
               expect.objectContaining({
                 employmentId: "employee-1",
+                checkOutAt: "2026-09-24T21:00:00.000Z",
                 breaks: [
                   {
                     startAt: "2026-09-24T15:00:00.000Z",
@@ -449,6 +743,10 @@ describe("ProjectOperationalDay", () => {
         }),
       ),
     );
+    const closeCommand = vi.mocked(closeOperationalShiftAction).mock.calls[0]![0]
+      .data;
+    expect(closeCommand).not.toHaveProperty("activityNotes");
+    expect(closeCommand).not.toHaveProperty("fallbackClimateConditions");
   });
 
   it("only requests overtime confirmation after the scheduled shift end", () => {
@@ -511,7 +809,7 @@ describe("ProjectOperationalDay", () => {
     expect(screen.queryByText("Intervalos do turno")).toBeNull();
   });
 
-  it("accepts the displayed start minute when the stored start has seconds", () => {
+  it("accepts the displayed start minute when the stored start has seconds", async () => {
     const day = closingOperationalDay();
     const report = day.shifts[0]!.report!;
     report.startedAt = "2026-09-24T19:22:37.000Z";
@@ -540,6 +838,10 @@ describe("ProjectOperationalDay", () => {
     });
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
+    fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
+    expect(
+      await screen.findByRole("heading", { name: "Atividades executadas" }),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
 
     expect(
@@ -609,6 +911,32 @@ describe("ProjectOperationalDay", () => {
     expect(
       screen.getByRole("heading", { name: "Central operacional" }),
     ).toBeTruthy();
+  });
+
+  it("keeps Central modals open when Escape is pressed", async () => {
+    render(
+      <ProjectOperationalDay
+        initialDay={runningOperationalDay()}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Finalizar turno" }));
+    expect(
+      screen.getByRole("heading", { name: "Finalizar turno" }),
+    ).toBeTruthy();
+
+    fireEvent.keyDown(document, { key: "Escape", code: "Escape" });
+
+    await waitFor(() =>
+      expect(
+        screen.getByRole("heading", { name: "Finalizar turno" }),
+      ).toBeTruthy(),
+    );
+    expect(
+      screen.queryByRole("button", { name: "Completar RDO" }),
+    ).toBeNull();
   });
 
   it("blocks contextual production until a work front is started", async () => {

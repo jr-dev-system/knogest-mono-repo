@@ -13,6 +13,11 @@ const minuteSecondDuration = z
     /^(?!0\.00$)(?:(?:0|[1-9]\d{0,2}|1[0-3]\d{2}|14[0-3]\d)\.[0-5]\d|1440\.00)$/u,
   );
 const percentage = z.string().regex(/^(?:(?:0|[1-9]\d?)\.\d{2}|100\.00)$/u);
+export const productionClimateConditionSchema = z.enum([
+  "rain",
+  "dry",
+  "waterlogged_soil",
+]);
 
 export const productionParamsSchema = z
   .object({
@@ -146,6 +151,13 @@ const productionCommandBase = z.object({
   endTime: time.nullable().default(null),
   endDayOffset: z.number().int().min(0).max(1).default(0),
   responsibleEmploymentId: uuid.nullable().default(null),
+  source: z
+    .enum(["production_page", "operational_center"])
+    .default("production_page"),
+  climateConditions: z
+    .array(productionClimateConditionSchema)
+    .min(1)
+    .max(3),
   evidence: z.array(evidenceSchema).max(20).default([]),
   notes: z.string().trim().max(10_000).nullable().default(null),
   equipment: z.array(equipmentSchema).max(100).default([]),

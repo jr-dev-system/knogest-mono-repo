@@ -41,6 +41,21 @@ export const operationalDayParamsSchema = z
   })
   .strict();
 
+export const operationalReportParamsSchema = z
+  .object({
+    projectId: uuid,
+    reportId: uuid,
+  })
+  .strict();
+
+export const operationalInterferenceParamsSchema = z
+  .object({
+    projectId: uuid,
+    reportId: uuid,
+    interferenceId: uuid,
+  })
+  .strict();
+
 export const dailyReportOptionsQuerySchema = z
   .object({
     reportDate: z.iso.date(),
@@ -249,6 +264,11 @@ export const operationalShiftCloseSchema = z
   .object({
     endedAt: operationalInstant,
     earlyClosureReason: optionalText(500),
+    activityNotes: optionalText(10_000).optional(),
+    fallbackClimateConditions: z
+      .array(dailyReportClimateConditionSchema)
+      .max(3)
+      .default([]),
     employees: z
       .array(
         z

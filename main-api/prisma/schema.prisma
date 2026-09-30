@@ -167,6 +167,13 @@ enum ProjectProductionStatus {
   @@map("project_production_status")
 }
 
+enum ProjectProductionSource {
+  PRODUCTION_PAGE
+  OPERATIONAL_CENTER
+
+  @@map("project_production_source")
+}
+
 enum ProjectProductionEntryMode {
   DIRECT_TOTAL
   TRUCK_SUMMARY
@@ -1710,6 +1717,7 @@ model ProjectProduction {
   shift                     ProjectDailyReportShift
   shiftOrder                Int                                  @map("shift_order")
   status                    ProjectProductionStatus              @default(DRAFT)
+  source                    ProjectProductionSource              @default(PRODUCTION_PAGE)
   kind                      ProjectProductionKind                @default(INDIVIDUAL_ACTIVITY)
   entryMode                 ProjectProductionEntryMode           @map("entry_mode")
   revision                  Int                                  @default(1)
@@ -1738,6 +1746,7 @@ model ProjectProduction {
   layerThicknessCm          Decimal?                             @map("layer_thickness_cm") @db.Decimal(10, 2)
   compactionPasses          Int?                                 @map("compaction_passes")
   moistureCondition         String?                              @map("moisture_condition") @db.VarChar(120)
+  climateConditions         ProjectDailyReportClimateCondition[] @default([]) @map("climate_conditions")
   evidence                  Json                                 @default("[]")
   notes                     String?                              @db.Text
   createdByUserId           String                               @map("created_by_user_id") @db.Uuid

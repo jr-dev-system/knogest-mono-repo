@@ -616,6 +616,9 @@ export async function updateOperationalClosureHandler(
     activityEndDayOffset: number;
     earlyClosureReason: string | null;
     interferences: string | null;
+    activityTypes: Array<"EARTHWORKS">;
+    climateConditions: Array<"RAIN" | "DRY" | "WATERLOGGED_SOIL">;
+    executedActivities: string;
   },
 ) {
   await context.prisma.projectDailyReport.update({

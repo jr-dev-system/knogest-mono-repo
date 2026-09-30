@@ -37,7 +37,12 @@ import {
   type DailyReportScope,
   type DailyReportWriteData,
 } from "./handlers/daily-reports.handler";
-import { dailyReportProductionReadinessHandler } from "../productions/handlers/productions.handler";
+import {
+  confirmDailyReportProductionsHandler,
+  dailyReportProductionReadinessHandler,
+  listShiftProductionsHandler,
+  transitionProductionHandler,
+} from "../productions/handlers/productions.handler";
 
 const BUSINESS_TIME_ZONE = "America/Sao_Paulo";
 const dayLabels = ["Seg.", "Ter.", "Qua.", "Qui.", "Sex.", "Sáb.", "Dom."];
@@ -185,7 +190,7 @@ export class DailyReportsService {
       activityStartTime: options.defaults.activityStartTime,
       activityEndTime: options.defaults.activityEndTime,
       activityEndDayOffset: options.defaults.activityEndDayOffset,
-      activityTypes: [],
+      activityTypes: ["EARTHWORKS"],
       climateConditions: [],
       dailyRainfallMm: "0.00",
       monthlyRainfallMm: "0.00",
@@ -373,12 +378,6 @@ export class DailyReportsService {
           );
           if (!record) throw notFound();
           if (record.status !== "DRAFT" || !record.startedAt) throw immutable();
-          if (
-            !record.activityTypes.length ||
-            !record.climateConditions.length ||
-            !record.executedActivities.trim()
-          )
-            throw incomplete("rdo");
           if (record.interferenceEntries.some((item) => !item.confirmedAt))
             throw incomplete("interferences");
           const employeeCommands = new Map(
@@ -524,6 +523,87 @@ export class DailyReportsService {
           ).endAt;
           if (endedAt < plannedEnd && !command.earlyClosureReason)
             throw incomplete("early-closure-reason");
+          const productionScope = { ...scope, role: "MASTER_ADMIN" as const };
+          const productionRecords = await listShiftProductionsHandler(
+            transactionContext,
+            productionScope,
+            projectId,
+            record.reportDate,
+            record.shift,
+          );
+          const missingClimate = productionRecords.find(
+            (production) => !production.climateConditions.length,
+          );
+          if (missingClimate) throw incomplete("production-climate");
+
+          const confirmedProductions = [];
+          for (const production of productionRecords) {
+            if (production.status !== "DRAFT") {
+              confirmedProductions.push(production);
+              continue;
+            }
+            const submitted = await transitionProductionHandler(
+              transactionContext,
+              productionScope,
+              projectId,
+              production.id,
+              {
+                expectedRevision: production.revision,
+                from: ["DRAFT"],
+                to: "SUBMITTED",
+                event: "SUBMITTED",
+                phase: "SUBMISSION",
+                decision: "SUBMITTED",
+                reason: null,
+                snapshot: { source: "operational-shift-close" },
+              },
+            );
+            if (!submitted) throw incomplete("productions");
+            confirmedProductions.push(submitted);
+          }
+          await confirmDailyReportProductionsHandler(
+            transactionContext,
+            productionScope,
+            reportId,
+            confirmedProductions.map((production) => ({
+              id: production.id,
+              revision: production.revision,
+              operationalRevision: production.operationalRevision,
+            })),
+          );
+
+          const productionClimates = new Set<
+            "RAIN" | "DRY" | "WATERLOGGED_SOIL"
+          >();
+          for (const production of confirmedProductions)
+            for (const condition of production.climateConditions)
+              productionClimates.add(condition);
+          if (!confirmedProductions.length)
+            for (const condition of command.fallbackClimateConditions)
+              productionClimates.add(climateFromApi[condition]);
+
+          const generatedActivities = confirmedProductions.length
+            ? confirmedProductions
+                .map((production, index) => {
+                  const destination = production.destination
+                    ? ` · destino ${production.destination}`
+                    : "";
+                  const trips = production.truckSummaries.reduce(
+                    (total, truck) => total + truck.acceptedTrips,
+                    0,
+                  );
+                  const transport = trips
+                    ? ` · ${trips} viagem(ns) em ${production.truckSummaries.length} caminhão(ões)`
+                    : production.equipment.length
+                      ? ` · ${production.equipment.length} equipamento(s)`
+                      : "";
+                  return `${index + 1}. ${production.serviceCodeSnapshot} · ${production.location ?? "Local não informado"} · ${production.officialQuantity.toFixed(3)} ${production.unitCodeSnapshot}${destination}${transport}`;
+                })
+                .join("\n")
+            : "Nenhuma produção registrada no turno.";
+          const executedActivities = command.activityNotes
+            ? `${generatedActivities}\n\nInformações complementares:\n${command.activityNotes}`
+            : generatedActivities;
           await updateOperationalClosureHandler(transactionContext, reportId, {
             activityEndTime: localClock(endedAt),
             activityEndDayOffset:
@@ -534,6 +614,9 @@ export class DailyReportsService {
                   .map((item) => `${item.description} — ${item.impact}`)
                   .join("\n")
               : null,
+            activityTypes: ["EARTHWORKS"],
+            climateConditions: [...productionClimates],
+            executedActivities,
           });
           return service.finalize(scope, projectId, reportId);
         },

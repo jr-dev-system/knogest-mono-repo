@@ -15,7 +15,9 @@ import {
   dailyReportOptionsQuerySchema,
   dailyReportParamsSchema,
   operationalDayParamsSchema,
+  operationalInterferenceParamsSchema,
   operationalInterferenceCommandSchema,
+  operationalReportParamsSchema,
   operationalRdoCommandSchema,
   operationalShiftCloseSchema,
   operationalShiftStartSchema,
@@ -57,6 +59,13 @@ const operationalCloseSchema = {
   required: ["endedAt", "employees", "machines"],
   properties: {
     endedAt: dateTime, earlyClosureReason: nullableString,
+    activityNotes: { type: "string", nullable: true, maxLength: 10_000 },
+    fallbackClimateConditions: {
+      type: "array",
+      maxItems: 3,
+      uniqueItems: true,
+      items: { type: "string", enum: ["rain", "dry", "waterlogged_soil"] },
+    },
     employees: { type: "array", items: { type: "object", additionalProperties: false, required: ["employmentId", "checkInAt", "checkOutAt", "breaks", "overtimeConfirmed"], properties: { employmentId: uuid, checkInAt: { ...dateTime, nullable: true }, checkOutAt: { ...dateTime, nullable: true }, overtimeConfirmed: { type: "boolean" }, breaks: { type: "array", items: { type: "object", additionalProperties: false, required: ["startAt", "endAt"], properties: { startAt: dateTime, endAt: dateTime } } } } } },
     machines: { type: "array", items: { type: "object", additionalProperties: false, required: ["machineId", "endMeterReadingValue"], properties: { machineId: uuid, endMeterReadingValue: { ...decimal, nullable: true } } } },
   },
@@ -645,35 +654,35 @@ export const v1DailyReportsController = async (app: FastifyInstance) => {
   });
 
   app.put("/projects/:projectId/operational-shifts/:reportId/rdo", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalDayParamsSchema), validateBody(operationalRdoCommandSchema)],
+    preHandler: [app.requireCompanyScope, validateParams(operationalReportParamsSchema), validateBody(operationalRdoCommandSchema)],
     schema: { tags: ["Project operations"], summary: "Save RDO answers for an open shift", security: [{ bearerAuth: [] }], params: reportParamsSchema, body: operationalRdoSchema, response: { 200: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
   }, async (request, reply) => {
-    const { projectId, reportId } = request.params as z.infer<typeof operationalDayParamsSchema>;
-    return jsonResponse.success({ reply, data: await service.saveOperationalRdo(scopeFromRequest(request), projectId, reportId!, request.body as z.infer<typeof operationalRdoCommandSchema>) });
+    const { projectId, reportId } = request.params as z.infer<typeof operationalReportParamsSchema>;
+    return jsonResponse.success({ reply, data: await service.saveOperationalRdo(scopeFromRequest(request), projectId, reportId, request.body as z.infer<typeof operationalRdoCommandSchema>) });
   });
 
   app.post("/projects/:projectId/operational-shifts/:reportId/interferences", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalDayParamsSchema), validateBody(operationalInterferenceCommandSchema)],
+    preHandler: [app.requireCompanyScope, validateParams(operationalReportParamsSchema), validateBody(operationalInterferenceCommandSchema)],
     schema: { tags: ["Project operations"], summary: "Record an interference during an open shift", security: [{ bearerAuth: [] }], params: reportParamsSchema, body: operationalInterferenceSchema, response: { 201: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
   }, async (request, reply) => {
-    const { projectId, reportId } = request.params as z.infer<typeof operationalDayParamsSchema>;
-    return jsonResponse.success({ reply, statusCode: 201, data: await service.addInterference(scopeFromRequest(request), projectId, reportId!, request.body as z.infer<typeof operationalInterferenceCommandSchema>) });
+    const { projectId, reportId } = request.params as z.infer<typeof operationalReportParamsSchema>;
+    return jsonResponse.success({ reply, statusCode: 201, data: await service.addInterference(scopeFromRequest(request), projectId, reportId, request.body as z.infer<typeof operationalInterferenceCommandSchema>) });
   });
 
   app.post("/projects/:projectId/operational-shifts/:reportId/interferences/:interferenceId/confirm", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalDayParamsSchema)],
+    preHandler: [app.requireCompanyScope, validateParams(operationalInterferenceParamsSchema)],
     schema: { tags: ["Project operations"], summary: "Confirm an operational interference", security: [{ bearerAuth: [] }], params: { type: "object", additionalProperties: false, required: ["projectId", "reportId", "interferenceId"], properties: { projectId: uuid, reportId: uuid, interferenceId: uuid } }, response: { 200: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
   }, async (request, reply) => {
-    const { projectId, reportId, interferenceId } = request.params as z.infer<typeof operationalDayParamsSchema>;
-    return jsonResponse.success({ reply, data: await service.confirmInterference(scopeFromRequest(request), projectId, reportId!, interferenceId!) });
+    const { projectId, reportId, interferenceId } = request.params as z.infer<typeof operationalInterferenceParamsSchema>;
+    return jsonResponse.success({ reply, data: await service.confirmInterference(scopeFromRequest(request), projectId, reportId, interferenceId) });
   });
 
   app.post("/projects/:projectId/operational-shifts/:reportId/close", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalDayParamsSchema), validateBody(operationalShiftCloseSchema)],
+    preHandler: [app.requireCompanyScope, validateParams(operationalReportParamsSchema), validateBody(operationalShiftCloseSchema)],
     schema: { tags: ["Project operations"], summary: "Close a shift and finalize its RDO atomically", security: [{ bearerAuth: [] }], params: reportParamsSchema, body: operationalCloseSchema, response: { 200: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
   }, async (request, reply) => {
-    const { projectId, reportId } = request.params as z.infer<typeof operationalDayParamsSchema>;
-    return jsonResponse.success({ reply, data: await service.closeOperationalShift(scopeFromRequest(request), projectId, reportId!, request.body as z.infer<typeof operationalShiftCloseSchema>) });
+    const { projectId, reportId } = request.params as z.infer<typeof operationalReportParamsSchema>;
+    return jsonResponse.success({ reply, data: await service.closeOperationalShift(scopeFromRequest(request), projectId, reportId, request.body as z.infer<typeof operationalShiftCloseSchema>) });
   });
 
   app.get("/projects/:projectId/frequency", {

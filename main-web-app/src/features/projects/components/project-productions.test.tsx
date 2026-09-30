@@ -201,6 +201,7 @@ describe("ProjectProductions", () => {
       frontId,
     );
     expect(screen.queryByText("Tipo de lançamento")).toBeNull();
+    await user.click(screen.getByRole("checkbox", { name: "Seco" }));
     await user.click(screen.getByRole("button", { name: "Avançar" }));
     await user.click(
       await screen.findByRole("checkbox", { name: /Basculante 01/u }),
@@ -347,6 +348,7 @@ describe("ProjectProductions", () => {
     await user.click(
       screen.getByRole("button", { name: "Adicionar produção" }),
     );
+    await user.click(screen.getByRole("checkbox", { name: "Seco" }));
     await user.click(screen.getByRole("button", { name: "Avançar" }));
     const first = await screen.findByRole("checkbox", {
       name: /Basculante 01/u,
@@ -438,6 +440,7 @@ describe("ProjectProductions", () => {
     expect(
       await screen.findByRole("option", { name: "Aterro · m³" }),
     ).toBeTruthy();
+    await user.click(screen.getByRole("checkbox", { name: "Seco" }));
     await user.click(screen.getByRole("button", { name: "Avançar" }));
     await user.click(screen.getByRole("button", { name: "Avançar" }));
     await user.click(screen.getByLabelText("Volume direto"));
@@ -494,6 +497,7 @@ describe("ProjectProductions", () => {
     await user.click(
       screen.getByRole("button", { name: "Adicionar produção" }),
     );
+    await user.click(screen.getByRole("checkbox", { name: "Seco" }));
     await user.click(screen.getByRole("button", { name: "Avançar" }));
     await user.click(
       await screen.findByRole("checkbox", { name: /Basculante 01/u }),
@@ -571,6 +575,8 @@ function detail(
     dmtPolicy: "optional",
     productionDate: "2026-08-10",
     shift: "day",
+    source: "production_page",
+    climateConditions: ["dry"],
     status: "submitted",
     entryMode: kind === "material_movement" ? "truck_summary" : "direct_total",
     revision: 1,

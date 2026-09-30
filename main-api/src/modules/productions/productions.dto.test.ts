@@ -20,6 +20,7 @@ describe("production command", () => {
         kind: "individual_activity",
         productionDate: "2026-07-28",
         shift: "day",
+        climateConditions: ["dry"],
         individualActivity: {
           workFrontId: frontId,
           workFrontServiceId: serviceId,
@@ -39,6 +40,7 @@ describe("production command", () => {
       entryMode: "truck_summary",
       productionDate: "2026-07-28",
       shift: "day",
+      climateConditions: ["rain"],
       submitNow: true,
       responsibleEmploymentId: frontId,
       individualActivity: {
@@ -78,6 +80,7 @@ describe("production command", () => {
       kind: "individual_activity" as const,
       productionDate: "2026-07-28",
       shift: "day" as const,
+      climateConditions: ["dry"] as const,
       responsibleEmploymentId: frontId,
     };
     expect(
@@ -174,6 +177,7 @@ describe("production command", () => {
         kind: "individual_activity",
         productionDate: "2026-07-28",
         shift: "day",
+        climateConditions: ["dry"],
         individualActivity: {
           workFrontId: frontId,
           workFrontServiceId: serviceId,
@@ -189,6 +193,7 @@ describe("production command", () => {
       kind: "material_movement",
       productionDate: "2026-07-28",
       shift: "day",
+      climateConditions: ["dry"],
       materialMovement: {
         workFrontId: frontId,
         workFrontServiceId: serviceId,
@@ -226,6 +231,7 @@ describe("production command", () => {
       kind: "individual_activity",
       productionDate: "2026-07-28",
       shift: "day",
+      climateConditions: ["dry"],
       individualActivity: {
         workFrontId: frontId,
         workFrontServiceId: serviceId,

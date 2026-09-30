@@ -64,7 +64,7 @@ de domínio é `success`; um `200` do protocolo da Server Action não basta.
 
 A Central operacional carrega
 `GET /projects/:projectId/operational-days/:reportDate` no servidor e executa
-início de turno, salvamento do RDO, interferências e fechamento por Server
+início de turno, interferências e fechamento por Server
 Actions finas em `src/features/projects/operational-day.actions.ts`. Cada ação
 valida UUID/data, chama exclusivamente o cliente Kubb e recarrega o retrato do
 dia devolvido ao componente. A tela também chama `router.refresh()` a cada 30
@@ -77,9 +77,20 @@ o horário de início do intervalo geral e, no fechamento, envia a mesma lista d
 
 O CTA de produção abre o assistente compartilhado sobre a própria Central e
 consulta as opções para a data e o turno do RDO. O comando recebe o supervisor
-como responsável e omite início e fim; fechar ou salvar não navega para a aba
-Produção. Os CTAs de manutenção e abastecimento são deliberadamente locais
-nesta versão e apenas informam indisponibilidade, sem requisição HTTP.
+como responsável, omite início e fim, envia `source=operational_center` e exige
+`climateConditions`. A Central salva a produção como rascunho; a confirmação é
+reservada ao fechamento coletivo do turno. Fechar ou salvar não navega para a
+aba Produção. Os modais operacionais ignoram `Esc` e descarte por clique fora,
+mantendo somente as ações explícitas de fechamento. Os CTAs de manutenção e
+abastecimento são deliberadamente locais nesta versão e apenas informam
+indisponibilidade, sem requisição HTTP.
+
+O fechamento consulta o resumo de produções e adiciona **Atividades
+executadas** antes da revisão. A atividade fixa Terraplanagem permanece visível
+e desabilitada; os blocos derivados da produção são somente leitura e somente
+`activityNotes` é texto livre. Editar um registro preserva data, turno, frente e
+serviço, podendo alterar valores, viagens, equipamentos, destino e clima. Sem
+produções, `fallbackClimateConditions` é opcional e o fechamento continua.
 
 O fluxo de produção usa os clientes gerados para opções do turno, listagem,
 detalhe, comando discriminado, catálogos, workflow, qualidade, histórico e

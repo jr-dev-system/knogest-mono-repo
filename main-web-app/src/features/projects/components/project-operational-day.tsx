@@ -13,6 +13,7 @@ import {
   Gauge,
   Loader2,
   Moon,
+  Pencil,
   Plus,
   RefreshCw,
   Sun,
@@ -36,27 +37,34 @@ import {
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
 import {
+  productionServiceLabel,
+  productionUnitLabel,
+} from "../production-labels";
+import {
   addOperationalInterferenceAction,
   closeOperationalShiftAction,
   confirmOperationalInterferenceAction,
-  saveOperationalRdoAction,
   startOperationalShiftAction,
 } from "../operational-day.actions";
-import { getProjectProductionOptionsAction } from "../productions.actions";
+import {
+  getDailyReportProductionsAction,
+  getProjectProductionAction,
+  getProjectProductionOptionsAction,
+  reopenProjectProductionAction,
+} from "../productions.actions";
 import type {
   OperationalDay,
   OperationalReport,
   OperationalResult,
   OperationalShift,
 } from "../operational-day.types";
-import type { ProjectProductionOptions } from "../productions.types";
+import type {
+  ProjectDailyReportProductionSummary,
+  ProjectProductionDetail,
+  ProjectProductionOptions,
+} from "../productions.types";
 import { ProjectProductionWizard } from "./project-production-simple-wizard";
 
-const activityLabels = {
-  earthworks: "Terraplanagem",
-  drainage: "Drenagem",
-  paving: "Pavimentação",
-};
 const climateLabels = {
   dry: "Seco",
   rain: "Chuva",
@@ -72,6 +80,30 @@ const interferenceLabels = {
   other: "Outra",
 };
 
+function shiftLabel(shift: OperationalShift) {
+  return shift === "day" ? "diurno" : "noturno";
+}
+
+function preferredShift(day: OperationalDay): OperationalShift {
+  const runningDay = day.shifts.find(
+    (item) => item.shift === "day" && item.report?.status === "draft",
+  );
+  if (runningDay) return "day";
+  const runningNight = day.shifts.find(
+    (item) => item.shift === "night" && item.report?.status === "draft",
+  );
+  if (runningNight) return "night";
+  if (day.shifts.some((item) => item.shift === "day" && item.enabled))
+    return "day";
+  return day.shifts.find((item) => item.enabled)?.shift ?? "day";
+}
+
+function shiftStatusLabel(item: OperationalDay["shifts"][number]) {
+  if (item.report?.status === "finalized") return "Finalizado";
+  if (item.report?.status === "draft") return "Em andamento";
+  return "Não iniciado";
+}
+
 export function ProjectOperationalDay({
   initialDay,
   projectId,
@@ -83,8 +115,11 @@ export function ProjectOperationalDay({
 }) {
   const router = useRouter();
   const [day, setDay] = React.useState(initialDay);
+  const [visibleShift, setVisibleShift] = React.useState<OperationalShift>(() =>
+    preferredShift(initialDay),
+  );
   const [panel, setPanel] = React.useState<{
-    kind: "start" | "rdo" | "interference" | "close";
+    kind: "start" | "interference" | "close";
     shift: OperationalShift;
   } | null>(null);
   const [busy, setBusy] = React.useState(false);
@@ -95,6 +130,20 @@ export function ProjectOperationalDay({
   } | null>(null);
   const refresh = React.useCallback(() => router.refresh(), [router]);
   const refreshPaused = panel !== null || production !== null;
+  React.useEffect(() => {
+    setDay(initialDay);
+    setVisibleShift((current) => {
+      const currentItem = initialDay.shifts.find(
+        (item) => item.shift === current,
+      );
+      const hasRunningShift = initialDay.shifts.some(
+        (item) => item.report?.status === "draft",
+      );
+      return currentItem?.enabled && (currentItem.report || !hasRunningShift)
+        ? current
+        : preferredShift(initialDay);
+    });
+  }, [initialDay]);
   React.useEffect(() => {
     const refreshWhenIdle = () => {
       if (!refreshPaused) refresh();
@@ -125,6 +174,7 @@ export function ProjectOperationalDay({
       return;
     }
     setDay(result.day);
+    if (panel?.kind === "start") setVisibleShift(panel.shift);
     setPanel(null);
     toast.success(success);
   }
@@ -155,6 +205,19 @@ export function ProjectOperationalDay({
     month: "long",
     year: "numeric",
   }).format(new Date(`${day.reportDate}T12:00:00Z`));
+  const visibleItem =
+    day.shifts.find((item) => item.shift === visibleShift && item.enabled) ??
+    day.shifts.find((item) => item.enabled) ??
+    day.shifts[0]!;
+  const switchableItems = day.shifts.filter(
+    (item) => item.enabled && item.report,
+  );
+  const startableOtherShift = day.shifts.find(
+    (item) =>
+      item.shift !== visibleItem.shift && item.enabled && !item.report,
+  );
+  const visibleRunningReport =
+    visibleItem.report?.status === "draft" ? visibleItem.report : null;
   return (
     <main className="min-h-full bg-background">
       <header className="flex flex-col gap-4 border-b border-border bg-card px-4 py-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
@@ -186,27 +249,83 @@ export function ProjectOperationalDay({
         </Button>
       </header>
       <div className="space-y-6 p-4 sm:p-6">
-        <div className="grid gap-4 xl:grid-cols-2">
-          {day.shifts.map((item) => (
-            <ShiftLane
-              key={item.shift}
-              item={item}
-              onAction={(kind) => setPanel({ kind, shift: item.shift })}
-              onProduction={() => void openProduction(item)}
-            />
-          ))}
+        <div className="space-y-3">
+          {(switchableItems.length > 1 || startableOtherShift) && (
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              {switchableItems.length > 1 && (
+                <div
+                  className="inline-flex w-full rounded-lg border border-border bg-secondary/45 p-1 sm:w-auto"
+                  role="group"
+                  aria-label="Alternar turno operacional"
+                >
+                  {switchableItems.map((item) => {
+                    const selected = item.shift === visibleItem.shift;
+                    const Icon = item.shift === "day" ? Sun : Moon;
+                    const status = shiftStatusLabel(item);
+                    return (
+                      <Button
+                        key={item.shift}
+                        type="button"
+                        variant={selected ? "secondary" : "ghost"}
+                        className={cn(
+                          "min-h-11 flex-1 gap-2 px-3 font-bold sm:flex-none",
+                          selected && "bg-card shadow-xs",
+                        )}
+                        aria-pressed={selected}
+                        aria-label={`Exibir turno ${shiftLabel(item.shift)}, ${status.toLowerCase()}`}
+                        onClick={() => setVisibleShift(item.shift)}
+                      >
+                        <Icon className="size-4" />
+                        <span>Turno {shiftLabel(item.shift)}</span>
+                        <span className="hidden text-xs font-semibold text-muted-foreground md:inline">
+                          {status}
+                        </span>
+                      </Button>
+                    );
+                  })}
+                </div>
+              )}
+              {startableOtherShift && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="min-h-10 self-end px-3 font-semibold sm:ml-auto sm:self-auto"
+                  disabled={busy}
+                  onClick={() =>
+                    setPanel({
+                      kind: "start",
+                      shift: startableOtherShift.shift,
+                    })
+                  }
+                >
+                  {startableOtherShift.shift === "day" ? <Sun /> : <Moon />}
+                  Iniciar turno {shiftLabel(startableOtherShift.shift)}
+                </Button>
+              )}
+            </div>
+          )}
+          <ShiftLane
+            key={visibleItem.shift}
+            item={visibleItem}
+            onAction={(kind) =>
+              setPanel({ kind, shift: visibleItem.shift })
+            }
+            onProduction={() => void openProduction(visibleItem)}
+          />
         </div>
-        {day.shifts.some((item) => item.report?.status === "draft") && (
+        {visibleRunningReport && (
           <section className="grid gap-4 lg:grid-cols-[minmax(0,1.35fr)_minmax(20rem,.65fr)]">
             <div className="border-y border-border py-5">
-              <h2 className="text-lg font-bold">Agora na obra</h2>
+              <h2 className="text-lg font-bold">
+                Agora no turno {shiftLabel(visibleItem.shift)}
+              </h2>
               <p className="mt-1 text-base text-muted-foreground">
-                Interferências e registros dos turnos em andamento.
+                Interferências e registros deste turno em andamento.
               </p>
               <div className="mt-4 divide-y divide-border">
-                {day.shifts
-                  .flatMap((item) => item.report?.interferenceEntries ?? [])
-                  .map((entry) => (
+                {visibleRunningReport.interferenceEntries.length ? (
+                  visibleRunningReport.interferenceEntries.map((entry) => (
                     <div
                       key={entry.id}
                       className="flex flex-col gap-3 py-4 sm:flex-row sm:items-center"
@@ -231,17 +350,12 @@ export function ProjectOperationalDay({
                           className="min-h-11"
                           disabled={busy}
                           onClick={() => {
-                            const report = day.shifts.find((shift) =>
-                              shift.report?.interferenceEntries.some(
-                                (value) => value.id === entry.id,
-                              ),
-                            )!.report!;
                             void run(
                               () =>
                                 confirmOperationalInterferenceAction({
                                   projectId,
                                   reportDate: day.reportDate,
-                                  reportId: report.id,
+                                  reportId: visibleRunningReport.id,
                                   interferenceId: entry.id,
                                 }),
                               "Interferência confirmada.",
@@ -252,14 +366,19 @@ export function ProjectOperationalDay({
                         </Button>
                       )}
                     </div>
-                  ))}
+                  ))
+                ) : (
+                  <p className="py-4 text-sm font-medium text-muted-foreground">
+                    Nenhuma interferência registrada neste turno.
+                  </p>
+                )}
               </div>
             </div>
             <div className="rounded-xl bg-secondary/55 p-5">
               <h2 className="text-lg font-bold">Próximo passo</h2>
               <p className="mt-2 text-base leading-6 text-secondary-foreground">
-                Complete os dados do RDO, confirme as interferências e revise
-                frequência e medidores antes de finalizar.
+                Mantenha produções e interferências atualizadas e revise
+                frequência e medidores deste turno antes de finalizar.
               </p>
             </div>
           </section>
@@ -296,6 +415,7 @@ export function ProjectOperationalDay({
           onSaved={() => refresh()}
           open
           options={production.options}
+          preventDismissal
           projectId={projectId}
         />
       )}
@@ -309,7 +429,7 @@ function ShiftLane({
   onProduction,
 }: {
   item: OperationalDay["shifts"][number];
-  onAction: (kind: "start" | "rdo" | "interference" | "close") => void;
+  onAction: (kind: "start" | "interference" | "close") => void;
   onProduction: () => void;
 }) {
   const report = item.report;
@@ -317,9 +437,6 @@ function ShiftLane({
   const finalized = report?.status === "finalized";
   const blockers = report
     ? [
-        !report.activityTypes.length,
-        !report.climateConditions.length,
-        !report.executedActivities,
         report.interferenceEntries.some((value) => !value.confirmedAt),
       ].filter(Boolean).length
     : 0;
@@ -343,7 +460,7 @@ function ShiftLane({
         </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="text-xl font-bold">
+            <h2 className="text-2xl font-extrabold tracking-tight text-balance sm:text-[1.75rem]">
               Turno {item.shift === "day" ? "diurno" : "noturno"}
             </h2>
             <Status
@@ -373,7 +490,7 @@ function ShiftLane({
         <>
           <div className="border-y border-border bg-secondary/30 px-5 py-5">
             <div className="flex items-center justify-between gap-2">
-              {["Equipe", "Máquinas", "Operação", "RDO", "Fechamento"].map(
+              {["Equipe", "Máquinas", "Operação", "Atividades", "Fechamento"].map(
                 (label, index) => {
                   const done =
                     finalized ||
@@ -431,16 +548,6 @@ function ShiftLane({
                   máquinas aptas
                 </p>
               </div>
-              {running && (
-                <Button
-                  variant="outline"
-                  className="min-h-12 text-base"
-                  onClick={() => onAction("rdo")}
-                >
-                  <ClipboardCheck />
-                  Completar RDO
-                </Button>
-              )}
             </div>
             {running && (
               <div className="mt-5 grid grid-cols-2 gap-3">
@@ -551,7 +658,7 @@ function OperationalPanel({
   day: OperationalDay;
   projectId: string;
   panel: {
-    kind: "start" | "rdo" | "interference" | "close";
+    kind: "start" | "interference" | "close";
     shift: OperationalShift;
   };
   busy: boolean;
@@ -571,15 +678,6 @@ function OperationalPanel({
   );
   const [startedAtTime, setStartedAtTime] = React.useState(() =>
     localTimeValue(new Date(item.suggestedStartedAt ?? now)),
-  );
-  const [activities, setActivities] = React.useState<
-    Array<keyof typeof activityLabels>
-  >((report?.activityTypes ?? []) as Array<keyof typeof activityLabels>);
-  const [climates, setClimates] = React.useState<
-    Array<keyof typeof climateLabels>
-  >((report?.climateConditions ?? []) as Array<keyof typeof climateLabels>);
-  const [narrative, setNarrative] = React.useState(
-    report?.executedActivities ?? "",
   );
   const [description, setDescription] = React.useState("");
   const [impact, setImpact] = React.useState("");
@@ -636,9 +734,7 @@ function OperationalPanel({
             <h2 id="operational-panel-title" className="text-xl font-bold">
               {panel.kind === "start"
                 ? "Iniciar turno"
-                : panel.kind === "rdo"
-                  ? "Dados do RDO"
-                  : panel.kind === "interference"
+                : panel.kind === "interference"
                     ? "Registrar interferência"
                     : "Revisar e finalizar turno"}
             </h2>
@@ -878,69 +974,6 @@ function OperationalPanel({
             )}
           </div>
         )}
-        {panel.kind === "rdo" && report && (
-          <div className="mt-6 space-y-5">
-            <Choice
-              title="Atividades executadas"
-              values={activityLabels}
-              selected={activities}
-              setSelected={setActivities}
-            />
-            <Choice
-              title="Condições climáticas"
-              values={climateLabels}
-              selected={climates}
-              setSelected={setClimates}
-            />
-            <label className="block text-base font-bold">
-              Resumo das atividades
-              <textarea
-                className="mt-2 min-h-32 w-full rounded-md border border-input bg-background p-3 text-base outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
-                value={narrative}
-                onChange={(event) => setNarrative(event.target.value)}
-              />
-            </label>
-            <Button
-              className="min-h-14 w-full text-base font-bold"
-              disabled={
-                busy ||
-                !activities.length ||
-                !climates.length ||
-                !narrative.trim()
-              }
-              onClick={() =>
-                void run(
-                  () =>
-                    saveOperationalRdoAction({
-                      projectId,
-                      reportDate: day.reportDate,
-                      reportId: report.id,
-                      data: {
-                        schedulePeriods: report.schedulePeriods,
-                        activityStartTime: report.activityWindow.startTime,
-                        activityEndTime: report.activityWindow.endTime,
-                        activityEndDayOffset:
-                          report.activityWindow.endDayOffset,
-                        activityTypes: activities,
-                        climateConditions: climates,
-                        dailyRainfallMm: report.rainfall.dailyMm,
-                        monthlyRainfallMm: report.rainfall.monthlyMm,
-                        supervisorEmploymentId: report.supervisor.employmentId,
-                        technicalResponsibilityEmploymentIds:
-                          report.technicalResponsibilities.map(
-                            (value) => value.employmentId,
-                          ),
-                        executedActivities: narrative,
-                      },
-                    }),
-                  "Dados do RDO salvos.",
-                )
-              }
-            >
-              Salvar dados do RDO
-            </Button>
-          </div>
-        )}
         {panel.kind === "interference" && report && (
           <div className="mt-6 space-y-4">
             <div className="grid gap-4 sm:grid-cols-3">
@@ -1047,6 +1080,7 @@ const closeSteps = [
   { title: "Horários" },
   { title: "Medidores" },
   { title: "Equipe" },
+  { title: "Atividades executadas" },
   { title: "Revisão" },
 ];
 const MACHINE_PAGE_SIZE = 6;
@@ -1083,6 +1117,18 @@ function CloseShiftWizard({
   const [machinePage, setMachinePage] = React.useState(0);
   const [employeePage, setEmployeePage] = React.useState(0);
   const [issue, setIssue] = React.useState<string | null>(null);
+  const [productionSummary, setProductionSummary] =
+    React.useState<ProjectDailyReportProductionSummary | null>(null);
+  const [productionOptions, setProductionOptions] =
+    React.useState<ProjectProductionOptions | null>(null);
+  const [productionsLoading, setProductionsLoading] = React.useState(true);
+  const [productionsConfirmed, setProductionsConfirmed] = React.useState(false);
+  const [activityNotes, setActivityNotes] = React.useState("");
+  const [fallbackClimates, setFallbackClimates] = React.useState<
+    Array<keyof typeof climateLabels>
+  >([]);
+  const [editingProduction, setEditingProduction] =
+    React.useState<ProjectProductionDetail | null>(null);
   const [endedAtTime, setEndedAtTime] = React.useState(initialEndTime);
   const [appliedEndTime, setAppliedEndTime] = React.useState(initialEndTime);
   const [earlyClosureReason, setEarlyClosureReason] = React.useState("");
@@ -1185,6 +1231,80 @@ function CloseShiftWizard({
   React.useEffect(() => {
     stepHeadingRef.current?.focus();
   }, [currentStep, machinePage, employeePage]);
+
+  const fetchProductions = React.useCallback(
+    () =>
+      Promise.all([
+        getDailyReportProductionsAction(projectId, report.id),
+        getProjectProductionOptionsAction({
+          projectId,
+          productionDate: day.reportDate,
+          shift: report.shift,
+        }),
+      ]),
+    [day.reportDate, projectId, report.id, report.shift],
+  );
+
+  const loadProductions = React.useCallback(async () => {
+    try {
+      const [summary, options] = await fetchProductions();
+      setProductionSummary(summary);
+      setProductionOptions(options);
+      setProductionsConfirmed(false);
+    } catch {
+      setIssue("Não foi possível carregar as produções deste turno.");
+    } finally {
+      setProductionsLoading(false);
+    }
+  }, [fetchProductions]);
+
+  React.useEffect(() => {
+    let active = true;
+    fetchProductions()
+      .then(([summary, options]) => {
+        if (!active) return;
+        setProductionSummary(summary);
+        setProductionOptions(options);
+        setProductionsConfirmed(false);
+      })
+      .catch(() => {
+        if (active)
+          setIssue("Não foi possível carregar as produções deste turno.");
+      })
+      .finally(() => {
+        if (active) setProductionsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [fetchProductions]);
+
+  async function editProduction(productionId: string) {
+    setProductionsLoading(true);
+    setIssue(null);
+    try {
+      let detail = await getProjectProductionAction(projectId, productionId);
+      if (detail.status !== "draft") {
+        const reopened = await reopenProjectProductionAction({
+          projectId,
+          productionId,
+          expectedRevision: detail.revision,
+          reason: "Correção durante o fechamento do turno",
+        });
+        if (reopened.kind === "failure") {
+          setIssue(reopened.message);
+          return;
+        }
+        detail = reopened.production;
+      }
+      setEditingProduction(detail);
+      setProductionsConfirmed(false);
+    } catch {
+      setIssue("Não foi possível abrir esta produção para edição.");
+    } finally {
+      setProductionsLoading(false);
+    }
+  }
 
   function timeError() {
     if (!report.startedAt || !endedAtTime)
@@ -1377,7 +1497,7 @@ function CloseShiftWizard({
     setIssue(null);
     if (returnToReview) {
       setReturnToReview(false);
-      setCurrentStep(3);
+      setCurrentStep(4);
       return;
     }
     setCurrentStep(nextStep);
@@ -1411,6 +1531,22 @@ function CloseShiftWizard({
         return;
       }
       completeStep(3);
+      return;
+    }
+    if (currentStep === 3) {
+      if (productionsLoading || !productionSummary)
+        return setIssue("Aguarde o carregamento das produções.");
+      if (
+        productionSummary.productions.some(
+          (production) => !production.climateConditions.length,
+        )
+      )
+        return setIssue(
+          "Edite as produções sem condição climática antes de continuar.",
+        );
+      if (productionSummary.productions.length && !productionsConfirmed)
+        return setIssue("Confirme o conjunto de produções deste turno.");
+      completeStep(4);
     }
   }
 
@@ -1418,7 +1554,7 @@ function CloseShiftWizard({
     setIssue(null);
     if (returnToReview) {
       setReturnToReview(false);
-      setCurrentStep(3);
+      setCurrentStep(4);
       return;
     }
     if (currentStep === 1 && machinePage > 0) {
@@ -1495,12 +1631,14 @@ function CloseShiftWizard({
       setIssue(employeeError([report.employees[invalidEmployeeIndex]!]));
       return;
     }
-    if (
-      !report.activityTypes.length ||
-      !report.climateConditions.length ||
-      !report.executedActivities.trim()
-    ) {
-      setIssue("Complete os dados obrigatórios do RDO antes de finalizar.");
+    if (!productionSummary) {
+      setCurrentStep(3);
+      setIssue("Carregue e revise as produções antes de finalizar.");
+      return;
+    }
+    if (productionSummary.productions.length && !productionsConfirmed) {
+      setCurrentStep(3);
+      setIssue("Confirme o conjunto de produções deste turno.");
       return;
     }
     if (report.interferenceEntries.some((entry) => !entry.confirmedAt)) {
@@ -1517,6 +1655,13 @@ function CloseShiftWizard({
           data: {
             endedAt,
             earlyClosureReason: earlyClosureReason.trim() || null,
+            ...(activityNotes.trim()
+              ? { activityNotes: activityNotes.trim() }
+              : {}),
+            ...(productionSummary.productions.length === 0 &&
+            fallbackClimates.length
+              ? { fallbackClimateConditions: fallbackClimates }
+              : {}),
             employees: report.employees.map((employee) => {
               const entry = employeeClose[employee.employmentId];
               const automatic =
@@ -1586,7 +1731,7 @@ function CloseShiftWizard({
         }),
       "Turno e RDO finalizados.",
       (message) => {
-        setCurrentStep(3);
+        setCurrentStep(4);
         setIssue(message);
       },
     );
@@ -1755,13 +1900,14 @@ function CloseShiftWizard({
       onOpenChange={(open) => {
         if (!open && !busy) close();
       }}
+      preventDismissal
       size="xl"
       icon={ClipboardCheck}
       title="Finalizar turno"
       description={`Turno ${report.shift === "day" ? "diurno" : "noturno"}. Confirme horários, medidores e equipe antes do fechamento.`}
       footer={
         <div className="flex w-full flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
-          {currentStep === 0 || currentStep === 3 ? (
+          {currentStep === 0 || currentStep === 4 ? (
             <Button
               type="button"
               variant="outline"
@@ -1782,7 +1928,7 @@ function CloseShiftWizard({
               <ChevronLeft /> {returnToReview ? "Voltar à revisão" : "Voltar"}
             </Button>
           )}
-          {currentStep === 3 ? (
+          {currentStep === 4 ? (
             <Button
               type="button"
               className="min-h-11 font-bold"
@@ -2070,6 +2216,145 @@ function CloseShiftWizard({
         )}
 
         {currentStep === 3 && (
+          <section className="grid gap-5">
+            <div>
+              <h3 className="text-lg font-bold">Atividades executadas</h3>
+              <p className="mt-1 text-sm leading-5 text-muted-foreground">
+                Os blocos abaixo são montados automaticamente com as produções
+                do turno. Edite somente os valores que precisarem de correção.
+              </p>
+            </div>
+
+            <label className="flex min-h-12 items-center gap-3 rounded-lg border border-primary/35 bg-primary/[0.04] px-4 font-bold">
+              <input
+                type="checkbox"
+                checked
+                disabled
+                className="size-5 accent-primary"
+              />
+              Terraplanagem
+              <span className="ml-auto text-xs font-semibold text-muted-foreground">
+                Atividade fixa
+              </span>
+            </label>
+
+            {productionsLoading ? (
+              <div className="flex items-center gap-2 rounded-lg border p-4 text-sm">
+                <Loader2 className="size-4 animate-spin motion-reduce:animate-none" />
+                Carregando produções do turno…
+              </div>
+            ) : productionSummary?.productions.length ? (
+              <div className="grid gap-3">
+                {productionSummary.productions.map((production, index) => {
+                  const front = productionOptions?.workFronts.find(
+                    (item) => item.id === production.workFrontId,
+                  );
+                  return (
+                    <article
+                      key={production.id}
+                      className="grid gap-4 rounded-lg border border-border bg-background p-4"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-3">
+                        <div>
+                          <p className="text-xs font-bold uppercase tracking-wide text-muted-foreground">
+                            Produção {index + 1}
+                          </p>
+                          <h4 className="mt-1 font-bold">
+                            {productionServiceLabel(production.serviceCode)}
+                          </h4>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => void editProduction(production.id)}
+                          disabled={productionsLoading}
+                        >
+                          <Pencil /> Editar valores
+                        </Button>
+                      </div>
+                      <dl className="grid gap-3 text-sm sm:grid-cols-2">
+                        <ActivityDatum
+                          label="Frente"
+                          value={front?.name ?? "Frente cadastrada"}
+                        />
+                        <ActivityDatum
+                          label="Local"
+                          value={production.location ?? "Não informado"}
+                        />
+                        <ActivityDatum
+                          label="Destino"
+                          value={
+                            production.route?.destination ?? "Não informado"
+                          }
+                        />
+                        <ActivityDatum
+                          label="Quantidade"
+                          value={`${production.officialQuantity} ${productionUnitLabel(production.unitCode)}`}
+                        />
+                        <ActivityDatum
+                          label="Viagens"
+                          value={String(production.tripCount)}
+                        />
+                        <ActivityDatum
+                          label="Equipamentos"
+                          value={String(production.equipmentCount)}
+                        />
+                        <ActivityDatum
+                          label="Clima"
+                          value={production.climateConditions
+                            .map((value) => climateLabels[value])
+                            .join(", ") || "Pendente"}
+                        />
+                      </dl>
+                    </article>
+                  );
+                })}
+                <label className="flex min-h-12 items-center gap-3 rounded-lg border border-border bg-secondary/30 px-4 text-sm font-bold">
+                  <input
+                    type="checkbox"
+                    className="size-5 accent-primary"
+                    checked={productionsConfirmed}
+                    onChange={(event) => {
+                      setProductionsConfirmed(event.target.checked);
+                      setIssue(null);
+                    }}
+                  />
+                  Conferi e confirmo todas as produções deste turno
+                </label>
+              </div>
+            ) : (
+              <div className="grid gap-4 rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
+                <div>
+                  <p className="font-bold">Turno sem produção registrada</p>
+                  <p className="mt-1 text-sm leading-5">
+                    O fechamento pode continuar. Se houve uma condição climática
+                    relevante, informe-a abaixo.
+                  </p>
+                </div>
+                <Choice
+                  title="Condição climática (opcional)"
+                  values={climateLabels}
+                  selected={fallbackClimates}
+                  setSelected={setFallbackClimates}
+                />
+              </div>
+            )}
+
+            <label className="grid gap-2 text-sm font-bold">
+              Informações complementares (opcional)
+              <textarea
+                className="min-h-28 w-full rounded-md border border-input bg-background p-3 text-base font-normal outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+                maxLength={10_000}
+                value={activityNotes}
+                onChange={(event) => setActivityNotes(event.target.value)}
+                placeholder="Acrescente observações que não constam nas produções."
+              />
+            </label>
+          </section>
+        )}
+
+        {currentStep === 4 && (
           <section className="grid gap-4">
             <div>
               <h3 className="text-lg font-bold">Revisão do fechamento</h3>
@@ -2139,6 +2424,37 @@ function CloseShiftWizard({
                   value={formatDuration(totalOvertimeMinutes())}
                 />
               </ReviewBlock>
+              <ReviewBlock
+                title="Atividades executadas"
+                editLabel="Editar atividades"
+                onEdit={() => editStep(3)}
+              >
+                <ReviewLine label="Atividade" value="Terraplanagem" />
+                <ReviewLine
+                  label="Produções"
+                  value={`${productionSummary?.productions.length ?? 0} registro(s)`}
+                />
+                <ReviewLine
+                  label="Clima"
+                  value={
+                    Array.from(
+                      new Set(
+                        productionSummary?.productions.flatMap(
+                          (production) => production.climateConditions,
+                        ) ?? fallbackClimates,
+                      ),
+                    )
+                      .map((value) => climateLabels[value])
+                      .join(", ") || "Não informado"
+                  }
+                />
+                {activityNotes.trim() && (
+                  <ReviewLine
+                    label="Complemento"
+                    value={activityNotes.trim()}
+                  />
+                )}
+              </ReviewBlock>
             </div>
             {report.interferenceEntries.some((entry) => !entry.confirmedAt) && (
               <div className="rounded-lg border border-amber-300 bg-amber-50 p-4 text-amber-950">
@@ -2155,6 +2471,36 @@ function CloseShiftWizard({
           </section>
         )}
       </div>
+      {editingProduction && productionOptions && (
+        <ProjectProductionWizard
+          contextualEntry={{
+            productionDate: day.reportDate,
+            shift: report.shift,
+            responsibleEmploymentId: report.supervisor.employmentId,
+          }}
+          detail={editingProduction}
+          lockActivityIdentity
+          preventDismissal
+          onContextChange={(productionDate, shift) =>
+            getProjectProductionOptionsAction({
+              projectId,
+              productionDate,
+              shift,
+            })
+          }
+          onOpenChange={(open) => {
+            if (!open) setEditingProduction(null);
+          }}
+          onSaved={() => {
+            setEditingProduction(null);
+            setProductionsLoading(true);
+            void loadProductions();
+          }}
+          open
+          options={productionOptions}
+          projectId={projectId}
+        />
+      )}
     </OperationsModal>
   );
 }
@@ -2220,6 +2566,17 @@ function ReviewLine({ label, value }: { label: string; value: string }) {
       <span className="min-w-0 break-words font-semibold tabular-nums">
         {value}
       </span>
+    </div>
+  );
+}
+
+function ActivityDatum({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid gap-1 rounded-md bg-secondary/35 px-3 py-2">
+      <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+        {label}
+      </dt>
+      <dd className="break-words font-semibold">{value}</dd>
     </div>
   );
 }
@@ -2418,7 +2775,9 @@ function instantForClock(
   const [hour] = time.split(":").map(Number);
   const date = new Date(`${reportDate}T12:00:00Z`);
   if (shift === "night" && hour < 12) date.setUTCDate(date.getUTCDate() + 1);
-  return `${date.toISOString().slice(0, 10)}T${time}:00-03:00`;
+  return new Date(
+    `${date.toISOString().slice(0, 10)}T${time}:00-03:00`,
+  ).toISOString();
 }
 
 function instantForEditableClock(

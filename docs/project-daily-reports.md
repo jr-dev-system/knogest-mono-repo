@@ -10,9 +10,14 @@ O fluxo manual permanece disponível para consulta dos registros existentes.
 ## Central operacional do dia
 
 Ao selecionar uma data disponível no calendário, a interface abre uma central
-com uma faixa para cada turno habilitado. A abertura começa pela confirmação
-do horário de início, preenchido pela sugestão operacional ou pelo instante
-corrente. Somente depois dessa confirmação local são apresentados:
+com um único painel de turno por vez. O noturno desabilitado não aparece; se
+estiver habilitado e ainda não iniciado, uma ação secundária permite abri-lo
+sem competir com o painel em foco. Quando diurno e noturno possuem relatório,
+um alternador explícito permite trocar entre eles sem exibir os dois painéis
+simultaneamente; em uma entrada com ambos em andamento, o diurno é priorizado.
+A abertura começa pela confirmação do horário de início, preenchido pela
+sugestão operacional ou pelo instante corrente. Somente depois dessa
+confirmação local são apresentados:
 
 - checklist de todos os funcionários alocados, como presente ou ausente, com
   motivo de ausência opcional;
@@ -30,16 +35,21 @@ cria o RDO em rascunho e registra a entrada dos presentes e a leitura inicial
 das máquinas de forma automática.
 
 Com o turno aberto, a central atualiza a cada 30 segundos e ao retomar foco.
-Ela permite completar as perguntas obrigatórias do RDO, abrir o lançamento de
-produção em modal sem sair da Central, registrar e confirmar interferências e
-revisar o encerramento. A produção herda data, turno e supervisor do RDO e não
-solicita uma janela de horas própria. Manutenção e abastecimento aparecem como
-ações táteis, mas ainda não persistem dados nesta versão.
+Ela permite abrir o lançamento de produção em modal sem sair da Central,
+registrar e confirmar interferências e revisar o encerramento. Não existe mais
+um modal separado para completar o RDO. A produção herda data, turno e
+supervisor do RDO, não solicita uma janela de horas própria e exige que o clima
+observado seja registrado no próprio lançamento. Manutenção e abastecimento
+aparecem como ações táteis, mas ainda não persistem dados nesta versão.
+
+Os modais da Central não são descartados por `Esc` nem por clique fora. O
+usuário encerra o formulário somente pelas ações explícitas de fechar ou
+cancelar, preservando o que já digitou enquanto permanece no fluxo.
 
 Interferências registram categoria, descrição, impacto, início e fim opcional.
 Cada registro precisa ser confirmado individualmente antes do fechamento.
 
-O encerramento usa um assistente modal guiado em quatro etapas:
+O encerramento usa um assistente modal guiado em cinco etapas:
 
 1. **Horários** confirma o início já registrado, permite ajustar o
    encerramento preenchido com o horário atual e calcula automaticamente o
@@ -59,7 +69,17 @@ O encerramento usa um assistente modal guiado em quatro etapas:
    quando a saída excede o encerramento previsto e mostra apenas a duração
    `HH:MM`; valores monetários nunca são exibidos. Ausentes e integrantes sem
    hora extra habilitada preservam suas regras automáticas.
-4. **Revisão** mostra um resumo dos três grupos com ação **Editar** em cada um.
+4. **Atividades executadas** mantém **Terraplanagem** visível, selecionada e
+   bloqueada como a única atividade desta primeira versão. A etapa apresenta
+   um bloco somente leitura para cada produção do turno, incluindo frente,
+   serviço, local, destino, quantidade/unidade, viagens, equipamentos e clima.
+   O usuário pode abrir uma produção para corrigir quantidades, viagens,
+   equipamentos, destino e clima, mas não pode trocar sua identidade
+   operacional (data, turno, frente ou serviço). Um único campo opcional aceita
+   informações complementares. A confirmação é feita para o conjunto inteiro.
+   Quando não há produção, a etapa mostra um aviso, permite informar clima como
+   fallback opcional e não bloqueia o fechamento.
+5. **Revisão** mostra um resumo dos quatro grupos com ação **Editar** em cada um.
    Ao concluir uma edição aberta pela revisão, o fluxo retorna diretamente a
    ela sem obrigar a percorrer as outras etapas.
 
@@ -70,8 +90,10 @@ A confirmação final revisa, em uma única operação atômica:
   extras;
 - leitura final de toda máquina apta;
 - confirmação de todas as interferências;
-- respostas obrigatórias do RDO e, quando aplicável, o motivo do encerramento
-  anterior ao fim planejado.
+- submissão e vínculo de todas as produções do turno, atividade fixa de
+  Terraplanagem, união das condições climáticas registradas nas produções e o
+  resumo determinístico dos seus blocos;
+- quando aplicável, o motivo do encerramento anterior ao fim planejado.
 
 Se qualquer item estiver incompleto, o turno continua em andamento. Quando a
 operação é confirmada, o RDO, as jornadas e os medidores são finalizados juntos
@@ -115,19 +137,23 @@ sobreposição. A janela efetiva de início e encerramento é obrigatória e nã
 pode exceder 24 horas. No turno noturno, encerramento menor ou igual ao início
 é interpretado como o dia seguinte.
 
-As atividades são uma seleção múltipla entre Terraplanagem, Drenagem e
-Pavimentação. O clima é uma seleção múltipla entre Chuva, Seco e Solo
-Encharcado. Chuva diária e acumulado mensal são valores manuais não negativos,
-iniciados em zero.
+No RDO manual, as atividades continuam sendo uma seleção múltipla entre
+Terraplanagem, Drenagem e Pavimentação, e o clima continua sendo uma seleção
+múltipla entre Chuva, Seco e Solo Encharcado. Na Central operacional, a
+atividade é sempre Terraplanagem e o clima vem das produções do turno. Chuva
+diária e acumulado mensal são valores manuais não negativos, iniciados em zero.
 
 Atividades executadas são obrigatórias; interferências são opcionais. O RDO
 exige ao menos uma atividade e um participante. Máquinas são opcionais.
 
-Na revisão, o RDO também consulta as produções da mesma obra, data e turno.
-Rascunhos aparecem com alerta e são o único estado de produção que bloqueia o
-fechamento. Produções enviadas, conferidas, aguardando técnica, aprovadas,
-rejeitadas ou liberadas preservam o fato diário e podem ser vinculadas. A
-interface destaca qualidade pendente sem bloquear o RDO.
+Na revisão manual, o RDO consulta as produções da mesma obra, data e turno e
+mantém o fluxo de confirmação existente. Na Central, produções criadas pelo
+CTA operacional permanecem em rascunho e não podem ser enviadas pelo fluxo
+avulso. O fechamento submete os rascunhos, confirma o conjunto completo e fixa
+suas revisões operacionais na mesma transação. Produções avulsas do mesmo
+turno também entram no conjunto; se uma já enviada for editada pela Central,
+ela é reaberta e precisa de nova confirmação coletiva. Qualidade pendente não
+bloqueia o RDO.
 
 A confirmação fixa `operationalRevision`, não a revisão técnica geral.
 Topografia, laboratório, aprovação, rejeição ou liberação posteriores não

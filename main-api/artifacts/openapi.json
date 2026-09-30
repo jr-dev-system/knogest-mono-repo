@@ -24648,6 +24648,20 @@
                 "properties": {
                   "endedAt": { "type": "string", "format": "date-time" },
                   "earlyClosureReason": { "type": "string", "nullable": true },
+                  "activityNotes": {
+                    "type": "string",
+                    "nullable": true,
+                    "maxLength": 10000
+                  },
+                  "fallbackClimateConditions": {
+                    "type": "array",
+                    "maxItems": 3,
+                    "uniqueItems": true,
+                    "items": {
+                      "type": "string",
+                      "enum": ["rain", "dry", "waterlogged_soil"]
+                    }
+                  },
                   "employees": {
                     "type": "array",
                     "items": {
@@ -28118,11 +28132,15 @@
                             "required": [
                               "id",
                               "kind",
+                              "workFrontId",
+                              "workFrontServiceId",
                               "serviceCode",
                               "unitCode",
                               "productionDate",
                               "shift",
                               "status",
+                              "source",
+                              "climateConditions",
                               "revision",
                               "operationalRevision",
                               "location",
@@ -28146,6 +28164,14 @@
                                   "material_movement"
                                 ]
                               },
+                              "workFrontId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
+                              "workFrontServiceId": {
+                                "type": "string",
+                                "format": "uuid"
+                              },
                               "serviceCode": { "type": "string" },
                               "unitCode": { "type": "string" },
                               "productionDate": {
@@ -28168,6 +28194,20 @@
                                   "released",
                                   "measured"
                                 ]
+                              },
+                              "source": {
+                                "type": "string",
+                                "enum": [
+                                  "production_page",
+                                  "operational_center"
+                                ]
+                              },
+                              "climateConditions": {
+                                "type": "array",
+                                "items": {
+                                  "type": "string",
+                                  "enum": ["rain", "dry", "waterlogged_soil"]
+                                }
                               },
                               "revision": { "type": "integer" },
                               "operationalRevision": { "type": "integer" },
@@ -28454,6 +28494,7 @@
                       "kind",
                       "productionDate",
                       "shift",
+                      "climateConditions",
                       "individualActivity"
                     ],
                     "properties": {
@@ -28481,6 +28522,20 @@
                         "type": "string",
                         "format": "uuid",
                         "nullable": true
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": ["production_page", "operational_center"]
+                      },
+                      "climateConditions": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 3,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "enum": ["rain", "dry", "waterlogged_soil"]
+                        }
                       },
                       "evidence": {
                         "type": "array",
@@ -28816,6 +28871,7 @@
                       "kind",
                       "productionDate",
                       "shift",
+                      "climateConditions",
                       "materialMovement",
                       "truckSummaries"
                     ],
@@ -28844,6 +28900,20 @@
                         "type": "string",
                         "format": "uuid",
                         "nullable": true
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": ["production_page", "operational_center"]
+                      },
+                      "climateConditions": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 3,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "enum": ["rain", "dry", "waterlogged_soil"]
+                        }
                       },
                       "evidence": {
                         "type": "array",
@@ -29268,6 +29338,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -29312,6 +29384,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -30246,6 +30329,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -30290,6 +30375,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -30625,6 +30721,7 @@
                       "kind",
                       "productionDate",
                       "shift",
+                      "climateConditions",
                       "individualActivity"
                     ],
                     "properties": {
@@ -30652,6 +30749,20 @@
                         "type": "string",
                         "format": "uuid",
                         "nullable": true
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": ["production_page", "operational_center"]
+                      },
+                      "climateConditions": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 3,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "enum": ["rain", "dry", "waterlogged_soil"]
+                        }
                       },
                       "evidence": {
                         "type": "array",
@@ -30987,6 +31098,7 @@
                       "kind",
                       "productionDate",
                       "shift",
+                      "climateConditions",
                       "materialMovement",
                       "truckSummaries"
                     ],
@@ -31015,6 +31127,20 @@
                         "type": "string",
                         "format": "uuid",
                         "nullable": true
+                      },
+                      "source": {
+                        "type": "string",
+                        "enum": ["production_page", "operational_center"]
+                      },
+                      "climateConditions": {
+                        "type": "array",
+                        "minItems": 1,
+                        "maxItems": 3,
+                        "uniqueItems": true,
+                        "items": {
+                          "type": "string",
+                          "enum": ["rain", "dry", "waterlogged_soil"]
+                        }
                       },
                       "evidence": {
                         "type": "array",
@@ -31445,6 +31571,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -31489,6 +31617,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -32095,6 +32234,7 @@
                           "kind",
                           "productionDate",
                           "shift",
+                          "climateConditions",
                           "individualActivity"
                         ],
                         "properties": {
@@ -32134,6 +32274,20 @@
                             "type": "string",
                             "format": "uuid",
                             "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": ["production_page", "operational_center"]
+                          },
+                          "climateConditions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 3,
+                            "uniqueItems": true,
+                            "items": {
+                              "type": "string",
+                              "enum": ["rain", "dry", "waterlogged_soil"]
+                            }
                           },
                           "evidence": {
                             "type": "array",
@@ -32478,6 +32632,7 @@
                           "kind",
                           "productionDate",
                           "shift",
+                          "climateConditions",
                           "materialMovement",
                           "truckSummaries"
                         ],
@@ -32518,6 +32673,20 @@
                             "type": "string",
                             "format": "uuid",
                             "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": ["production_page", "operational_center"]
+                          },
+                          "climateConditions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 3,
+                            "uniqueItems": true,
+                            "items": {
+                              "type": "string",
+                              "enum": ["rain", "dry", "waterlogged_soil"]
+                            }
                           },
                           "evidence": {
                             "type": "array",
@@ -32921,6 +33090,7 @@
                           "kind",
                           "productionDate",
                           "shift",
+                          "climateConditions",
                           "individualActivity"
                         ],
                         "properties": {
@@ -32960,6 +33130,20 @@
                             "type": "string",
                             "format": "uuid",
                             "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": ["production_page", "operational_center"]
+                          },
+                          "climateConditions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 3,
+                            "uniqueItems": true,
+                            "items": {
+                              "type": "string",
+                              "enum": ["rain", "dry", "waterlogged_soil"]
+                            }
                           },
                           "evidence": {
                             "type": "array",
@@ -33304,6 +33488,7 @@
                           "kind",
                           "productionDate",
                           "shift",
+                          "climateConditions",
                           "materialMovement",
                           "truckSummaries"
                         ],
@@ -33344,6 +33529,20 @@
                             "type": "string",
                             "format": "uuid",
                             "nullable": true
+                          },
+                          "source": {
+                            "type": "string",
+                            "enum": ["production_page", "operational_center"]
+                          },
+                          "climateConditions": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 3,
+                            "uniqueItems": true,
+                            "items": {
+                              "type": "string",
+                              "enum": ["rain", "dry", "waterlogged_soil"]
+                            }
                           },
                           "evidence": {
                             "type": "array",
@@ -33784,6 +33983,8 @@
                             "productionDate",
                             "shift",
                             "status",
+                            "source",
+                            "climateConditions",
                             "entryMode",
                             "revision",
                             "operationalRevision",
@@ -33837,6 +34038,17 @@
                                 "released",
                                 "measured"
                               ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": ["production_page", "operational_center"]
+                            },
+                            "climateConditions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["rain", "dry", "waterlogged_soil"]
+                              }
                             },
                             "entryMode": {
                               "type": "string",
@@ -34000,6 +34212,8 @@
                             "productionDate",
                             "shift",
                             "status",
+                            "source",
+                            "climateConditions",
                             "entryMode",
                             "revision",
                             "operationalRevision",
@@ -34053,6 +34267,17 @@
                                 "released",
                                 "measured"
                               ]
+                            },
+                            "source": {
+                              "type": "string",
+                              "enum": ["production_page", "operational_center"]
+                            },
+                            "climateConditions": {
+                              "type": "array",
+                              "items": {
+                                "type": "string",
+                                "enum": ["rain", "dry", "waterlogged_soil"]
+                              }
                             },
                             "entryMode": {
                               "type": "string",
@@ -34439,6 +34664,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -34483,6 +34710,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -34864,6 +35102,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -34908,6 +35148,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -35294,6 +35545,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -35338,6 +35591,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -35724,6 +35988,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -35768,6 +36034,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -36233,6 +36510,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -36277,6 +36556,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -36658,6 +36948,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -36702,6 +36994,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -37088,6 +37391,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -37132,6 +37437,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -37542,6 +37858,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -37586,6 +37904,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",
@@ -37964,6 +38293,8 @@
                         "productionDate",
                         "shift",
                         "status",
+                        "source",
+                        "climateConditions",
                         "entryMode",
                         "revision",
                         "operationalRevision",
@@ -38008,6 +38339,17 @@
                             "released",
                             "measured"
                           ]
+                        },
+                        "source": {
+                          "type": "string",
+                          "enum": ["production_page", "operational_center"]
+                        },
+                        "climateConditions": {
+                          "type": "array",
+                          "items": {
+                            "type": "string",
+                            "enum": ["rain", "dry", "waterlogged_soil"]
+                          }
                         },
                         "entryMode": {
                           "type": "string",

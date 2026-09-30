@@ -205,6 +205,20 @@ const productionCommandCommonProperties = {
   },
   endDayOffset: { type: "integer", minimum: 0, maximum: 1 },
   responsibleEmploymentId: { ...uuid, nullable: true },
+  source: {
+    type: "string",
+    enum: ["production_page", "operational_center"],
+  },
+  climateConditions: {
+    type: "array",
+    minItems: 1,
+    maxItems: 3,
+    uniqueItems: true,
+    items: {
+      type: "string",
+      enum: ["rain", "dry", "waterlogged_soil"],
+    },
+  },
   evidence: { type: "array", maxItems: 20, items: evidenceSchema },
   notes: { type: "string", nullable: true, maxLength: 10_000 },
   equipment: {
@@ -364,7 +378,13 @@ const productionCommandOpenApiSchema = {
     {
       type: "object",
       additionalProperties: false,
-      required: ["kind", "productionDate", "shift", "individualActivity"],
+      required: [
+        "kind",
+        "productionDate",
+        "shift",
+        "climateConditions",
+        "individualActivity",
+      ],
       properties: {
         ...productionCommandCommonProperties,
         kind: { type: "string", const: "individual_activity" },
@@ -384,6 +404,7 @@ const productionCommandOpenApiSchema = {
         "kind",
         "productionDate",
         "shift",
+        "climateConditions",
         "materialMovement",
         "truckSummaries",
       ],
@@ -443,11 +464,15 @@ const summarySchema = {
   required: [
     "id",
     "kind",
+    "workFrontId",
+    "workFrontServiceId",
     "serviceCode",
     "unitCode",
     "productionDate",
     "shift",
     "status",
+    "source",
+    "climateConditions",
     "revision",
     "operationalRevision",
     "location",
@@ -468,11 +493,24 @@ const summarySchema = {
       type: "string",
       enum: ["individual_activity", "material_movement"],
     },
+    workFrontId: uuid,
+    workFrontServiceId: uuid,
     serviceCode: { type: "string" },
     unitCode: { type: "string" },
     productionDate: { type: "string", format: "date" },
     shift,
     status: productionStatus,
+    source: {
+      type: "string",
+      enum: ["production_page", "operational_center"],
+    },
+    climateConditions: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["rain", "dry", "waterlogged_soil"],
+      },
+    },
     revision: { type: "integer" },
     operationalRevision: { type: "integer" },
     location: nullableString,
@@ -517,6 +555,8 @@ const productionDetailSchema = {
     "productionDate",
     "shift",
     "status",
+    "source",
+    "climateConditions",
     "entryMode",
     "revision",
     "operationalRevision",
@@ -544,6 +584,17 @@ const productionDetailSchema = {
     productionDate: { type: "string", format: "date" },
     shift,
     status: productionStatus,
+    source: {
+      type: "string",
+      enum: ["production_page", "operational_center"],
+    },
+    climateConditions: {
+      type: "array",
+      items: {
+        type: "string",
+        enum: ["rain", "dry", "waterlogged_soil"],
+      },
+    },
     entryMode: {
       type: "string",
       enum: ["direct_total", "truck_summary", "trips"],

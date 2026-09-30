@@ -1,6 +1,7 @@
 "use server";
 
 import { z } from "zod";
+import { ApiClientError } from "@/lib/api/server-client";
 import { getOperationalDay } from "./operational-day.server";
 import { postApiV1ProjectsProjectidOperationalDaysReportdateShiftsShiftStart } from "@/generated/clients/postApiV1ProjectsProjectidOperationalDaysReportdateShiftsShiftStart";
 import { putApiV1ProjectsProjectidOperationalShiftsReportidRdo } from "@/generated/clients/putApiV1ProjectsProjectidOperationalShiftsReportidRdo";
@@ -14,7 +15,40 @@ const date = z.iso.date();
 async function reload(projectId: string, reportDate: string): Promise<OperationalResult> {
   return { kind: "success", day: await getOperationalDay(projectId, reportDate) };
 }
-function failed(error: unknown): OperationalResult { return { kind: "failure", message: error instanceof Error ? error.message : "Não foi possível concluir a operação." }; }
+function failed(error: unknown): OperationalResult {
+  if (error instanceof ApiClientError && error.code === "VALIDATION_ERROR") {
+    const details = validationDetails(error.data);
+    if (details) return { kind: "failure", message: details };
+  }
+  return {
+    kind: "failure",
+    message:
+      error instanceof Error
+        ? error.message
+        : "Não foi possível concluir a operação.",
+  };
+}
+
+function validationDetails(data: unknown) {
+  if (!data || typeof data !== "object" || !("details" in data)) return null;
+  const details = data.details;
+  if (!details || typeof details !== "object") return null;
+  const labels: Record<string, string> = {
+    endedAt: "Horário de encerramento",
+    earlyClosureReason: "Motivo do encerramento antecipado",
+    employees: "Equipe",
+    machines: "Medidores",
+    activityNotes: "Informações complementares",
+    fallbackClimateConditions: "Condição climática",
+  };
+  const messages = Object.entries(details).flatMap(([field, value]) => {
+    const entries = Array.isArray(value) ? value : [value];
+    return entries
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => `${labels[field] ?? field}: ${entry}`);
+  });
+  return messages.length ? messages.join(" ") : null;
+}
 
 export async function startOperationalShiftAction(input: { projectId: string; reportDate: string; shift: OperationalShift; startedAt: string; employees: Array<{ employmentId: string; status: "present" | "absent"; absenceReason?: string | null }>; machines: Array<{ machineId: string; condition: "fit" | "unfit"; conditionNote?: string | null }> }): Promise<OperationalResult> {
   try { const projectId = uuid.parse(input.projectId); const reportDate = date.parse(input.reportDate); await postApiV1ProjectsProjectidOperationalDaysReportdateShiftsShiftStart({ projectId, reportDate, shift: input.shift, data: { startedAt: input.startedAt, employees: input.employees, machines: input.machines } }); return reload(projectId, reportDate); } catch (error) { return failed(error); }

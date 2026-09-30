@@ -66,6 +66,7 @@ type Draft = {
   productionDate: string;
   shift: "day" | "night";
   responsibleEmploymentId: string;
+  climateConditions: Array<"dry" | "rain" | "waterlogged_soil">;
   workFrontId: string;
   workFrontServiceId: string;
   location: string;
@@ -107,6 +108,7 @@ function initialDraft(
       detail?.responsible?.employmentId ??
       options.responsibleOptions[0]?.id ??
       "",
+    climateConditions: detail?.climateConditions ?? [],
     workFrontId: front?.id ?? "",
     workFrontServiceId:
       detail?.workFrontServiceId ?? front?.services[0]?.id ?? "",
@@ -230,6 +232,8 @@ export function ProjectProductionWizard(props: {
   open: boolean;
   options: ProjectProductionOptions;
   projectId: string;
+  lockActivityIdentity?: boolean;
+  preventDismissal?: boolean;
   workflowActions?: React.ReactNode;
 }) {
   const {
@@ -241,6 +245,8 @@ export function ProjectProductionWizard(props: {
     open,
     options,
     projectId,
+    lockActivityIdentity = false,
+    preventDismissal = false,
     workflowActions,
   } = props;
   const isLegacy =
@@ -279,7 +285,7 @@ export function ProjectProductionWizard(props: {
     initialized.current = true;
     const next = initialDraft(options, detail, contextualEntry);
     setDraft(next);
-    setCurrentStep(detail ? 3 : 0);
+    setCurrentStep(detail && !lockActivityIdentity ? 3 : 0);
     setError("");
     setTruckPages([]);
     setTruckPageIndex(0);
@@ -296,7 +302,7 @@ export function ProjectProductionWizard(props: {
           )
         : {},
     );
-  }, [open, options, detail, contextualEntry]);
+  }, [open, options, detail, contextualEntry, lockActivityIdentity]);
 
   const front = options.workFronts.find(
     (item) => item.id === draft.workFrontId,
@@ -477,6 +483,8 @@ export function ProjectProductionWizard(props: {
         return "Selecione uma frente ativa e uma atividade.";
       if (!draft.responsibleEmploymentId)
         return "Selecione o responsável pelo registro.";
+      if (!draft.climateConditions.length)
+        return "Selecione pelo menos uma condição climática.";
     }
     if (step === 1 && usesTrucks) {
       if (!selectedTruckList.length) return "Adicione pelo menos um caminhão.";
@@ -576,6 +584,10 @@ export function ProjectProductionWizard(props: {
       productionDate: draft.productionDate,
       shift: draft.shift,
       responsibleEmploymentId: draft.responsibleEmploymentId,
+      source:
+        detail?.source ??
+        (contextualEntry ? "operational_center" : "production_page"),
+      climateConditions: draft.climateConditions,
       expectedRevision: detail?.revision,
       submitNow,
       equipment: [],
@@ -623,6 +635,10 @@ export function ProjectProductionWizard(props: {
           productionDate: draft.productionDate,
           shift: draft.shift,
           responsibleEmploymentId: draft.responsibleEmploymentId,
+          source:
+            detail?.source ??
+            (contextualEntry ? "operational_center" : "production_page"),
+          climateConditions: draft.climateConditions,
           submitNow,
           equipment: [],
           truckSummaries: [],
@@ -673,6 +689,7 @@ export function ProjectProductionWizard(props: {
     <OperationsModal
       open={open}
       onOpenChange={onOpenChange}
+      preventDismissal={preventDismissal}
       size="xl"
       icon={Shovel}
       title={detail ? "Produção de terraplanagem" : "Nova produção"}
@@ -711,22 +728,35 @@ export function ProjectProductionWizard(props: {
             )}
             {editable && currentStep === 3 && (
               <>
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => void save(false)}
-                  disabled={busy}
-                >
-                  Salvar rascunho
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => void save(true)}
-                  disabled={busy}
-                >
-                  {busy ? <Loader2 className="animate-spin" /> : <Check />}{" "}
-                  Confirmar produção
-                </Button>
+                {contextualEntry || detail?.source === "operational_center" ? (
+                  <Button
+                    type="button"
+                    onClick={() => void save(false)}
+                    disabled={busy}
+                  >
+                    {busy ? <Loader2 className="animate-spin" /> : <Check />}{" "}
+                    Salvar produção
+                  </Button>
+                ) : (
+                  <>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={() => void save(false)}
+                      disabled={busy}
+                    >
+                      Salvar rascunho
+                    </Button>
+                    <Button
+                      type="button"
+                      onClick={() => void save(true)}
+                      disabled={busy}
+                    >
+                      {busy ? <Loader2 className="animate-spin" /> : <Check />}{" "}
+                      Confirmar produção
+                    </Button>
+                  </>
+                )}
               </>
             )}
             {!editable && workflowActions}
@@ -812,6 +842,7 @@ export function ProjectProductionWizard(props: {
                 Frente
                 <select
                   className={fieldClass}
+                  disabled={lockActivityIdentity}
                   value={draft.workFrontId}
                   onChange={(event) => {
                     const next = options.workFronts.find(
@@ -843,6 +874,7 @@ export function ProjectProductionWizard(props: {
                 Atividade
                 <select
                   className={fieldClass}
+                  disabled={lockActivityIdentity}
                   value={draft.workFrontServiceId}
                   onChange={(event) => {
                     update({
@@ -869,6 +901,7 @@ export function ProjectProductionWizard(props: {
               <label className="grid gap-1 text-sm font-semibold">
                 Local
                 <Input
+                  disabled={lockActivityIdentity}
                   value={draft.location}
                   onChange={(event) => update({ location: event.target.value })}
                 />
@@ -876,6 +909,7 @@ export function ProjectProductionWizard(props: {
               <label className="grid gap-1 text-sm font-semibold">
                 Material
                 <Input
+                  disabled={lockActivityIdentity}
                   value={draft.materialName}
                   onChange={(event) =>
                     update({ materialName: event.target.value })
@@ -883,6 +917,42 @@ export function ProjectProductionWizard(props: {
                 />
               </label>
             </div>
+            <fieldset className="grid gap-2">
+              <legend className="text-sm font-bold">Condição climática</legend>
+              <p className="text-sm text-muted-foreground">
+                Selecione as condições observadas durante esta produção.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                {(
+                  [
+                    ["dry", "Seco"],
+                    ["rain", "Chuva"],
+                    ["waterlogged_soil", "Solo encharcado"],
+                  ] as const
+                ).map(([value, label]) => (
+                  <label
+                    key={value}
+                    className="flex min-h-11 items-center gap-3 rounded-md border bg-background px-3 text-sm font-semibold"
+                  >
+                    <input
+                      type="checkbox"
+                      className="size-4 accent-primary"
+                      checked={draft.climateConditions.includes(value)}
+                      onChange={(event) =>
+                        update({
+                          climateConditions: event.target.checked
+                            ? [...draft.climateConditions, value]
+                            : draft.climateConditions.filter(
+                                (condition) => condition !== value,
+                              ),
+                        })
+                      }
+                    />
+                    {label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
           </div>
         )}
 
