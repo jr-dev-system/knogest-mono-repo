@@ -33,6 +33,10 @@ import { FormWizardProgress } from "@/components/ui/form-wizard-progress";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
 import {
+  OperationTabPanel,
+  OperationTabs,
+} from "@/components/ui/operation-tabs";
+import {
   Select,
   SelectContent,
   SelectItem,
@@ -42,6 +46,7 @@ import {
 import { cn } from "@/lib/utils";
 import {
   productionServiceLabel,
+  productionStatusLabel,
   productionUnitLabel,
 } from "../production-labels";
 import {
@@ -129,7 +134,6 @@ export function ProjectOperationalDay({
     shift: OperationalShift;
   } | null>(null);
   const [busy, setBusy] = React.useState(false);
-  const [now, setNow] = React.useState(() => new Date());
   const [productionSummaries, setProductionSummaries] = React.useState<
     Record<
       string,
@@ -171,13 +175,6 @@ export function ProjectOperationalDay({
       window.removeEventListener("focus", focus);
     };
   }, [refresh, refreshPaused]);
-  React.useEffect(() => {
-    if (!day.shifts.some((item) => item.report?.status === "draft")) return;
-    const tick = () => setNow(new Date());
-    tick();
-    const id = window.setInterval(tick, 1_000);
-    return () => window.clearInterval(id);
-  }, [day.shifts]);
   const loadProductions = React.useCallback(
     async (reportId: string) => {
       setProductionSummaries((current) => ({
@@ -370,7 +367,6 @@ export function ProjectOperationalDay({
           <ShiftLane
             key={visibleItem.shift}
             item={visibleItem}
-            now={now}
             busy={busy}
             productionState={
               visibleItem.report
@@ -505,7 +501,6 @@ export function ProjectOperationalDay({
 
 function ShiftLane({
   item,
-  now,
   busy,
   productionState,
   onAction,
@@ -514,7 +509,6 @@ function ShiftLane({
   onStatus,
 }: {
   item: OperationalDay["shifts"][number];
-  now: Date;
   busy: boolean;
   productionState:
     | { kind: "loading" }
@@ -526,11 +520,13 @@ function ShiftLane({
   onRetryProductions: () => void;
   onStatus: (command: OperationalStatusCommand) => void;
 }) {
+  const [activeTab, setActiveTab] = React.useState<
+    "measurements" | "employees" | "machines"
+  >("measurements");
   const report = item.report;
   const running = report?.status === "draft";
   const finalized = report?.status === "finalized";
   const paused = report?.liveState?.status === "paused";
-  const metrics = report && running ? liveShiftMetrics(report, now) : null;
   const blockers = report
     ? [report.interferenceEntries.some((value) => !value.confirmedAt)].filter(
         Boolean,
@@ -585,33 +581,6 @@ function ShiftLane({
       </div>
       {report && (
         <>
-          {metrics && (
-            <div className="grid gap-px border-y border-border bg-border sm:grid-cols-3">
-              <Metric
-                label="Tempo trabalhado"
-                value={formatTimer(metrics.workedMs)}
-                detail={
-                  metrics.overtimeMs > 0
-                    ? `${formatHours(metrics.regularMs)} regulares + ${formatHours(metrics.overtimeMs)} extra`
-                    : `Jornada prevista: ${formatHours(metrics.plannedMs)}`
-                }
-              />
-              <Metric
-                label="Situação do turno"
-                value={paused ? "Em intervalo" : "Em andamento"}
-                detail={
-                  report.liveState?.changedAt
-                    ? `Desde ${clock(report.liveState.changedAt)}`
-                    : "Status atual"
-                }
-              />
-              <Metric
-                label="Início do turno"
-                value={report.startedAt ? clock(report.startedAt) : "—"}
-                detail={`${report.employees.length} funcionário(s) · ${report.machines.length} máquina(s)`}
-              />
-            </div>
-          )}
           <div className="space-y-6 p-5">
             {running && (
               <div className="flex flex-col gap-3 rounded-xl border border-border bg-secondary/30 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -642,16 +611,57 @@ function ShiftLane({
               </div>
             )}
 
-            <OperationalResources
-              report={report}
-              readOnly={!running || busy}
-              onStatus={onStatus}
-            />
-
-            <ProductionOverview
-              state={productionState}
-              onRetry={onRetryProductions}
-            />
+            <div className="space-y-4">
+              <OperationTabs
+                ariaLabel="Dados operacionais do turno"
+                idPrefix={`operational-${item.shift}`}
+                value={activeTab}
+                onValueChange={setActiveTab}
+                tabs={[
+                  { value: "measurements", label: "Medições" },
+                  {
+                    value: "employees",
+                    label: `Funcionários (${report.employees.length})`,
+                  },
+                  {
+                    value: "machines",
+                    label: `Máquinas (${report.machines.length})`,
+                  },
+                ]}
+              />
+              <OperationTabPanel
+                idPrefix={`operational-${item.shift}`}
+                value="measurements"
+                activeValue={activeTab}
+              >
+                <ProductionOverview
+                  state={productionState}
+                  onRetry={onRetryProductions}
+                />
+              </OperationTabPanel>
+              <OperationTabPanel
+                idPrefix={`operational-${item.shift}`}
+                value="employees"
+                activeValue={activeTab}
+              >
+                <OperationalEmployeesTable
+                  report={report}
+                  readOnly={!running || busy}
+                  onStatus={onStatus}
+                />
+              </OperationTabPanel>
+              <OperationTabPanel
+                idPrefix={`operational-${item.shift}`}
+                value="machines"
+                activeValue={activeTab}
+              >
+                <OperationalMachinesTable
+                  report={report}
+                  readOnly={!running || busy}
+                  onStatus={onStatus}
+                />
+              </OperationTabPanel>
+            </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
               <div>
@@ -704,27 +714,7 @@ function ShiftLane({
   );
 }
 
-function Metric({
-  label,
-  value,
-  detail,
-}: {
-  label: string;
-  value: string;
-  detail: string;
-}) {
-  return (
-    <div className="bg-card p-5">
-      <p className="text-sm font-semibold text-muted-foreground">{label}</p>
-      <p className="mt-1 font-mono text-2xl font-extrabold tabular-nums">
-        {value}
-      </p>
-      <p className="mt-1 text-sm font-medium text-muted-foreground">{detail}</p>
-    </div>
-  );
-}
-
-function OperationalResources({
+function OperationalEmployeesTable({
   report,
   readOnly,
   onStatus,
@@ -733,94 +723,285 @@ function OperationalResources({
   readOnly: boolean;
   onStatus: (command: OperationalStatusCommand) => void;
 }) {
+  const finalized = report.status === "finalized";
+  const schedulePeriods = [...report.schedulePeriods].sort(
+    (left, right) =>
+      left.startDayOffset - right.startDayOffset ||
+      left.startTime.localeCompare(right.startTime),
+  );
   return (
-    <div className="grid gap-6 lg:grid-cols-2">
-      <section aria-labelledby="employees-title">
-        <div className="flex items-center gap-2">
-          <Users className="size-5 text-primary" />
-          <h3 id="employees-title" className="text-lg font-bold">
-            Funcionários ({report.employees.length})
-          </h3>
-        </div>
-        <div className="mt-3 space-y-3">
-          {report.employees.map((employee) => {
-            const absent = employee.attendanceStatus === "absent";
-            const status = absent
-              ? "stopped"
-              : (employee.liveState?.status ?? "working");
-            return (
-              <ResourceCard
-                key={employee.employmentId}
-                name={employee.name}
-                detail={
-                  absent
-                    ? `Ausente${employee.absenceReason ? ` · ${employee.absenceReason}` : ""}`
-                    : employee.jobRole
-                }
-                status={status}
-                statuses={[
-                  ["working", "Em trabalho"],
-                  ["stopped", "Parado"],
-                  ["unfit", "Não apto"],
-                ]}
-                readOnly={readOnly || absent}
-                onChange={(next) =>
-                  onStatus({
-                    type: "employee",
-                    employmentId: employee.employmentId,
-                    status: next as "working" | "stopped" | "unfit",
-                  })
-                }
-              />
-            );
-          })}
-        </div>
-      </section>
-      <section aria-labelledby="machines-title">
-        <div className="flex items-center gap-2">
-          <Wrench className="size-5 text-primary" />
-          <h3 id="machines-title" className="text-lg font-bold">
-            Máquinas ({report.machines.length})
-          </h3>
-        </div>
-        <div className="mt-3 space-y-3">
-          {report.machines.map((machine) => {
-            const unfit = machine.operationalCondition === "unfit";
-            const status = unfit
-              ? "unfit"
-              : (machine.liveState?.status ?? "working");
-            return (
-              <ResourceCard
-                key={machine.machineId}
-                name={machine.name}
-                detail={`${machine.manufacturer} · ${machine.model}`}
-                status={status}
-                statuses={[
-                  ["working", "Em trabalho"],
-                  ["stopped", "Parada"],
-                  ["maintenance", "Manutenção"],
-                ]}
-                readOnly={readOnly || unfit}
-                fixedLabel={unfit ? "Não apta" : undefined}
-                onChange={(next) =>
-                  onStatus({
-                    type: "machine",
-                    machineId: machine.machineId,
-                    status: next as "working" | "stopped" | "maintenance",
-                  })
-                }
-              />
-            );
-          })}
-        </div>
-      </section>
-    </div>
+    <section aria-labelledby="employees-title" className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Users className="size-5 text-primary" />
+        <h3 id="employees-title" className="text-lg font-bold">
+          Jornada dos funcionários
+        </h3>
+      </div>
+      <div
+        className="overflow-x-auto rounded-xl border border-border focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+        tabIndex={0}
+        aria-label="Tabela de jornada dos funcionários"
+      >
+        <table className="w-full min-w-[72rem] border-collapse text-left text-sm">
+          <thead className="bg-muted/80 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3">Funcionário</th>
+              <th className="px-4 py-3">Faixas da jornada</th>
+              <th className="px-4 py-3">Entrada</th>
+              <th className="px-4 py-3">Saída</th>
+              <th className="px-4 py-3">Total</th>
+              <th className="px-4 py-3">Horas extras</th>
+              <th className="px-4 py-3 text-right">Custo do turno</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {report.employees.map((employee) => {
+              const absent = employee.attendanceStatus === "absent";
+              const status = absent
+                ? "unfit"
+                : finalized
+                  ? "closed"
+                  : (employee.liveState?.status ?? "working");
+              const totalMinutes =
+                (employee.regularWorkedMinutes ?? 0) +
+                (employee.overtimeMinutes ?? 0);
+              return (
+                <tr key={employee.employmentId} className="align-top">
+                  <td className="px-4 py-4">
+                    <div className="min-w-52">
+                      <p className="font-bold text-foreground">
+                        {employee.name}
+                      </p>
+                      <p className="mt-0.5 text-muted-foreground">
+                        {employee.jobRole}
+                      </p>
+                      <div className="mt-2">
+                        <ResourceStatusControl
+                          name={employee.name}
+                          status={status}
+                          statuses={[
+                            ["working", "Em trabalho"],
+                            ["stopped", "Parado"],
+                            ["unfit", "Não apto"],
+                          ]}
+                          readOnly={readOnly || absent}
+                          fixedLabel={
+                            absent
+                              ? "Ausente"
+                              : finalized
+                                ? "Encerrado"
+                                : undefined
+                          }
+                          onChange={(next) =>
+                            onStatus({
+                              type: "employee",
+                              employmentId: employee.employmentId,
+                              status: next as
+                                | "working"
+                                | "stopped"
+                                | "unfit",
+                            })
+                          }
+                        />
+                      </div>
+                    </div>
+                  </td>
+                  <td className="px-4 py-4">
+                    <div className="flex min-w-60 flex-wrap items-center gap-1.5 tabular-nums">
+                      {schedulePeriods.map((period, index) => (
+                        <React.Fragment
+                          key={`${period.startDayOffset}-${period.startTime}-${period.endTime}`}
+                        >
+                          {index > 0 && (
+                            <span
+                              aria-hidden="true"
+                              className="text-muted-foreground"
+                            >
+                              →
+                            </span>
+                          )}
+                          <span className="rounded-md bg-secondary px-2.5 py-1 font-semibold text-secondary-foreground">
+                            {period.startTime}–{period.endTime}
+                            {period.endDayOffset > period.startDayOffset
+                              ? " +1 dia"
+                              : ""}
+                          </span>
+                        </React.Fragment>
+                      ))}
+                    </div>
+                  </td>
+                  <TableValue>
+                    {absent
+                      ? "—"
+                      : employee.checkInAt
+                        ? clock(employee.checkInAt)
+                        : "—"}
+                  </TableValue>
+                  <TableValue>
+                    {absent
+                      ? "—"
+                      : finalized
+                        ? employee.checkOutAt
+                          ? clock(employee.checkOutAt)
+                          : "—"
+                        : "Em andamento"}
+                  </TableValue>
+                  <TableValue>
+                    {absent
+                      ? "00:00"
+                      : finalized
+                        ? formatDuration(totalMinutes)
+                        : "A consolidar"}
+                  </TableValue>
+                  <TableValue>
+                    {absent
+                      ? "00:00"
+                      : finalized
+                        ? formatDuration(employee.overtimeMinutes ?? 0)
+                        : "A consolidar"}
+                  </TableValue>
+                  <td className="whitespace-nowrap px-4 py-4 text-right font-extrabold tabular-nums">
+                    {absent && finalized
+                      ? formatCurrencyBrl("0.00")
+                      : finalized
+                        ? employee.shiftCostBrl !== null &&
+                          employee.shiftCostBrl !== undefined
+                          ? formatCurrencyBrl(employee.shiftCostBrl)
+                          : "Não disponível"
+                        : "A consolidar"}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }
 
-function ResourceCard({
+function TableValue({ children }: { children: React.ReactNode }) {
+  return (
+    <td className="whitespace-nowrap px-4 py-4 font-semibold tabular-nums">
+      {children}
+    </td>
+  );
+}
+
+function OperationalMachinesTable({
+  report,
+  readOnly,
+  onStatus,
+}: {
+  report: OperationalReport;
+  readOnly: boolean;
+  onStatus: (command: OperationalStatusCommand) => void;
+}) {
+  const finalized = report.status === "finalized";
+
+  return (
+    <section aria-labelledby="machines-title" className="space-y-3">
+      <div className="flex items-center gap-2">
+        <Wrench className="size-5 text-primary" />
+        <h3 id="machines-title" className="text-lg font-bold">
+          Máquinas do turno
+        </h3>
+      </div>
+      <div
+        className="overflow-x-auto rounded-xl border border-border focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
+        tabIndex={0}
+        aria-label="Tabela de máquinas do turno"
+      >
+        <table className="w-full min-w-[58rem] border-collapse text-left text-sm">
+          <thead className="bg-muted/80 text-xs font-bold uppercase tracking-wide text-muted-foreground">
+            <tr>
+              <th className="px-4 py-3">Máquina</th>
+              <th className="px-4 py-3">Medidor</th>
+              <th className="px-4 py-3">Condição</th>
+              <th className="px-4 py-3">Status operacional</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-border">
+            {report.machines.map((machine) => {
+              const unfit = machine.operationalCondition === "unfit";
+              const status = unfit
+                ? "unfit"
+                : finalized
+                  ? "closed"
+                  : (machine.liveState?.status ?? "working");
+              return (
+                <tr key={machine.machineId} className="align-top">
+                  <td className="px-4 py-4">
+                    <p className="font-bold">{machine.name}</p>
+                    <p className="mt-0.5 text-muted-foreground">
+                      {machine.manufacturer} · {machine.model}
+                    </p>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-4 tabular-nums">
+                    <p className="font-semibold">
+                      {machine.meterType === "hour_meter"
+                        ? "Horímetro"
+                        : "Odômetro"}
+                    </p>
+                    <p className="mt-0.5 text-muted-foreground">
+                      {machine.startMeterReading.value}
+                      {report.status === "finalized" &&
+                      machine.operationalCondition !== "unfit"
+                        ? ` → ${machine.endMeterReading?.value ?? "—"}`
+                        : ""}
+                    </p>
+                  </td>
+                  <td className="max-w-64 px-4 py-4">
+                    <p className="font-semibold">
+                      {unfit ? "Não apta" : "Apta"}
+                    </p>
+                    {machine.conditionNote && (
+                      <p className="mt-0.5 text-muted-foreground">
+                        {machine.conditionNote}
+                      </p>
+                    )}
+                  </td>
+                  <td className="px-4 py-4">
+                    <ResourceStatusControl
+                      name={machine.name}
+                      status={status}
+                      statuses={[
+                        ["working", "Em trabalho"],
+                        ["stopped", "Parada"],
+                        ["maintenance", "Manutenção"],
+                      ]}
+                      readOnly={readOnly || unfit}
+                      fixedLabel={
+                        unfit
+                          ? "Não apta"
+                          : finalized
+                            ? "Encerrado"
+                            : undefined
+                      }
+                      onChange={(next) =>
+                        onStatus({
+                          type: "machine",
+                          machineId: machine.machineId,
+                          status: next as
+                            | "working"
+                            | "stopped"
+                            | "maintenance",
+                        })
+                      }
+                    />
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+}
+
+function ResourceStatusControl({
   name,
-  detail,
   status,
   statuses,
   readOnly,
@@ -828,7 +1009,6 @@ function ResourceCard({
   onChange,
 }: {
   name: string;
-  detail: string;
   status: string;
   statuses: Array<[string, string]>;
   readOnly: boolean;
@@ -838,27 +1018,22 @@ function ResourceCard({
   const activeLabel =
     fixedLabel ?? statuses.find(([value]) => value === status)?.[1] ?? status;
   return (
-    <article className="rounded-lg border border-border p-4">
-      <div className="flex flex-wrap items-start justify-between gap-2">
-        <div className="min-w-0">
-          <p className="truncate font-bold">{name}</p>
-          <p className="truncate text-sm text-muted-foreground">{detail}</p>
-        </div>
-        <span
-          className={cn(
-            "rounded-full px-2.5 py-1 text-xs font-bold",
-            status === "working" && "bg-emerald-100 text-emerald-800",
-            status === "stopped" && "bg-slate-200 text-slate-800",
-            status === "maintenance" && "bg-amber-100 text-amber-900",
-            status === "unfit" && "bg-red-100 text-red-800",
-          )}
-        >
-          {activeLabel}
-        </span>
-      </div>
+    <div className="min-w-64">
+      <span
+        className={cn(
+          "inline-flex rounded-full px-2.5 py-1 text-xs font-bold",
+          status === "working" && "bg-emerald-100 text-emerald-800",
+          status === "stopped" && "bg-slate-200 text-slate-800",
+          status === "maintenance" && "bg-amber-100 text-amber-900",
+          status === "unfit" && "bg-red-100 text-red-800",
+          status === "closed" && "bg-slate-200 text-slate-800",
+        )}
+      >
+        {activeLabel}
+      </span>
       {!readOnly && (
         <div
-          className="mt-3 flex flex-wrap gap-2"
+          className="mt-2 flex flex-wrap gap-2"
           role="group"
           aria-label={`Status de ${name}`}
         >
@@ -878,7 +1053,7 @@ function ResourceCard({
           ))}
         </div>
       )}
-    </article>
+    </div>
   );
 }
 
@@ -927,7 +1102,7 @@ function ProductionOverview({
                   {productionServiceLabel(production.serviceCode)}
                 </p>
                 <span className="rounded-full bg-secondary px-2 py-1 text-xs font-bold">
-                  {production.status.replaceAll("_", " ")}
+                  {productionStatusLabel(production.status)}
                 </span>
               </div>
               <p className="mt-2 text-lg font-extrabold tabular-nums">
@@ -1007,6 +1182,13 @@ function clock(value: string) {
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatCurrencyBrl(value: string) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number(value));
 }
 
 function OperationalPanel({
@@ -3023,49 +3205,6 @@ function activityWindowMinutes(window: OperationalReport["activityWindow"]) {
       window.endDayOffset * 24 * 60 -
       clockMinutes(window.startTime),
   );
-}
-
-function liveShiftMetrics(report: OperationalReport, now: Date) {
-  const startedAt = report.startedAt
-    ? new Date(report.startedAt).getTime()
-    : now.getTime();
-  const effectiveNow = Math.max(startedAt, now.getTime());
-  const breakMs = report.liveBreaks.reduce((total, interval) => {
-    const start = Math.max(startedAt, new Date(interval.startAt).getTime());
-    const end = Math.min(
-      effectiveNow,
-      interval.endAt ? new Date(interval.endAt).getTime() : effectiveNow,
-    );
-    return total + Math.max(0, end - start);
-  }, 0);
-  const plannedMs = Math.max(
-    0,
-    activityWindowMinutes(report.activityWindow) * 60_000 - breakMs,
-  );
-  const workedMs = Math.max(0, effectiveNow - startedAt - breakMs);
-  return {
-    workedMs,
-    plannedMs,
-    regularMs: Math.min(workedMs, plannedMs),
-    overtimeMs: Math.max(0, workedMs - plannedMs),
-  };
-}
-
-function formatTimer(milliseconds: number) {
-  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
-  const hours = Math.floor(totalSeconds / 3_600);
-  const minutes = Math.floor((totalSeconds % 3_600) / 60);
-  const seconds = totalSeconds % 60;
-  return [hours, minutes, seconds]
-    .map((value) => String(value).padStart(2, "0"))
-    .join(":");
-}
-
-function formatHours(milliseconds: number) {
-  const minutes = Math.max(0, Math.round(milliseconds / 60_000));
-  const hours = Math.floor(minutes / 60);
-  const remainder = minutes % 60;
-  return remainder ? `${hours}h ${remainder}min` : `${hours}h`;
 }
 
 function instantForDayOffset(

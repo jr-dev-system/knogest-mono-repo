@@ -3,6 +3,7 @@
 import * as React from "react";
 import {
   AlertCircle,
+  Clock3,
   Loader2,
   Pencil,
   Plus,
@@ -37,6 +38,13 @@ const compensationLabels: Record<CompensationMode, string> = {
   weekly: "Semanal",
 };
 
+const shiftTone = (shift: Shift) => ({
+  badge: "bg-slate-800 text-slate-50 dark:bg-slate-200 dark:text-slate-950",
+  card: "border-l-slate-800 dark:border-l-slate-500",
+  icon: "bg-slate-800 text-slate-50 dark:bg-slate-200 dark:text-slate-950",
+  label: shift === "day" ? "Turno diurno" : "Turno noturno",
+});
+
 const emptyPages = (): Record<Shift, ProjectTeamMembersPage[]> => ({
   day: [],
   night: [],
@@ -52,6 +60,85 @@ const formatCurrency = (value: string) =>
     style: "currency",
     currency: "BRL",
   }).format(Number(value));
+
+function TeamMemberIdentity({ member }: { member: ProjectTeamMember }) {
+  const tone = shiftTone(member.shift);
+
+  return (
+    <header className="border-b border-border bg-muted/30 px-4 py-3.5 text-foreground">
+      <div className="flex min-w-0 flex-wrap items-start gap-3">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "inline-flex size-10 shrink-0 items-center justify-center rounded-md",
+            tone.icon,
+          )}
+        >
+          <UsersRound className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3
+            id={`team-member-${member.id}-name`}
+            className="break-words text-lg font-extrabold leading-tight sm:text-xl"
+          >
+            {member.name}
+          </h3>
+          <p className="mt-1 break-words text-sm font-semibold text-muted-foreground">
+            {member.jobRole}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "inline-flex min-h-7 shrink-0 items-center rounded-md px-2.5 text-xs font-extrabold",
+            tone.badge,
+          )}
+        >
+          {tone.label}
+        </span>
+      </div>
+    </header>
+  );
+}
+
+function TeamMemberDetails({ member }: { member: ProjectTeamMember }) {
+  return (
+    <section
+      aria-label={`Jornada e remuneração de ${member.name}`}
+      className="bg-card p-4"
+    >
+      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
+        <Clock3 className="size-4 text-primary" />
+        Jornada e remuneração
+      </div>
+      <dl className="grid grid-cols-2 gap-x-5 gap-y-3 border-t border-foreground/15 pt-3 text-sm sm:grid-cols-3">
+        <div>
+          <dt className="text-xs font-semibold text-muted-foreground">
+            Carga mensal
+          </dt>
+          <dd className="mt-0.5 font-bold">{member.monthlyWorkloadHours} h</dd>
+        </div>
+        <div>
+          <dt className="text-xs font-semibold text-muted-foreground">
+            Modalidade
+          </dt>
+          <dd className="mt-0.5 font-bold">
+            {compensationLabels[member.compensationMode]}
+          </dd>
+        </div>
+        <div className="col-span-2 sm:col-span-1">
+          <dt className="text-xs font-semibold text-muted-foreground">
+            Hora extra
+          </dt>
+          <dd className="mt-0.5 font-bold">
+            {member.overtimeEnabled
+              ? formatCurrency(member.overtimeRate)
+              : "Desabilitada"}
+          </dd>
+        </div>
+      </dl>
+    </section>
+  );
+}
 
 export function ProjectTeamView({
   canEdit,
@@ -291,10 +378,7 @@ export function ProjectTeamView({
             </select>
           </div>
         </div>
-        <p className="text-xs leading-5 text-muted-foreground">
-          A busca encontra nomes e cargos. O resultado é atualizado quando você
-          para de digitar.
-        </p>
+        <p className="text-xs leading-5 text-muted-foreground"></p>
       </section>
 
       {(["day", "night"] as const).map((shift) => (
@@ -315,16 +399,19 @@ export function ProjectTeamView({
                 {[0, 1, 2].map((item) => (
                   <div
                     key={item}
-                    className="grid min-h-28 animate-pulse gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-[minmax(11rem,1fr)_auto_auto] sm:items-center"
+                    className="overflow-hidden rounded-2xl border border-l-[6px] border-input border-l-muted-foreground/25 bg-background"
                   >
-                    <div className="grid gap-2">
-                      <span className="h-5 w-44 rounded bg-muted" />
-                      <span className="h-4 w-28 rounded bg-muted" />
+                    <div className="grid animate-pulse gap-2 border-b border-border bg-muted/30 p-4">
+                      <span className="h-5 w-44 rounded bg-muted-foreground/20" />
+                      <span className="h-3 w-28 rounded bg-muted-foreground/20" />
                     </div>
-                    <div className="grid grid-cols-3 gap-4">
-                      <span className="h-9 w-16 rounded bg-muted" />
-                      <span className="h-9 w-16 rounded bg-muted" />
-                      <span className="h-9 w-16 rounded bg-muted" />
+                    <div className="grid min-h-28 animate-pulse sm:grid-cols-[minmax(0,1fr)_auto]">
+                      <div className="grid grid-cols-3 gap-4 p-4">
+                        <span className="h-9 rounded bg-muted" />
+                        <span className="h-9 rounded bg-muted" />
+                        <span className="h-9 rounded bg-muted" />
+                      </div>
+                      <span className="m-4 h-10 w-20 rounded bg-muted" />
                     </div>
                   </div>
                 ))}
@@ -348,73 +435,49 @@ export function ProjectTeamView({
             </div>
           ) : page?.data.length ? (
             <div className="grid gap-3">
-              <div className="grid gap-2">
+              <div className="grid gap-3">
                 {page.data.map((member) => (
                   <article
                     key={member.id}
-                    className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[minmax(11rem,1fr)_auto_auto] sm:items-center"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate font-bold">{member.name}</p>
-                      <p className="truncate text-sm text-muted-foreground">
-                        {member.jobRole}
-                      </p>
-                    </div>
-                    <dl className="grid grid-cols-2 gap-x-5 gap-y-2 text-sm sm:grid-cols-3 sm:text-right">
-                      <div>
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Carga mensal
-                        </dt>
-                        <dd className="font-bold">
-                          {member.monthlyWorkloadHours} h
-                        </dd>
-                      </div>
-                      <div>
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Modalidade
-                        </dt>
-                        <dd className="font-bold">
-                          {compensationLabels[member.compensationMode]}
-                        </dd>
-                      </div>
-                      <div className="col-span-2 sm:col-span-1">
-                        <dt className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                          Hora extra
-                        </dt>
-                        <dd className="font-bold">
-                          {member.overtimeEnabled
-                            ? formatCurrency(member.overtimeRate)
-                            : "Desabilitada"}
-                        </dd>
-                      </div>
-                    </dl>
-                    {canEdit && (
-                      <div
-                        role="group"
-                        aria-label={`Ações para ${member.name}`}
-                        className="flex items-center gap-1 border-t border-border pt-2 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0"
-                      >
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-lg"
-                          aria-label={`Editar ${member.name}`}
-                          onClick={() => onEditMember(member)}
-                        >
-                          <Pencil className="size-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon-lg"
-                          className="text-destructive hover:bg-destructive/10 hover:text-destructive"
-                          aria-label={`Remover ${member.name}`}
-                          onClick={() => onRemoveMember(member)}
-                        >
-                          <Trash2 className="size-4" />
-                        </Button>
-                      </div>
+                    aria-labelledby={`team-member-${member.id}-name`}
+                    data-shift={member.shift}
+                    className={cn(
+                      "overflow-hidden rounded-2xl border border-l-[6px] border-input bg-background",
+                      shiftTone(member.shift).card,
                     )}
+                  >
+                    <TeamMemberIdentity member={member} />
+                    <div className="grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-stretch">
+                      <TeamMemberDetails member={member} />
+                      {canEdit && (
+                        <div
+                          role="group"
+                          aria-label={`Ações para ${member.name}`}
+                          className="flex items-center justify-end gap-2 border-t border-border bg-muted/80 p-3 sm:justify-center sm:border-l sm:border-t-0"
+                        >
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-lg"
+                            className="bg-background"
+                            aria-label={`Editar ${member.name}`}
+                            onClick={() => onEditMember(member)}
+                          >
+                            <Pencil className="size-4" />
+                          </Button>
+                          <Button
+                            type="button"
+                            variant="outline"
+                            size="icon-lg"
+                            className="border-destructive/30 bg-background text-destructive hover:bg-destructive/10 hover:text-destructive"
+                            aria-label={`Remover ${member.name}`}
+                            onClick={() => onRemoveMember(member)}
+                          >
+                            <Trash2 className="size-4" />
+                          </Button>
+                        </div>
+                      )}
+                    </div>
                   </article>
                 ))}
               </div>

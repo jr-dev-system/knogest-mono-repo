@@ -1,7 +1,15 @@
 "use client";
 
 import * as React from "react";
-import { AlertCircle, Cog, Loader2, Pencil, Search, Truck } from "lucide-react";
+import {
+  AlertCircle,
+  Cog,
+  Loader2,
+  Pencil,
+  Search,
+  Truck,
+  UsersRound,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -19,6 +27,20 @@ import type {
 
 const machineTypeLabel = (type: ProjectMachineMobilizationMember["type"]) =>
   type === "YELLOW_LINE" ? "Linha amarela" : "Linha branca";
+
+const machineTypeTone = (type: ProjectMachineMobilizationMember["type"]) =>
+  type === "YELLOW_LINE"
+    ? {
+        badge: "bg-amber-950 text-amber-50",
+        card: "border-l-amber-400",
+        icon: "bg-amber-950 text-amber-50",
+      }
+    : {
+        badge:
+          "bg-slate-800 text-slate-50 dark:bg-slate-200 dark:text-slate-950",
+        card: "border-l-slate-800 dark:border-l-slate-500",
+        icon: "bg-slate-800 text-slate-50 dark:bg-slate-200 dark:text-slate-950",
+      };
 
 const identifiersLabel = (machine: ProjectMachineMobilizationMember) =>
   machine.identifiers
@@ -41,50 +63,94 @@ function MachineIdentity({
 }: {
   machine: ProjectMachineMobilizationMember;
 }) {
+  const tone = machineTypeTone(machine.type);
+
   return (
-    <div className="min-w-0">
-      <p className="truncate font-bold text-foreground">{machine.name}</p>
-      <p className="mt-0.5 flex flex-wrap gap-x-2 gap-y-0.5 text-xs font-medium text-muted-foreground">
-        <span>{machineTypeLabel(machine.type)}</span>
-        <span aria-hidden="true">·</span>
-        <span>Leitura {readingLabel(machine)}</span>
-        {identifiersLabel(machine) && (
-          <>
-            <span aria-hidden="true">·</span>
-            <span>{identifiersLabel(machine)}</span>
-          </>
-        )}
-      </p>
-      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-border pt-3 text-xs sm:grid-cols-3 sm:gap-x-3">
+    <header className="border-b border-border bg-muted/30 px-4 py-3.5 text-foreground">
+      <div className="flex min-w-0 flex-wrap items-start gap-3">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "inline-flex size-10 shrink-0 items-center justify-center rounded-md",
+            tone.icon,
+          )}
+        >
+          <Truck className="size-5" />
+        </span>
+        <div className="min-w-0 flex-1">
+          <h3
+            id={`machine-${machine.id}-name`}
+            className="break-words text-lg font-extrabold leading-tight sm:text-xl"
+          >
+            {machine.name}
+          </h3>
+          <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-sm font-semibold text-muted-foreground">
+            <span>Leitura {readingLabel(machine)}</span>
+            {identifiersLabel(machine) && (
+              <>
+                <span aria-hidden="true">·</span>
+                <span>{identifiersLabel(machine)}</span>
+              </>
+            )}
+          </p>
+        </div>
+        <span
+          className={cn(
+            "inline-flex min-h-7 shrink-0 items-center rounded-md px-2.5 text-xs font-extrabold",
+            tone.badge,
+          )}
+        >
+          {machineTypeLabel(machine.type)}
+        </span>
+      </div>
+    </header>
+  );
+}
+
+function MachineSpecifications({
+  machine,
+}: {
+  machine: ProjectMachineMobilizationMember;
+}) {
+  return (
+    <section
+      aria-label={`Dados da máquina ${machine.name}`}
+      className="bg-card p-4"
+    >
+      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
+        <Truck className="size-4 text-primary" />
+        Dados da máquina
+      </div>
+      <dl className="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-foreground/15 pt-3 text-xs sm:grid-cols-3 sm:gap-x-3">
         <div className="col-span-2 min-w-0 sm:col-span-1">
-          <dt className="font-semibold text-foreground">Modelo</dt>
+          <dt className="font-semibold text-muted-foreground">Modelo</dt>
           <dd
             title={machine.model || "Não informado"}
-            className="truncate font-bold text-foreground"
+            className="mt-0.5 truncate text-sm font-bold text-foreground"
           >
             {machine.model || "Não informado"}
           </dd>
         </div>
         <div className="min-w-0">
-          <dt className="font-semibold text-foreground">Versão</dt>
+          <dt className="font-semibold text-muted-foreground">Versão</dt>
           <dd
             title={machine.version || "Não informada"}
-            className="truncate font-bold text-foreground"
+            className="mt-0.5 truncate text-sm font-bold text-foreground"
           >
             {machine.version || "Não informada"}
           </dd>
         </div>
         <div className="min-w-0">
-          <dt className="font-semibold text-foreground">Fabricante</dt>
+          <dt className="font-semibold text-muted-foreground">Fabricante</dt>
           <dd
             title={machine.manufacturer || "Não informado"}
-            className="truncate font-bold text-foreground"
+            className="mt-0.5 truncate text-sm font-bold text-foreground"
           >
             {machine.manufacturer || "Não informado"}
           </dd>
         </div>
       </dl>
-    </div>
+    </section>
   );
 }
 
@@ -94,39 +160,51 @@ function MachineOperators({
   machine: ProjectMachineMobilizationMember;
 }) {
   return (
-    <dl className="grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-      <div className="col-span-2 min-w-0">
-        <dt className="text-xs font-semibold text-muted-foreground">
-          Operadores
-        </dt>
-        <dd className="mt-0.5 flex flex-wrap gap-x-3 gap-y-1 font-bold text-foreground">
-          {machine.requiresOperator
-            ? machine.operatorAssignments.length
-              ? machine.operatorAssignments.map((assignment) => (
-                  <span key={assignment.shift} className="min-w-0 break-words">
-                    <span className="mr-1 text-xs font-semibold text-muted-foreground">
-                      {assignment.shift === "day" ? "Diurno" : "Noturno"}
-                    </span>
-                    {assignment.operator?.name ?? "Não informado"}
-                  </span>
-                ))
-              : "Não informado"
-            : "Não exige operador"}
-        </dd>
-      </div>
-      {machine.requiresOperator && (
+    <section
+      aria-label={`Operadores de ${machine.name}`}
+      className="h-full bg-secondary/75 p-4"
+    >
+      <h4 className="flex items-center gap-2 text-sm font-bold text-secondary-foreground">
+        <span className="inline-flex size-8 items-center justify-center rounded-md bg-primary text-primary-foreground">
+          <UsersRound className="size-4" />
+        </span>
+        Operadores
+      </h4>
+      <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
         <div className="col-span-2 min-w-0">
-          <dt className="text-xs font-semibold text-muted-foreground">
-            Função exigida
-          </dt>
-          <dd className="mt-0.5 truncate font-bold text-foreground">
-            {machine.acceptsAnyJobRole
-              ? "Qualquer função"
-              : (machine.requiredJobRoleName ?? "Não informada")}
+          <dt className="sr-only">Operadores por turno</dt>
+          <dd className="grid gap-2 font-bold text-foreground">
+            {machine.requiresOperator
+              ? machine.operatorAssignments.length
+                ? machine.operatorAssignments.map((assignment) => (
+                    <span
+                      key={assignment.shift}
+                      className="flex min-w-0 flex-wrap items-baseline gap-2 break-words"
+                    >
+                      <span className="inline-flex min-h-6 items-center rounded-md bg-background px-2 text-xs font-extrabold text-foreground">
+                        {assignment.shift === "day" ? "Diurno" : "Noturno"}
+                      </span>
+                      {assignment.operator?.name ?? "Não informado"}
+                    </span>
+                  ))
+                : "Não informado"
+              : "Não exige operador"}
           </dd>
         </div>
-      )}
-    </dl>
+        {machine.requiresOperator && (
+          <div className="col-span-2 min-w-0 border-t border-foreground/15 pt-3">
+            <dt className="text-xs font-semibold text-muted-foreground">
+              Função exigida
+            </dt>
+            <dd className="mt-0.5 truncate font-bold text-foreground">
+              {machine.acceptsAnyJobRole
+                ? "Qualquer função"
+                : (machine.requiredJobRoleName ?? "Não informada")}
+            </dd>
+          </div>
+        )}
+      </dl>
+    </section>
   );
 }
 
@@ -251,15 +329,17 @@ export function ProjectMachineView({
             {[0, 1, 2].map((item) => (
               <div
                 key={item}
-                className="grid min-h-36 animate-pulse gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:grid-cols-[minmax(0,1.5fr)_minmax(13rem,0.8fr)_auto] sm:items-center"
+                className="overflow-hidden rounded-2xl border border-l-[6px] border-input border-l-muted-foreground/25 bg-background"
               >
-                <div className="grid gap-2">
-                  <span className="h-5 w-44 rounded bg-muted" />
-                  <span className="h-3 w-3/5 rounded bg-muted" />
-                  <span className="h-3 w-full rounded bg-muted" />
+                <div className="grid animate-pulse gap-2 border-b border-border bg-muted/30 p-4">
+                  <span className="h-5 w-44 rounded bg-muted-foreground/20" />
+                  <span className="h-3 w-3/5 rounded bg-muted-foreground/20" />
                 </div>
-                <span className="h-12 w-44 rounded bg-muted" />
-                <span className="h-10 w-20 rounded bg-muted" />
+                <div className="grid min-h-28 animate-pulse sm:grid-cols-[minmax(0,1.5fr)_minmax(13rem,0.8fr)_auto]">
+                  <span className="m-4 h-12 rounded bg-muted" />
+                  <span className="m-4 h-12 rounded bg-muted" />
+                  <span className="m-4 h-10 w-20 rounded bg-muted" />
+                </div>
               </div>
             ))}
           </div>
@@ -280,48 +360,58 @@ export function ProjectMachineView({
         </div>
       ) : page?.data.length ? (
         <div className="grid gap-3">
-          <div className="grid gap-2">
+          <div className="grid gap-3">
             {page.data.map((machine) => (
               <article
                 key={machine.id}
-                className="grid gap-3 rounded-lg border border-border bg-background p-3 sm:grid-cols-[minmax(0,1.5fr)_minmax(13rem,0.8fr)_auto] sm:items-center"
+                aria-labelledby={`machine-${machine.id}-name`}
+                data-machine-type={machine.type}
+                className={cn(
+                  "overflow-hidden rounded-2xl border border-l-[6px] border-input bg-background",
+                  machineTypeTone(machine.type).card,
+                )}
               >
                 <MachineIdentity machine={machine} />
-                <div className="border-t border-border pt-3 sm:border-l sm:border-t-0 sm:pl-4 sm:pt-0">
-                  <MachineOperators machine={machine} />
-                </div>
-                {canEdit && (
-                  <div
-                    role="group"
-                    aria-label={`Ações para ${machine.name}`}
-                    className="flex items-center gap-1 border-t border-border pt-2 sm:self-stretch sm:justify-center sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0"
-                  >
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-lg"
-                      aria-label={`Editar operadores de ${machine.name}`}
-                      title={
-                        machine.requiresOperator
-                          ? undefined
-                          : "Esta máquina não exige operador"
-                      }
-                      disabled={!machine.requiresOperator}
-                      onClick={() => onEditMachine(machine)}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-lg"
-                      aria-label={`Configurações de ${machine.name}`}
-                      onClick={() => undefined}
-                    >
-                      <Cog className="size-4" />
-                    </Button>
+                <div className="grid sm:grid-cols-[minmax(0,1.5fr)_minmax(13rem,0.8fr)_auto] sm:items-stretch">
+                  <MachineSpecifications machine={machine} />
+                  <div className="border-t border-border sm:border-l sm:border-t-0">
+                    <MachineOperators machine={machine} />
                   </div>
-                )}
+                  {canEdit && (
+                    <div
+                      role="group"
+                      aria-label={`Ações para ${machine.name}`}
+                      className="flex items-center justify-end gap-2 border-t border-border bg-muted/80 p-3 sm:justify-center sm:border-l sm:border-t-0"
+                    >
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-lg"
+                        className="bg-background"
+                        aria-label={`Editar operadores de ${machine.name}`}
+                        title={
+                          machine.requiresOperator
+                            ? undefined
+                            : "Esta máquina não exige operador"
+                        }
+                        disabled={!machine.requiresOperator}
+                        onClick={() => onEditMachine(machine)}
+                      >
+                        <Pencil className="size-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon-lg"
+                        className="bg-background"
+                        aria-label={`Configurações de ${machine.name}`}
+                        onClick={() => undefined}
+                      >
+                        <Cog className="size-4" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
               </article>
             ))}
           </div>

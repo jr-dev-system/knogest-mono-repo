@@ -200,9 +200,9 @@ A distinção entre um card e outro ainda causa um certo peso cgnitivo, não é 
 [] Remover os campos de material e cadastro de material. deixe somente a origem e destino neste card. e por enquanto, deixe somente oculto
 [] origem e destino devem ser as frentes ativas de serviço e podem ser usado o mesmo valor nos 2.
 
--- Na página do dia da obra Se o turno diuno que está iniciado o turno noturno não deve aparecer, principalmente se não tiver habilitado o turno noturno na obra. E se tiver habilitado para iniciar o turno deve ser um botão discreto e combinando com a interface. Se coincidir dos turnos estarem iniciados ao mesmo tempo. ooS 2 PAINEIS NÃO PODEM EM HIPOTESE ALGUMA APARECER AO MESMO TEMPO. Tem que ser um ou outro e o tiítulo de noturno ou diurno deve ser bem explicito, claro e visível para não causar confusão.
+[x] Na página do dia da obra Se o turno diuno que está iniciado o turno noturno não deve aparecer, principalmente se não tiver habilitado o turno noturno na obra. E se tiver habilitado para iniciar o turno deve ser um botão discreto e combinando com a interface. Se coincidir dos turnos estarem iniciados ao mesmo tempo. ooS 2 PAINEIS NÃO PODEM EM HIPOTESE ALGUMA APARECER AO MESMO TEMPO. Tem que ser um ou outro e o tiítulo de noturno ou diurno deve ser bem explicito, claro e visível para não causar confusão.
 
--- Quando adcionar produção e não tiver nenhuma frente iniciada aparecer um alerta no formulário indicando isso.
+[] Quando adcionar produção e não tiver nenhuma frente iniciada aparecer um alerta no formulário indicando isso.
 
 [x] O alert modal de criar unidades para uma obra na criação do modelo deve aparecer somente se tiver alguma obra em planejamento ou em andamento. Caso contrário o alert modal nem deve aparecer. A mesma coisa para a alocação na criação da unidade dentro da página da máquina.
 
@@ -229,10 +229,10 @@ selecionar os caminhões, quantidade de viagens. Não vai existir qualidade e ev
 
 [x] - Na atividade de corte, o terceiro step deve selecionar qual destino do material, se é aterro, descarte e outro, por enquanto. Se ele selecionar que é aterro, deve selecionar uma frente iniciada que possui aterro como produção, dizer qual o fator de empolamento e conferir no mesmo step o volume final em m3 de aterro. E dessa forma conseguir adcionar também a produção de aterro junto com o corte.
 
-[] - Ao iniciar turno, confirmar horário de início antes dos checklists
-[] - Ao finalizar turno confirmar horário final do turno e horário excedente.
-[] - Confirmar horário de todos os funcionários preenchidos automaticamente (inicio e final) que iniciaram o turno.
-[] - Confirmar odometro final de todas as máquinas que participaram do turno.
+[x] - Ao iniciar turno, confirmar horário de início antes dos checklists
+[x] - Ao finalizar turno confirmar horário final do turno e horário excedente.
+[x] - Confirmar horário de todos os funcionários preenchidos automaticamente (inicio e final) que iniciaram o turno.
+[x] - Confirmar odometro final de todas as máquinas que participaram do turno.
 
 [] - Não deve ser possível iniciar um mesmo turno caso já tenha um em aberto em outro dia ou no mesmo dia. Depois de um turno fechado, deve ser impossível rabrir ou algo do tipo.
 
@@ -240,7 +240,7 @@ selecionar os caminhões, quantidade de viagens. Não vai existir qualidade e ev
 [] - O botão de engrenagem no componente da máquina na listagem de máquinas da obra deve abrir o modal justamente de configuração de valor/hora e horas/mes disponível daquela máquina. Os valores devem ser apenas atualizados e nunca atualizar o histórico passado, somente o futuro. Se o número de horas exceder o disponível, não bloqueie as ações, só mostre um indicador na listagem que a máquina está excedendo "tantas horas".
 
 [] - Ao invés da nomeclatura de itens fornecidos seja "Insumos"
-[] - Atualmente Não é possível ajustar ciclos de pagamento após uma obra em andamento
+[] - Atualmente Não é possível ajustar ciclos de pagamento após uma obra em andamento. Só ajusta para o próximo, não atrapalha o histórico anterior.
 
 [] - Adcionar step para confirmar todos os gastos ao finalizar turno.
 

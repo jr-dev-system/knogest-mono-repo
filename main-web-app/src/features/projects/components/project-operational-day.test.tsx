@@ -287,8 +287,14 @@ function closingOperationalDay(machineCount = 1, employeeCount = 1) {
   report.executedActivities = "Execução da frente norte.";
   report.schedulePeriods = [
     {
-      startTime: "08:00",
+      startTime: "13:00",
       endTime: "17:00",
+      startDayOffset: 0,
+      endDayOffset: 0,
+    },
+    {
+      startTime: "08:00",
+      endTime: "12:00",
       startDayOffset: 0,
       endDayOffset: 0,
     },
@@ -980,7 +986,7 @@ describe("ProjectOperationalDay", () => {
     ).toHaveLength(0);
   });
 
-  it("shows the live timer, explicit overtime, and every operational resource", async () => {
+  it("uses measurements as the default and separates employees and machines into tables", async () => {
     const value = closingOperationalDay(1, 1);
     value.shifts[0]!.report!.startedAt = new Date(
       Date.now() - 9 * 60 * 60 * 1_000,
@@ -999,19 +1005,71 @@ describe("ProjectOperationalDay", () => {
       />,
     );
 
-    expect(screen.getByText("Tempo trabalhado")).toBeTruthy();
-    expect(screen.getByText(/8h regulares \+ 1h extra/u)).toBeTruthy();
-    expect(screen.getByText("Funcionário 1")).toBeTruthy();
-    expect(screen.getByText("Máquina 1")).toBeTruthy();
-    expect(screen.getAllByRole("button", { name: "Em trabalho" }).length).toBe(
-      2,
+    expect(screen.queryByText("Tempo trabalhado")).toBeNull();
+    expect(
+      screen.getByRole("tab", { name: "Medições" }).getAttribute(
+        "aria-selected",
+      ),
+    ).toBe("true");
+    expect(screen.queryByText("Funcionário 1")).toBeNull();
+
+    fireEvent.click(
+      screen.getByRole("tab", { name: "Funcionários (1)" }),
     );
+    expect(screen.getByText("Funcionário 1")).toBeTruthy();
+    expect(screen.getByText("08:00–12:00")).toBeTruthy();
+    expect(screen.getByText("13:00–17:00")).toBeTruthy();
+    expect(screen.getAllByText("A consolidar")).toHaveLength(3);
+    expect(screen.getByRole("button", { name: "Em trabalho" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Máquinas (1)" }));
+    expect(screen.getByText("Máquina 1")).toBeTruthy();
+    expect(screen.getByText("Horímetro")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Em trabalho" })).toBeTruthy();
     await waitFor(() =>
       expect(getDailyReportProductionsAction).toHaveBeenCalledWith(
         "project-1",
         "22222222-2222-4222-8222-222222222222",
       ),
     );
+  });
+
+  it("shows finalized hours and the audited direct labor cost without a finalization time", () => {
+    const value = closingOperationalDay(1, 1);
+    const report = value.shifts[0]!.report!;
+    report.status = "finalized";
+    report.finalizedAt = "2026-09-24T21:00:00.000Z";
+    report.employees[0] = {
+      ...report.employees[0]!,
+      checkOutAt: "2026-09-24T21:00:00.000Z",
+      regularWorkedMinutes: 480,
+      overtimeMinutes: 60,
+      shiftCostBrl: "225.00",
+    };
+
+    render(
+      <ProjectOperationalDay
+        initialDay={value}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    fireEvent.click(
+      screen.getByRole("tab", { name: "Funcionários (1)" }),
+    );
+    expect(screen.getByText("09:00")).toBeTruthy();
+    expect(screen.getByText("18:00")).toBeTruthy();
+    expect(screen.getByText("08:00")).toBeTruthy();
+    expect(screen.getByText("01:00")).toBeTruthy();
+    expect(screen.getByText(/225,00/u)).toBeTruthy();
+    expect(screen.getByText("Encerrado")).toBeTruthy();
+    expect(screen.queryByText("Em trabalho")).toBeNull();
+    expect(screen.queryByText(/Finalizado às/u)).toBeNull();
+
+    fireEvent.click(screen.getByRole("tab", { name: "Máquinas (1)" }));
+    expect(screen.getByText("Encerrado")).toBeTruthy();
+    expect(screen.queryByText("Em trabalho")).toBeNull();
   });
 
   it("records a general interval through the audited status command", async () => {
@@ -1086,8 +1144,10 @@ describe("ProjectOperationalDay", () => {
     expect(
       await screen.findByText(/demais dados continuam disponíveis/u),
     ).toBeTruthy();
-    expect(screen.getByText("Tempo trabalhado")).toBeTruthy();
+    expect(screen.getByRole("tab", { name: "Medições" })).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
     expect(await screen.findByText("125.000 m³")).toBeTruthy();
+    expect(screen.getByText("Aprovada")).toBeTruthy();
+    expect(screen.getByText(/2 equipamento\(s\)/u)).toBeTruthy();
   });
 });

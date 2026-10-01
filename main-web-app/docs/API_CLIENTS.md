@@ -68,16 +68,19 @@ início de turno, interferências e fechamento por Server
 Actions finas em `src/features/projects/operational-day.actions.ts`. Cada ação
 valida UUID/data, chama exclusivamente o cliente Kubb e recarrega o retrato do
 dia devolvido ao componente. A tela também chama `router.refresh()` a cada 30
-segundos e ao recuperar foco.
+segundos e ao recuperar foco. Cada funcionário do RDO devolve
+`shiftCostBrl`: `null` enquanto o turno está aberto ou quando um relatório
+legado não possui snapshot financeiro, e uma string decimal em BRL depois da
+finalização. O valor é calculado pela API a partir das taxas congeladas no RDO;
+o browser apenas formata a moeda.
 
 As mudanças de estado ao vivo usam a Server Action sobre `POST
 /projects/:projectId/operational-shifts/:reportId/status-events`. O browser envia
 somente o alvo e o novo estado; o instante e o ator são definidos pela API. A
-resposta recarrega o dia operacional para reconciliar snapshots. O cronômetro
-visual é o único estado que avança localmente a cada segundo e desconta
-`liveBreaks`; a consulta de produções permanece separada para permitir erro e
-nova tentativa sem desmontar o restante da Central. Estados finalizados e
-recursos ausentes ou não aptos são exibidos em modo somente leitura.
+resposta recarrega o dia operacional para reconciliar snapshots. A consulta de
+produções permanece separada para permitir erro e nova tentativa sem desmontar
+o restante da Central. Estados finalizados e recursos ausentes ou não aptos são
+exibidos em modo somente leitura.
 
 Cada turno habilitado devolve em `options.defaults.breakTemplates` os modelos
 de intervalo vigentes, com `id`, `name` e `durationMinutes`. O componente coleta

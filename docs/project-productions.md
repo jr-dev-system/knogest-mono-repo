@@ -37,6 +37,10 @@ momento de transporte. Um rascunho ainda pode ser salvo sem confirmar; registros
 históricos detalhados continuam legíveis, sem reabrir o fluxo antigo para novos
 lançamentos.
 
+Nos resumos de produção, `equipmentCount` representa a quantidade de máquinas
+distintas entre equipamentos vinculados diretamente e caminhões do resumo de
+viagens. A mesma máquina presente nas duas origens é contada uma única vez.
+
 ## Caminhões, volume e DMT
 
 As opções de caminhões incluem somente máquinas ativas da obra e do turno com

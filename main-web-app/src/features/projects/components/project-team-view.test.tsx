@@ -78,6 +78,17 @@ describe("ProjectTeamView", () => {
     );
 
     expect(await screen.findByText("Ana")).toBeTruthy();
+    const dayMemberCard = screen.getByRole("article", { name: "Ana" });
+    expect(dayMemberCard.getAttribute("data-shift")).toBe("day");
+    expect(dayMemberCard.className).toContain("rounded-2xl");
+    expect(dayMemberCard.className).toContain("border-l-slate-800");
+    expect(dayMemberCard.querySelector("header")?.className).toContain(
+      "bg-muted/30",
+    );
+    expect(screen.getByText("Turno diurno").className).toContain(
+      "bg-slate-800",
+    );
+    expect(screen.getByText("Jornada e remuneração")).toBeTruthy();
     await user.click(screen.getByRole("button", { name: "Editar Ana" }));
     expect(onEditMember).toHaveBeenCalledWith(
       expect.objectContaining({ name: "Ana", shift: "day" }),
@@ -91,6 +102,12 @@ describe("ProjectTeamView", () => {
 
     await user.click(screen.getByRole("tab", { name: "Noturno (1)" }));
     expect(await screen.findByText("Bia")).toBeTruthy();
+    const nightMemberCard = screen.getByRole("article", { name: "Bia" });
+    expect(nightMemberCard.getAttribute("data-shift")).toBe("night");
+    expect(nightMemberCard.className).toContain("border-l-slate-800");
+    expect(screen.getByText("Turno noturno").className).toContain(
+      "bg-slate-800",
+    );
 
     await user.click(screen.getByRole("tab", { name: "Diurno (16)" }));
     expect(await screen.findByText("Ana")).toBeTruthy();

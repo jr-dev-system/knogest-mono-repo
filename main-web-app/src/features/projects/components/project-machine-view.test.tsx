@@ -17,11 +17,15 @@ afterEach(() => {
   vi.clearAllMocks();
 });
 
-const machine = (id: string, name: string) => ({
+const machine = (
+  id: string,
+  name: string,
+  type: "YELLOW_LINE" | "WHITE_LINE" = "YELLOW_LINE",
+) => ({
   id: `00000000-0000-4000-8000-000000000${id}`,
   machineId: `00000000-0000-4000-8000-0000000001${id}`,
   name,
-  type: "YELLOW_LINE" as const,
+  type,
   manufacturer: "Caterpillar",
   model: "320",
   version: null,
@@ -51,7 +55,7 @@ describe("ProjectMachineView", () => {
     getProjectMachineMobilizationMembersAction.mockImplementation(
       async ({ cursor }: { cursor?: string }) => ({
         data: cursor
-          ? [machine("2", "Trator 02")]
+          ? [machine("2", "Trator 02", "WHITE_LINE")]
           : [machine("1", "Escavadeira 01")],
         pageInfo: cursor
           ? { hasNextPage: false, nextCursor: null }
@@ -70,6 +74,25 @@ describe("ProjectMachineView", () => {
     );
 
     expect(await screen.findByText("Escavadeira 01")).toBeTruthy();
+    const yellowMachineCard = screen.getByRole("article", {
+      name: "Escavadeira 01",
+    });
+    expect(yellowMachineCard.getAttribute("data-machine-type")).toBe(
+      "YELLOW_LINE",
+    );
+    expect(yellowMachineCard.className).toContain("rounded-2xl");
+    expect(yellowMachineCard.className).toContain("border-l-amber-400");
+    expect(yellowMachineCard.querySelector("header")?.className).toContain(
+      "bg-muted/30",
+    );
+    expect(yellowMachineCard.querySelector("header")?.className).not.toContain(
+      "bg-amber-400",
+    );
+    expect(screen.getByText("Linha amarela").className).toContain(
+      "bg-amber-950",
+    );
+    expect(screen.getByRole("heading", { name: "Operadores" })).toBeTruthy();
+    expect(screen.getByText("Dados da máquina")).toBeTruthy();
     expect(screen.getByText("Modelo")).toBeTruthy();
     expect(screen.getByText("Versão")).toBeTruthy();
     expect(screen.getByText("Fabricante")).toBeTruthy();
@@ -90,6 +113,16 @@ describe("ProjectMachineView", () => {
 
     await user.click(screen.getByRole("button", { name: "Próxima" }));
     expect(await screen.findByText("Trator 02")).toBeTruthy();
+    const whiteMachineCard = screen.getByRole("article", {
+      name: "Trator 02",
+    });
+    expect(whiteMachineCard.getAttribute("data-machine-type")).toBe(
+      "WHITE_LINE",
+    );
+    expect(whiteMachineCard.className).toContain("border-l-slate-800");
+    expect(screen.getByText("Linha branca").className).toContain(
+      "bg-slate-800",
+    );
     await user.click(screen.getByRole("button", { name: "Anterior" }));
     expect(await screen.findByText("Escavadeira 01")).toBeTruthy();
     expect(getProjectMachineMobilizationMembersAction).toHaveBeenCalledTimes(2);

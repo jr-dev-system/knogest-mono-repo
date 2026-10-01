@@ -34,21 +34,31 @@ confirmação posterior dos dois checklists envia o comando atômico. A API ent�
 cria o RDO em rascunho e registra a entrada dos presentes e a leitura inicial
 das máquinas de forma automática.
 
-Com o turno aberto, a central atualiza a cada 30 segundos e ao retomar foco.
-Entre essas reconciliações, o cronômetro do turno avança localmente a cada
-segundo. O painel mostra início, estado atual, tempo trabalhado líquido e, ao
-ultrapassar a jornada planejada líquida, separa explicitamente horas regulares
-e extras. Um intervalo geral pausa o cronômetro de trabalho; cada pausa e
+Com o turno aberto, a central atualiza a cada 30 segundos e ao retomar foco. O
+cabeçalho mostra o início e o estado atual, sem exibir a hora da finalização ou
+um total agregado de horas. Um intervalo geral pausa o trabalho; cada pausa e
 retomada registra ator e instante no servidor.
 
-A mesma tela lista todas as produções do turno, sem ocultar os demais blocos
-quando a consulta falhar, e oferece nova tentativa isolada. Também lista todos
-os funcionários e máquinas. Funcionários presentes podem ficar **Em trabalho**,
-**Parado** ou **Não apto**. Máquinas aptas podem ficar **Em trabalho**,
-**Parada** ou **Manutenção**; uma máquina marcada como não apta no checklist é
-somente leitura e não recebe comando ao vivo. Esses estados são operacionais e
-auditáveis, mas não alteram frequência, horas, medidores nem criam ordem de
-manutenção. Abastecimento continua fora do escopo desta versão.
+O conteúdo operacional é separado nas abas **Medições**, **Funcionários** e
+**Máquinas**, nessa ordem, com Medições como padrão. A primeira lista todas as
+produções do turno, sem ocultar os demais painéis quando a consulta falhar, e
+oferece nova tentativa isolada. Seus estados são apresentados em português e a
+contagem de equipamentos considera máquinas diretas e caminhões distintos do
+resumo de viagens.
+
+A aba Funcionários apresenta as faixas planejadas em ordem, entrada, saída,
+horas totais, horas extras e custo direto do turno. Enquanto o RDO está aberto,
+saída, horas e custo permanecem como valores a consolidar; a finalização os
+torna oficiais. A aba Máquinas apresenta identificação, condição, medidores e
+estado operacional em tabela. Funcionários presentes podem ficar **Em
+trabalho**, **Parado** ou **Não apto**. Máquinas aptas podem ficar **Em
+trabalho**, **Parada** ou **Manutenção**; uma máquina marcada como não apta no
+checklist é somente leitura e não recebe comando ao vivo. Esses estados são
+operacionais e auditáveis, mas não alteram frequência, horas, medidores nem
+criam ordem de manutenção. Depois da finalização, recursos aptos deixam de ser
+apresentados como ativos e recebem o rótulo **Encerrado**; ausências e condições
+de não aptidão preservam seus próprios rótulos. Abastecimento continua fora do
+escopo desta versão.
 
 Ela permite abrir o lançamento de produção em modal sem sair da Central,
 registrar e confirmar interferências e revisar o encerramento. Não existe mais
@@ -81,8 +91,8 @@ O encerramento usa um assistente modal guiado em cinco etapas:
    aplicados a todos os presentes e descontados tanto da jornada prevista
    quanto da realizada. A confirmação individual de hora extra só aparece
    quando a saída excede o encerramento previsto e mostra apenas a duração
-   `HH:MM`; valores monetários nunca são exibidos. Ausentes e integrantes sem
-   hora extra habilitada preservam suas regras automáticas.
+   `HH:MM`; valores monetários não são exibidos dentro do assistente. Ausentes e
+   integrantes sem hora extra habilitada preservam suas regras automáticas.
 4. **Atividades executadas** mantém **Terraplanagem** visível, selecionada e
    bloqueada como a única atividade desta primeira versão. A etapa apresenta
    um bloco somente leitura para cada produção do turno, incluindo frente,
@@ -199,6 +209,14 @@ interface não solicita horários ou confirmação individual de hora extra para
 esse funcionário. Para quem está com a opção ligada, o preenchimento
 individual continua disponível; a conferência de horas extras só é solicitada
 quando a saída ultrapassa o encerramento previsto do turno.
+
+Ao criar o RDO, cada participante recebe snapshots do valor-hora normal,
+derivado da remuneração, carga mensal e escala vigentes, e do valor-hora extra
+da alocação. Depois da finalização, o custo direto do turno é a soma das horas
+regulares pela taxa normal e das horas extras confirmadas pela taxa extra. O
+cálculo não inclui encargos ou benefícios e não é reescrito por reajustes
+posteriores. Registros anteriores a esse snapshot mostram custo indisponível,
+sem inferir valores históricos.
 
 As linhas do rascunho ainda não são oficiais. A finalização torna as jornadas
 oficiais em conjunto com o RDO; consumidores devem considerar somente jornadas

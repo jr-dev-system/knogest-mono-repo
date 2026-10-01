@@ -19,10 +19,25 @@ const unitLabels: Record<string, string> = {
   LITER: "L",
 };
 
+const statusLabels: Record<string, string> = {
+  draft: "Rascunho",
+  submitted: "Enviada",
+  field_checked: "Conferida em campo",
+  awaiting_technical: "Aguardando técnica",
+  approved: "Aprovada",
+  rejected: "Rejeitada",
+  released: "Liberada",
+  measured: "Medida",
+};
+
 export function productionServiceLabel(code: string) {
   return serviceLabels[code] ?? code;
 }
 
 export function productionUnitLabel(code: string) {
   return unitLabels[code] ?? code;
+}
+
+export function productionStatusLabel(status: string) {
+  return statusLabels[status] ?? status.replaceAll("_", " ");
 }

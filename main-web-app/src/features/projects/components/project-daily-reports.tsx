@@ -42,7 +42,11 @@ import { FormWizardProgress } from "@/components/ui/form-wizard-progress";
 import { Input } from "@/components/ui/input";
 import { OperationsModal } from "@/components/ui/operations-modal";
 import { cn } from "@/lib/utils";
-import { productionServiceLabel, productionUnitLabel } from "../production-labels";
+import {
+  productionServiceLabel,
+  productionStatusLabel,
+  productionUnitLabel,
+} from "../production-labels";
 import { configureZodPortugueseErrors } from "@/lib/zod-locale";
 import {
   finalizeProjectDailyReportAction,
@@ -1743,21 +1747,6 @@ function ReviewLine({ label, value }: { label: string; value: string }) {
       </span>
     </div>
   );
-}
-
-function productionStatusLabel(status: ProjectProductionSummary["status"]) {
-  return (
-    {
-      draft: "Rascunho",
-      submitted: "Enviada",
-      field_checked: "Conferida em campo",
-      awaiting_technical: "Aguardando técnica",
-      approved: "Aprovada",
-      rejected: "Rejeitada",
-      released: "Liberada",
-      measured: "Medida",
-    } as Record<ProjectProductionSummary["status"], string>
-  )[status];
 }
 
 function ReviewList({ values, empty }: { values: string[]; empty: string }) {

@@ -35,6 +35,7 @@ export type OperationalEmployee = {
   overtimeConfirmed?: boolean;
   regularWorkedMinutes?: number;
   overtimeMinutes?: number;
+  shiftCostBrl?: string | null;
   breaks?: Array<{ startAt: string; endAt: string }>;
   liveState?: OperationalLiveState<OperationalMachineStatus> | null;
 };
