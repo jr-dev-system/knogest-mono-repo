@@ -59,6 +59,7 @@ describe("buildProjectDailyReportMessage", () => {
           regularWorkedMinutes: 600,
           overtimeMinutes: 60,
           overtimeEnabled: true,
+          shiftCostBrl: "225.00",
         },
       ],
       machines: [

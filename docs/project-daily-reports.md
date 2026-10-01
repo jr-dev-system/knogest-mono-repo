@@ -36,8 +36,10 @@ das máquinas de forma automática.
 
 Com o turno aberto, a central atualiza a cada 30 segundos e ao retomar foco. O
 cabeçalho mostra o início e o estado atual, sem exibir a hora da finalização ou
-um total agregado de horas. Um intervalo geral pausa o trabalho; cada pausa e
-retomada registra ator e instante no servidor.
+um total agregado de horas. Logo abaixo do bloco de turno em execução ficam as
+rotinas de produção, interferência, abastecimento e finalização. Um intervalo
+geral pausa o trabalho; cada pausa e retomada registra ator e instante no
+servidor.
 
 O conteúdo operacional é separado nas abas **Medições**, **Funcionários** e
 **Máquinas**, nessa ordem, com Medições como padrão. A primeira lista todas as
@@ -46,19 +48,20 @@ oferece nova tentativa isolada. Seus estados são apresentados em português e a
 contagem de equipamentos considera máquinas diretas e caminhões distintos do
 resumo de viagens.
 
-A aba Funcionários apresenta as faixas planejadas em ordem, entrada, saída,
-horas totais, horas extras e custo direto do turno. Enquanto o RDO está aberto,
-saída, horas e custo permanecem como valores a consolidar; a finalização os
-torna oficiais. A aba Máquinas apresenta identificação, condição, medidores e
-estado operacional em tabela. Funcionários presentes podem ficar **Em
-trabalho**, **Parado** ou **Não apto**. Máquinas aptas podem ficar **Em
-trabalho**, **Parada** ou **Manutenção**; uma máquina marcada como não apta no
-checklist é somente leitura e não recebe comando ao vivo. Esses estados são
-operacionais e auditáveis, mas não alteram frequência, horas, medidores nem
-criam ordem de manutenção. Depois da finalização, recursos aptos deixam de ser
-apresentados como ativos e recebem o rótulo **Encerrado**; ausências e condições
-de não aptidão preservam seus próprios rótulos. Abastecimento continua fora do
-escopo desta versão.
+A aba Funcionários apresenta as faixas planejadas, entrada, saída, total,
+horas extras e custo direto. Ela é um controle de ponto: todo presente começa
+com horário ativo ao abrir o turno, pode **Terminar horário** e, depois,
+**Iniciar horário** quantas vezes forem necessárias. A marcação abre com o
+instante atual, pode ser ajustada entre o início do turno e agora e nunca pode
+anteceder a última marcação da pessoa. O total acumulado atualiza ao vivo,
+congela enquanto o horário está encerrado e desconta os intervalos gerais.
+Cada batida registra ator e instante auditáveis; não há comandos ao vivo de
+funcionário em trabalho, parado ou não apto. A aba Máquinas mantém
+identificação, condição, medidores e estado operacional em tabela. Máquinas
+aptas podem ficar **Em trabalho**, **Parada** ou **Manutenção**; uma máquina
+marcada como não apta no checklist é somente leitura e não recebe comando ao
+vivo. Depois da finalização, recursos aptos recebem o rótulo **Encerrado**.
+Abastecimento continua fora do escopo desta versão.
 
 Ela permite abrir o lançamento de produção em modal sem sair da Central,
 registrar e confirmar interferências e revisar o encerramento. Não existe mais
@@ -87,12 +90,11 @@ O encerramento usa um assistente modal guiado em cinco etapas:
    real **Horímetro** ou **Odômetro**; máquinas não aptas permanecem sem leitura
    final.
 3. **Equipe** percorre todos os funcionários em páginas locais de dez itens e
-   confirma entrada e saída. Os intervalos definidos na primeira etapa são
-   aplicados a todos os presentes e descontados tanto da jornada prevista
-   quanto da realizada. A confirmação individual de hora extra só aparece
-   quando a saída excede o encerramento previsto e mostra apenas a duração
-   `HH:MM`; valores monetários não são exibidos dentro do assistente. Ausentes e
-   integrantes sem hora extra habilitada preservam suas regras automáticas.
+   revisa as jornadas calculadas pelo ponto, sem editar entrada ou saída. Os
+   intervalos definidos na primeira etapa são aplicados a todos os presentes e
+   descontados tanto da jornada prevista quanto da realizada. A confirmação de
+   hora extra permanece disponível quando aplicável; ausentes e integrantes sem
+   hora extra habilitada preservam suas regras automáticas.
 4. **Atividades executadas** mantém **Terraplanagem** visível, selecionada e
    bloqueada como a única atividade desta primeira versão. A etapa apresenta
    um bloco somente leitura para cada produção do turno, incluindo frente,
@@ -109,9 +111,9 @@ O encerramento usa um assistente modal guiado em cinco etapas:
 
 A confirmação final revisa, em uma única operação atômica:
 
-- entrada, saída, até seis intervalos gerais do turno aplicados a cada
-  funcionário presente e, quando houver excedente, confirmação de horas
-  extras;
+- os períodos de ponto, incluindo o encerramento automático de quem ainda está
+  em horário ativo no `endedAt`, até seis intervalos gerais aplicados a cada
+  funcionário presente e, quando houver excedente, confirmação de horas extras;
 - leitura final de toda máquina apta;
 - confirmação de todas as interferências;
 - submissão e vínculo de todas as produções do turno, atividade fixa de

@@ -675,7 +675,6 @@ describe("ProjectOperationalDay", () => {
     expect(
       screen.getByRole("heading", { name: "Revisão do fechamento" }),
     ).toBeTruthy();
-    expect(screen.getByText("11:00")).toBeTruthy();
     expect(screen.queryByText(/R\$/u)).toBeNull();
 
     fireEvent.click(screen.getByRole("button", { name: "Editar horários" }));
@@ -719,7 +718,9 @@ describe("ProjectOperationalDay", () => {
     expect(screen.getByText("12:00–13:00 · 01:00")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
-    expect(screen.getByText("Hora extra conferida: 01:00")).toBeTruthy();
+    expect(
+      screen.getByText(/Confirmo as horas extras calculadas pelo ponto/u),
+    ).toBeTruthy();
     fireEvent.click(screen.getByRole("checkbox"));
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
     expect(
@@ -738,17 +739,16 @@ describe("ProjectOperationalDay", () => {
           data: expect.objectContaining({
             endedAt: "2026-09-24T21:00:00.000Z",
             employees: [
-              expect.objectContaining({
+              {
                 employmentId: "employee-1",
-                checkOutAt: "2026-09-24T21:00:00.000Z",
-                breaks: [
-                  {
-                    startAt: "2026-09-24T15:00:00.000Z",
-                    endAt: "2026-09-24T16:00:00.000Z",
-                  },
-                ],
                 overtimeConfirmed: true,
-              }),
+              },
+            ],
+            breaks: [
+              {
+                startAt: "2026-09-24T15:00:00.000Z",
+                endAt: "2026-09-24T16:00:00.000Z",
+              },
             ],
             machines: [
               {
@@ -782,8 +782,10 @@ describe("ProjectOperationalDay", () => {
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
 
-    expect(screen.queryByRole("checkbox")).toBeNull();
-    expect(screen.queryByText(/Hora extra conferida/u)).toBeNull();
+    expect(screen.getByRole("checkbox")).toBeTruthy();
+    expect(
+      screen.getByText(/Confirmo as horas extras calculadas pelo ponto/u),
+    ).toBeTruthy();
   });
 
   it("creates a custom interval for the whole shift", async () => {
@@ -873,10 +875,12 @@ describe("ProjectOperationalDay", () => {
       expect.objectContaining({
         data: expect.objectContaining({
           employees: [
-            expect.objectContaining({
-              checkInAt: "2026-09-24T19:22:37.000Z",
-            }),
+            {
+              employmentId: "employee-1",
+              overtimeConfirmed: false,
+            },
           ],
+          breaks: [],
         }),
       }),
     );
@@ -1019,8 +1023,10 @@ describe("ProjectOperationalDay", () => {
     expect(screen.getByText("Funcionário 1")).toBeTruthy();
     expect(screen.getByText("08:00–12:00")).toBeTruthy();
     expect(screen.getByText("13:00–17:00")).toBeTruthy();
-    expect(screen.getAllByText("A consolidar")).toHaveLength(3);
-    expect(screen.getByRole("button", { name: "Em trabalho" })).toBeTruthy();
+    expect(screen.getAllByText("A consolidar")).toHaveLength(2);
+    expect(
+      screen.getByRole("button", { name: "Terminar horário" }),
+    ).toBeTruthy();
 
     fireEvent.click(screen.getByRole("tab", { name: "Máquinas (1)" }));
     expect(screen.getByText("Máquina 1")).toBeTruthy();
@@ -1030,6 +1036,45 @@ describe("ProjectOperationalDay", () => {
       expect(getDailyReportProductionsAction).toHaveBeenCalledWith(
         "project-1",
         "22222222-2222-4222-8222-222222222222",
+      ),
+    );
+  });
+
+  it("records an employee clock-out with the selected timestamp", async () => {
+    const value = closingOperationalDay();
+    vi.mocked(recordOperationalStatusAction).mockResolvedValue({
+      kind: "success",
+      day: value,
+    });
+    render(
+      <ProjectOperationalDay
+        initialDay={value}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("tab", { name: "Funcionários (1)" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Terminar horário" }),
+    );
+    expect(screen.getByRole("dialog")).toBeTruthy();
+    fireEvent.click(
+      screen.getAllByRole("button", { name: "Terminar horário" }).at(-1)!,
+    );
+
+    await waitFor(() =>
+      expect(recordOperationalStatusAction).toHaveBeenCalledWith(
+        expect.objectContaining({
+          projectId: "project-1",
+          reportId: "22222222-2222-4222-8222-222222222222",
+          data: expect.objectContaining({
+            type: "employee",
+            employmentId: "employee-1",
+            action: "end",
+            occurredAt: expect.any(String),
+          }),
+        }),
       ),
     );
   });

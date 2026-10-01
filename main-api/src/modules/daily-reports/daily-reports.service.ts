@@ -336,12 +336,26 @@ export class DailyReportsService {
             if (!entry) throw resourceUnavailable("employee");
             if (entry.attendanceStatus === "ABSENT")
               throw statusConflict("absent-employee");
+            const occurredAt = new Date(command.occurredAt);
+            const latestEmployeeEvent = [...record.statusEvents]
+              .reverse()
+              .find((event) => event.employeeEntryId === entry.id);
+            if (
+              occurredAt < record.startedAt ||
+              occurredAt.getTime() > Date.now() + 60_000 ||
+              (latestEmployeeEvent && occurredAt <= latestEmployeeEvent.occurredAt)
+            )
+              throw statusConflict("employee-clock");
             const current = entry.liveStatus ?? "WORKING";
-            const next = command.status.toUpperCase() as
-              | "WORKING"
-              | "STOPPED"
-              | "UNFIT";
-            if (current === next) throw statusConflict("employee");
+            const next =
+              command.action === "start"
+                ? "WORKING"
+                : ("STOPPED" as const);
+            if (
+              (command.action === "start" && current !== "STOPPED") ||
+              (command.action === "end" && current !== "WORKING")
+            )
+              throw statusConflict("employee-clock");
             transition = {
               type: "EMPLOYEE",
               entryId: entry.id,
@@ -528,7 +542,6 @@ export class DailyReportsService {
             endedAt.getTime() > Date.now() + 60_000
           )
             throw incomplete("shift-end");
-          const liveBreaks = liveBreakIntervals(record.statusEvents, endedAt);
           if (record.liveStatus === "PAUSED") {
             const resumed = await appendOperationalStatusEventHandler(
               transactionContext,
@@ -545,48 +558,60 @@ export class DailyReportsService {
             if (!resumed) throw statusConflict("concurrent-transition");
           }
           for (const entry of record.employeeEntries) {
-            const item = employeeCommands.get(entry.employmentId);
-            if (!item) throw incomplete("employees");
             if (
               entry.attendanceStatus === "PRESENT" &&
-              entry.overtimeEnabled &&
-              (!item.checkInAt || !item.checkOutAt || !item.overtimeConfirmed)
-            )
-              throw incomplete("employee-hours");
-            const fixedAttendance =
-              entry.attendanceStatus === "PRESENT" && !entry.overtimeEnabled;
-            const submittedStart = item.checkInAt
-              ? new Date(item.checkInAt)
-              : null;
-            const start = fixedAttendance
-              ? record.startedAt
-              : submittedStart &&
-                  submittedStart < record.startedAt &&
-                  record.startedAt.getTime() - submittedStart.getTime() < 60_000
-                ? record.startedAt
-                : submittedStart;
-            const end = fixedAttendance
-              ? endedAt
-              : item.checkOutAt
-                ? new Date(item.checkOutAt)
-                : null;
+              entry.liveStatus === "WORKING"
+            ) {
+              const ended = await appendOperationalStatusEventHandler(
+                transactionContext,
+                scope,
+                projectId,
+                reportId,
+                {
+                  type: "EMPLOYEE",
+                  entryId: entry.id,
+                  fromStatus: "WORKING",
+                  toStatus: "STOPPED",
+                  occurredAt: endedAt,
+                },
+              );
+              if (!ended) throw statusConflict("employee-clock");
+            }
+          }
+          const finalizedRecord = await findProjectDailyReportHandler(
+            transactionContext,
+            scope,
+            projectId,
+            reportId,
+          );
+          if (!finalizedRecord) throw notFound();
+          const liveBreaks = liveBreakIntervals(
+            finalizedRecord.statusEvents,
+            endedAt,
+          );
+          const sharedBreaks = mergeBreakIntervals([
+            ...command.breaks.map((value) => ({
+              startAt: new Date(value.startAt),
+              endAt: new Date(value.endAt),
+            })),
+            ...liveBreaks,
+          ]);
+          if (sharedBreaks.length > 6) throw incomplete("employee-breaks");
+          for (const entry of finalizedRecord.employeeEntries) {
+            const item = employeeCommands.get(entry.employmentId);
+            if (!item) throw incomplete("employees");
             const breaks =
               entry.attendanceStatus === "PRESENT"
-                ? mergeBreakIntervals([
-                    ...item.breaks.map((value) => ({
-                      startAt: new Date(value.startAt),
-                      endAt: new Date(value.endAt),
-                    })),
-                    ...liveBreaks,
-                  ])
+                ? sharedBreaks
                 : [];
-            if (breaks.length > 6) throw incomplete("employee-breaks");
-            if (
-              (start && end && end <= start) ||
-              (start && start < record.startedAt) ||
-              (end && end > endedAt)
-            )
-              throw incomplete("employee-hours");
+            const periods = employeeWorkPeriods(
+              finalizedRecord.statusEvents,
+              entry.id,
+              record.startedAt,
+              endedAt,
+            );
+            const start = periods[0]?.startAt ?? null;
+            const end = periods.at(-1)?.endAt ?? null;
             const orderedBreaks = [...breaks].sort(
               (left, right) =>
                 new Date(left.startAt).getTime() -
@@ -599,8 +624,6 @@ export class DailyReportsService {
                 ? new Date(orderedBreaks[index - 1].endAt)
                 : null;
               if (
-                !start ||
-                !end ||
                 breakStart < record.startedAt ||
                 breakEnd > endedAt ||
                 (previousEnd && breakStart < previousEnd)
@@ -608,28 +631,19 @@ export class DailyReportsService {
                 throw incomplete("employee-breaks");
             }
             const breakIntervals = breaks;
-            const breakMinutes =
-              start && end ? overlapMinutes(breakIntervals, start, end) : 0;
-            const worked =
-              start && end
-                ? Math.max(
-                    0,
-                    Math.round((end.getTime() - start.getTime()) / 60000) -
-                      breakMinutes,
-                  )
-                : 0;
+            const worked = workedMinutesForPeriods(periods, breakIntervals);
             const plannedWindow = intervalFromLocal(
-              civilDate(record.reportDate),
-              record.activityStartTime,
-              record.activityEndTime,
-              record.activityEndDayOffset,
+              civilDate(finalizedRecord.reportDate),
+              finalizedRecord.activityStartTime,
+              finalizedRecord.activityEndTime,
+              finalizedRecord.activityEndDayOffset,
             );
             const planned = Math.max(
               0,
               activityWindowMinutes({
-                activityStartTime: record.activityStartTime,
-                activityEndTime: record.activityEndTime,
-                activityEndDayOffset: record.activityEndDayOffset,
+                activityStartTime: finalizedRecord.activityStartTime,
+                activityEndTime: finalizedRecord.activityEndTime,
+                activityEndDayOffset: finalizedRecord.activityEndDayOffset,
               }) -
                 overlapMinutes(
                   breakIntervals,
@@ -652,7 +666,7 @@ export class DailyReportsService {
                   : 0,
                 completedFullShift: worked >= planned,
                 overtimeConfirmed: entry.overtimeEnabled
-                  ? item.overtimeConfirmed
+                  ? worked <= planned || item.overtimeConfirmed
                   : true,
                 breaks,
               },
@@ -1511,6 +1525,25 @@ function toDetailDto(record: DailyReportRecord) {
       const event = [...record.statusEvents]
         .reverse()
         .find((candidate) => candidate.employeeEntryId === item.id);
+      const calculatedAt = new Date();
+      const periods = record.startedAt
+        ? employeeWorkPeriods(
+            record.statusEvents,
+            item.id,
+            record.startedAt,
+            record.status === "FINALIZED" && record.finalizedAt
+              ? record.finalizedAt
+              : calculatedAt,
+          )
+        : [];
+      const breaks = record.startedAt
+        ? liveBreakIntervals(
+            record.statusEvents,
+            record.status === "FINALIZED" && record.finalizedAt
+              ? record.finalizedAt
+              : calculatedAt,
+          )
+        : [];
       return {
         employmentId: item.employmentId,
         name: item.employeeNameSnapshot,
@@ -1545,6 +1578,22 @@ function toDetailDto(record: DailyReportRecord) {
               changedBy: event?.actor.email ?? null,
             }
           : null,
+        timeClock: {
+          status: item.liveStatus === "WORKING" ? "running" : "stopped",
+          lastMarkedAt:
+            event?.occurredAt.toISOString() ?? item.checkInAt?.toISOString() ?? null,
+          workedMinutes:
+            record.status === "FINALIZED"
+              ? item.regularWorkedMinutes + item.overtimeMinutes
+              : workedMinutesForPeriods(
+                  periods,
+                  breaks.filter(
+                    (value): value is { startAt: Date; endAt: Date } =>
+                      value.endAt !== null,
+                  ),
+                ),
+          calculatedAt: calculatedAt.toISOString(),
+        },
         breaks: item.breaks.map((value) => ({
           startAt: value.startAt.toISOString(),
           endAt: value.endAt.toISOString(),
@@ -1834,6 +1883,7 @@ type ShiftStatusEvent = {
   type: string;
   toStatus: string;
   occurredAt: Date;
+  employeeEntryId?: string | null;
 };
 
 function liveBreakIntervals(
@@ -1856,6 +1906,53 @@ function liveBreakIntervals(events: ShiftStatusEvent[], closeAt?: Date) {
   }
   if (openStart) intervals.push({ startAt: openStart, endAt: closeAt ?? null });
   return intervals;
+}
+
+type EmployeeWorkPeriod = { startAt: Date; endAt: Date };
+
+function employeeWorkPeriods(
+  events: Array<ShiftStatusEvent & { employeeEntryId?: string | null }>,
+  employeeEntryId: string,
+  startedAt: Date,
+  endedAt: Date,
+): EmployeeWorkPeriod[] {
+  const periods: EmployeeWorkPeriod[] = [];
+  let activeStart: Date | null = null;
+  for (const event of events) {
+    if (event.type !== "EMPLOYEE" || event.employeeEntryId !== employeeEntryId)
+      continue;
+    if (event.toStatus === "WORKING" && !activeStart) {
+      activeStart = event.occurredAt;
+      continue;
+    }
+    if (event.toStatus !== "WORKING" && activeStart) {
+      const startAt = new Date(Math.max(activeStart.getTime(), startedAt.getTime()));
+      const endAt = new Date(Math.min(event.occurredAt.getTime(), endedAt.getTime()));
+      if (endAt > startAt) periods.push({ startAt, endAt });
+      activeStart = null;
+    }
+  }
+  if (activeStart) {
+    const startAt = new Date(Math.max(activeStart.getTime(), startedAt.getTime()));
+    if (endedAt > startAt) periods.push({ startAt, endAt: endedAt });
+  }
+  return periods;
+}
+
+function workedMinutesForPeriods(
+  periods: EmployeeWorkPeriod[],
+  breaks: Array<{ startAt: Date; endAt: Date }>,
+) {
+  return periods.reduce(
+    (total, period) =>
+      total +
+      Math.max(
+        0,
+        Math.round((period.endAt.getTime() - period.startAt.getTime()) / 60_000) -
+          overlapMinutes(breaks, period.startAt, period.endAt),
+      ),
+    0,
+  );
 }
 
 function mergeBreakIntervals(intervals: Array<{ startAt: Date; endAt: Date }>) {

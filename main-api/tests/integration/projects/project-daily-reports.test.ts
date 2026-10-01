@@ -649,7 +649,8 @@ describe("project daily reports", () => {
     const stopped = await transition({
       type: "employee",
       employmentId: scope.employmentId,
-      status: "stopped",
+      action: "end",
+      occurredAt: new Date().toISOString(),
     });
     expect(stopped.statusCode, stopped.body).toBe(201);
     expect(stopped.json().data.employees[0].liveState.status).toBe("stopped");

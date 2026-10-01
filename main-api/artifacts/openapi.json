@@ -23551,7 +23551,31 @@
                               "report": {
                                 "type": "object",
                                 "nullable": true,
-                                "additionalProperties": true
+                                "additionalProperties": true,
+                                "properties": {
+                                  "employees": {
+                                    "type": "array",
+                                    "items": {
+                                      "type": "object",
+                                      "additionalProperties": true,
+                                      "required": [
+                                        "employmentId",
+                                        "shiftCostBrl"
+                                      ],
+                                      "properties": {
+                                        "employmentId": {
+                                          "type": "string",
+                                          "format": "uuid"
+                                        },
+                                        "shiftCostBrl": {
+                                          "type": "string",
+                                          "pattern": "^(?:0|[1-9]\\d{0,7})(?:\\.\\d{1,2})?$",
+                                          "nullable": true
+                                        }
+                                      }
+                                    }
+                                  }
+                                }
                               }
                             }
                           }
@@ -24658,14 +24682,17 @@
                   {
                     "type": "object",
                     "additionalProperties": false,
-                    "required": ["type", "employmentId", "status"],
+                    "required": [
+                      "type",
+                      "employmentId",
+                      "action",
+                      "occurredAt"
+                    ],
                     "properties": {
                       "type": { "type": "string", "enum": ["employee"] },
                       "employmentId": { "type": "string", "format": "uuid" },
-                      "status": {
-                        "type": "string",
-                        "enum": ["working", "stopped", "unfit"]
-                      }
+                      "action": { "type": "string", "enum": ["start", "end"] },
+                      "occurredAt": { "type": "string", "format": "date-time" }
                     }
                   },
                   {
@@ -24872,7 +24899,7 @@
               "schema": {
                 "type": "object",
                 "additionalProperties": false,
-                "required": ["endedAt", "employees", "machines"],
+                "required": ["endedAt", "employees", "breaks", "machines"],
                 "properties": {
                   "endedAt": { "type": "string", "format": "date-time" },
                   "earlyClosureReason": { "type": "string", "nullable": true },
@@ -24895,44 +24922,23 @@
                     "items": {
                       "type": "object",
                       "additionalProperties": false,
-                      "required": [
-                        "employmentId",
-                        "checkInAt",
-                        "checkOutAt",
-                        "breaks",
-                        "overtimeConfirmed"
-                      ],
+                      "required": ["employmentId", "overtimeConfirmed"],
                       "properties": {
                         "employmentId": { "type": "string", "format": "uuid" },
-                        "checkInAt": {
-                          "type": "string",
-                          "format": "date-time",
-                          "nullable": true
-                        },
-                        "checkOutAt": {
-                          "type": "string",
-                          "format": "date-time",
-                          "nullable": true
-                        },
-                        "overtimeConfirmed": { "type": "boolean" },
-                        "breaks": {
-                          "type": "array",
-                          "items": {
-                            "type": "object",
-                            "additionalProperties": false,
-                            "required": ["startAt", "endAt"],
-                            "properties": {
-                              "startAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              },
-                              "endAt": {
-                                "type": "string",
-                                "format": "date-time"
-                              }
-                            }
-                          }
-                        }
+                        "overtimeConfirmed": { "type": "boolean" }
+                      }
+                    }
+                  },
+                  "breaks": {
+                    "type": "array",
+                    "maxItems": 6,
+                    "items": {
+                      "type": "object",
+                      "additionalProperties": false,
+                      "required": ["startAt", "endAt"],
+                      "properties": {
+                        "startAt": { "type": "string", "format": "date-time" },
+                        "endAt": { "type": "string", "format": "date-time" }
                       }
                     }
                   },
@@ -26009,7 +26015,8 @@
                               "completedFullShift",
                               "regularWorkedMinutes",
                               "overtimeMinutes",
-                              "overtimeEnabled"
+                              "overtimeEnabled",
+                              "shiftCostBrl"
                             ],
                             "properties": {
                               "employmentId": {
@@ -26021,7 +26028,12 @@
                               "completedFullShift": { "type": "boolean" },
                               "regularWorkedMinutes": { "type": "integer" },
                               "overtimeMinutes": { "type": "integer" },
-                              "overtimeEnabled": { "type": "boolean" }
+                              "overtimeEnabled": { "type": "boolean" },
+                              "shiftCostBrl": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9]\\d{0,7})(?:\\.\\d{1,2})?$",
+                                "nullable": true
+                              }
                             }
                           }
                         },
@@ -26851,7 +26863,8 @@
                               "completedFullShift",
                               "regularWorkedMinutes",
                               "overtimeMinutes",
-                              "overtimeEnabled"
+                              "overtimeEnabled",
+                              "shiftCostBrl"
                             ],
                             "properties": {
                               "employmentId": {
@@ -26863,7 +26876,12 @@
                               "completedFullShift": { "type": "boolean" },
                               "regularWorkedMinutes": { "type": "integer" },
                               "overtimeMinutes": { "type": "integer" },
-                              "overtimeEnabled": { "type": "boolean" }
+                              "overtimeEnabled": { "type": "boolean" },
+                              "shiftCostBrl": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9]\\d{0,7})(?:\\.\\d{1,2})?$",
+                                "nullable": true
+                              }
                             }
                           }
                         },
@@ -27487,7 +27505,8 @@
                               "completedFullShift",
                               "regularWorkedMinutes",
                               "overtimeMinutes",
-                              "overtimeEnabled"
+                              "overtimeEnabled",
+                              "shiftCostBrl"
                             ],
                             "properties": {
                               "employmentId": {
@@ -27499,7 +27518,12 @@
                               "completedFullShift": { "type": "boolean" },
                               "regularWorkedMinutes": { "type": "integer" },
                               "overtimeMinutes": { "type": "integer" },
-                              "overtimeEnabled": { "type": "boolean" }
+                              "overtimeEnabled": { "type": "boolean" },
+                              "shiftCostBrl": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9]\\d{0,7})(?:\\.\\d{1,2})?$",
+                                "nullable": true
+                              }
                             }
                           }
                         },
@@ -27952,7 +27976,8 @@
                               "completedFullShift",
                               "regularWorkedMinutes",
                               "overtimeMinutes",
-                              "overtimeEnabled"
+                              "overtimeEnabled",
+                              "shiftCostBrl"
                             ],
                             "properties": {
                               "employmentId": {
@@ -27964,7 +27989,12 @@
                               "completedFullShift": { "type": "boolean" },
                               "regularWorkedMinutes": { "type": "integer" },
                               "overtimeMinutes": { "type": "integer" },
-                              "overtimeEnabled": { "type": "boolean" }
+                              "overtimeEnabled": { "type": "boolean" },
+                              "shiftCostBrl": {
+                                "type": "string",
+                                "pattern": "^(?:0|[1-9]\\d{0,7})(?:\\.\\d{1,2})?$",
+                                "nullable": true
+                              }
                             }
                           }
                         },

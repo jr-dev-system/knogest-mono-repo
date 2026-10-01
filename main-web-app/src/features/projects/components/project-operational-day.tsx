@@ -64,6 +64,7 @@ import {
 } from "../productions.actions";
 import type {
   OperationalDay,
+  OperationalEmployee,
   OperationalReport,
   OperationalStatusCommand,
   OperationalResult,
@@ -611,6 +612,36 @@ function ShiftLane({
               </div>
             )}
 
+            {running && (
+              <div className="grid grid-cols-2 gap-3 border-b border-border pb-5">
+                <Action
+                  icon={Gauge}
+                  label="Adicionar produção"
+                  onClick={onProduction}
+                />
+                <Action
+                  icon={AlertTriangle}
+                  label="Registrar interferência"
+                  onClick={() => onAction("interference")}
+                />
+                <Action
+                  icon={Fuel}
+                  label="Abastecimento"
+                  onClick={() =>
+                    toast.info(
+                      "A rotina de abastecimento estará disponível em breve.",
+                    )
+                  }
+                />
+                <Button
+                  className="col-span-2 min-h-14 text-base font-bold"
+                  onClick={() => onAction("close")}
+                >
+                  Finalizar turno
+                </Button>
+              </div>
+            )}
+
             <div className="space-y-4">
               <OperationTabs
                 ariaLabel="Dados operacionais do turno"
@@ -678,35 +709,6 @@ function ShiftLane({
                 </p>
               </div>
             </div>
-            {running && (
-              <div className="grid grid-cols-2 gap-3">
-                <Action
-                  icon={Gauge}
-                  label="Adicionar produção"
-                  onClick={onProduction}
-                />
-                <Action
-                  icon={AlertTriangle}
-                  label="Registrar interferência"
-                  onClick={() => onAction("interference")}
-                />
-                <Action
-                  icon={Fuel}
-                  label="Abastecimento"
-                  onClick={() =>
-                    toast.info(
-                      "A rotina de abastecimento estará disponível em breve.",
-                    )
-                  }
-                />
-                <Button
-                  className="col-span-2 min-h-14 text-base font-bold"
-                  onClick={() => onAction("close")}
-                >
-                  Finalizar turno
-                </Button>
-              </div>
-            )}
           </div>
         </>
       )}
@@ -724,6 +726,16 @@ function OperationalEmployeesTable({
   onStatus: (command: OperationalStatusCommand) => void;
 }) {
   const finalized = report.status === "finalized";
+  const [clockNow, setClockNow] = React.useState(() => Date.now());
+  const [clocking, setClocking] = React.useState<{
+    employee: OperationalEmployee;
+    action: "start" | "end";
+  } | null>(null);
+  React.useEffect(() => {
+    if (finalized) return;
+    const timer = window.setInterval(() => setClockNow(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [finalized]);
   const schedulePeriods = [...report.schedulePeriods].sort(
     (left, right) =>
       left.startDayOffset - right.startDayOffset ||
@@ -757,11 +769,11 @@ function OperationalEmployeesTable({
           <tbody className="divide-y divide-border">
             {report.employees.map((employee) => {
               const absent = employee.attendanceStatus === "absent";
-              const status = absent
-                ? "unfit"
-                : finalized
-                  ? "closed"
-                  : (employee.liveState?.status ?? "working");
+              const clockStatus =
+                employee.timeClock?.status ??
+                (employee.liveState?.status === "stopped"
+                  ? "stopped"
+                  : "running");
               const totalMinutes =
                 (employee.regularWorkedMinutes ?? 0) +
                 (employee.overtimeMinutes ?? 0);
@@ -775,34 +787,32 @@ function OperationalEmployeesTable({
                       <p className="mt-0.5 text-muted-foreground">
                         {employee.jobRole}
                       </p>
-                      <div className="mt-2">
-                        <ResourceStatusControl
-                          name={employee.name}
-                          status={status}
-                          statuses={[
-                            ["working", "Em trabalho"],
-                            ["stopped", "Parado"],
-                            ["unfit", "Não apto"],
-                          ]}
-                          readOnly={readOnly || absent}
-                          fixedLabel={
-                            absent
-                              ? "Ausente"
-                              : finalized
-                                ? "Encerrado"
-                                : undefined
-                          }
-                          onChange={(next) =>
-                            onStatus({
-                              type: "employee",
-                              employmentId: employee.employmentId,
-                              status: next as
-                                | "working"
-                                | "stopped"
-                                | "unfit",
-                            })
-                          }
-                        />
+                      <div className="mt-3">
+                        {absent ? (
+                          <StatusBadge status="unfit" label="Ausente" />
+                        ) : finalized ? (
+                          <StatusBadge status="closed" label="Encerrado" />
+                        ) : (
+                          <Button
+                            variant={
+                              clockStatus === "running" ? "outline" : "default"
+                            }
+                            className="min-h-11 font-bold"
+                            disabled={readOnly}
+                            onClick={() =>
+                              setClocking({
+                                employee,
+                                action:
+                                  clockStatus === "running" ? "end" : "start",
+                              })
+                            }
+                          >
+                            {clockStatus === "running" ? <Pause /> : <Play />}
+                            {clockStatus === "running"
+                              ? "Terminar horário"
+                              : "Iniciar horário"}
+                          </Button>
+                        )}
                       </div>
                     </div>
                   </td>
@@ -851,7 +861,9 @@ function OperationalEmployeesTable({
                       ? "00:00"
                       : finalized
                         ? formatDuration(totalMinutes)
-                        : "A consolidar"}
+                        : formatDuration(
+                            currentClockMinutes(employee, report, clockNow),
+                          )}
                   </TableValue>
                   <TableValue>
                     {absent
@@ -876,7 +888,121 @@ function OperationalEmployeesTable({
           </tbody>
         </table>
       </div>
+      {clocking && (
+        <EmployeeTimeClockDialog
+          employee={clocking.employee}
+          report={report}
+          action={clocking.action}
+          onClose={() => setClocking(null)}
+          onConfirm={(occurredAt) => {
+            onStatus({
+              type: "employee",
+              employmentId: clocking.employee.employmentId,
+              action: clocking.action,
+              occurredAt,
+            });
+            setClocking(null);
+          }}
+        />
+      )}
     </section>
+  );
+}
+
+function EmployeeTimeClockDialog({
+  employee,
+  report,
+  action,
+  onClose,
+  onConfirm,
+}: {
+  employee: OperationalEmployee;
+  report: OperationalReport;
+  action: "start" | "end";
+  onClose: () => void;
+  onConfirm: (occurredAt: string) => void;
+}) {
+  const now = React.useMemo(() => new Date(), []);
+  const minimum = new Date(
+    Math.max(
+      new Date(report.startedAt ?? now).getTime(),
+      new Date(employee.timeClock?.lastMarkedAt ?? report.startedAt ?? now).getTime(),
+    ),
+  );
+  const [value, setValue] = React.useState(() => dateTimeLocalValue(now));
+  const invalid =
+    !value ||
+    value < dateTimeLocalValue(minimum) ||
+    value > dateTimeLocalValue(now);
+  const verb = action === "start" ? "Iniciar" : "Terminar";
+  return (
+    <OperationsModal
+      open
+      onOpenChange={(open) => {
+        if (!open) onClose();
+      }}
+      preventDismissal
+      size="md"
+      icon={Clock3}
+      title={`${verb} horário`}
+      description={`${employee.name}: confirme a data e a hora desta marcação.`}
+      footer={
+        <>
+          <Button variant="outline" onClick={onClose}>
+            Cancelar
+          </Button>
+          <Button disabled={invalid} onClick={() => onConfirm(instantForDateTime(value))}>
+            {verb} horário
+          </Button>
+        </>
+      }
+    >
+      <label className="grid gap-2 text-sm font-bold">
+        Data e hora
+        <Input
+          aria-label={`Data e hora para ${verb.toLowerCase()} horário de ${employee.name}`}
+          type="datetime-local"
+          min={dateTimeLocalValue(minimum)}
+          max={dateTimeLocalValue(now)}
+          value={value}
+          onChange={(event) => setValue(event.target.value)}
+          className="min-h-12 bg-background text-base tabular-nums"
+        />
+      </label>
+      <p className="mt-3 text-sm leading-5 text-muted-foreground">
+        Escolha um horário entre a última marcação e agora. O ponto usa o fuso
+        horário da obra.
+      </p>
+    </OperationsModal>
+  );
+}
+
+function currentClockMinutes(
+  employee: OperationalEmployee,
+  report: OperationalReport,
+  now: number,
+) {
+  const base = employee.timeClock?.workedMinutes ?? 0;
+  if (
+    employee.timeClock?.status !== "running" ||
+    report.liveState?.status === "paused" ||
+    !employee.timeClock.calculatedAt
+  )
+    return base;
+  return base + Math.max(0, Math.floor((now - new Date(employee.timeClock.calculatedAt).getTime()) / 60_000));
+}
+
+function StatusBadge({ status, label }: { status: string; label: string }) {
+  return (
+    <span
+      className={cn(
+        "inline-flex rounded-full px-2.5 py-1 text-xs font-bold",
+        status === "unfit" && "bg-red-100 text-red-800",
+        status === "closed" && "bg-slate-200 text-slate-800",
+      )}
+    >
+      {label}
+    </span>
   );
 }
 
@@ -1674,7 +1800,6 @@ function CloseShiftWizard({
   const [editingProduction, setEditingProduction] =
     React.useState<ProjectProductionDetail | null>(null);
   const [endedAtTime, setEndedAtTime] = React.useState(initialEndTime);
-  const [appliedEndTime, setAppliedEndTime] = React.useState(initialEndTime);
   const [earlyClosureReason, setEarlyClosureReason] = React.useState("");
   const [employeeClose, setEmployeeClose] = React.useState<EmployeeCloseState>(
     () =>
@@ -1682,14 +1807,6 @@ function CloseShiftWizard({
         report.employees.map((employee) => [
           employee.employmentId,
           {
-            checkIn: employee.checkInAt
-              ? localTimeValue(new Date(employee.checkInAt))
-              : report.startedAt
-                ? localTimeValue(new Date(report.startedAt))
-                : "",
-            checkOut: employee.checkOutAt
-              ? localTimeValue(new Date(employee.checkOutAt))
-              : initialEndTime,
             overtimeConfirmed: employee.overtimeConfirmed ?? false,
           },
         ]),
@@ -1876,61 +1993,6 @@ function CloseShiftWizard({
     return null;
   }
 
-  function employeeError(employees = visibleEmployees) {
-    for (const employee of employees) {
-      if (
-        employee.attendanceStatus === "absent" ||
-        employee.overtimeEnabled === false
-      )
-        continue;
-      const entry = employeeClose[employee.employmentId];
-      if (!entry?.checkIn || !entry.checkOut)
-        return `Confirme a entrada e a saída de ${employee.name}.`;
-      const checkIn = new Date(
-        instantForEditableClock(
-          day.reportDate,
-          entry.checkIn,
-          report.shift,
-          employee.checkInAt ?? report.startedAt,
-        ),
-      ).getTime();
-      const checkOut = new Date(
-        instantForEditableClock(
-          day.reportDate,
-          entry.checkOut,
-          report.shift,
-          employee.checkOutAt,
-        ),
-      ).getTime();
-      if (checkOut <= checkIn)
-        return `A saída de ${employee.name} deve ser posterior à entrada.`;
-      if (
-        checkIn < new Date(report.startedAt!).getTime() ||
-        checkOut > new Date(endedAt).getTime()
-      )
-        return `Os horários de ${employee.name} devem ficar dentro do turno.`;
-      const overtime = employeeOvertimeMinutes(
-        entry,
-        shiftBreaks,
-        day.reportDate,
-        report.shift,
-        report.activityWindow,
-      );
-      if (
-        overtime > 0 &&
-        employeeExceedsShiftEnd(
-          entry,
-          day.reportDate,
-          report.shift,
-          report.activityWindow,
-        ) &&
-        !entry.overtimeConfirmed
-      )
-        return `Confirme a quantidade de horas extras de ${employee.name}.`;
-    }
-    return null;
-  }
-
   function shiftBreakError() {
     if (breakComposerOpen)
       return "Conclua ou cancele o novo intervalo antes de continuar.";
@@ -2020,23 +2082,6 @@ function CloseShiftWizard({
     cancelBreakDraft();
   }
 
-  function applyEndTimeToAutomaticEntries() {
-    if (endedAtTime === appliedEndTime) return;
-    setEmployeeClose((current) =>
-      Object.fromEntries(
-        Object.entries(current).map(([employmentId, entry]) => [
-          employmentId,
-          {
-            ...entry,
-            checkOut:
-              entry.checkOut === appliedEndTime ? endedAtTime : entry.checkOut,
-          },
-        ]),
-      ),
-    );
-    setAppliedEndTime(endedAtTime);
-  }
-
   function completeStep(nextStep: number) {
     setIssue(null);
     if (returnToReview) {
@@ -2051,7 +2096,6 @@ function CloseShiftWizard({
     if (currentStep === 0) {
       const message = timeError() ?? shiftBreakError();
       if (message) return setIssue(message);
-      applyEndTimeToAutomaticEntries();
       completeStep(1);
       return;
     }
@@ -2067,8 +2111,6 @@ function CloseShiftWizard({
       return;
     }
     if (currentStep === 2) {
-      const message = employeeError();
-      if (message) return setIssue(message);
       setIssue(null);
       if (employeePage < employeePageCount - 1) {
         setEmployeePage((page) => page + 1);
@@ -2129,12 +2171,9 @@ function CloseShiftWizard({
         return total;
       return (
         total +
-        employeeOvertimeMinutes(
-          employeeClose[employee.employmentId],
-          shiftBreaks,
-          day.reportDate,
-          report.shift,
-          report.activityWindow,
+        Math.max(
+          0,
+          (employee.timeClock?.workedMinutes ?? 0) - plannedMinutes,
         )
       );
     }, 0);
@@ -2163,16 +2202,6 @@ function CloseShiftWizard({
       setCurrentStep(0);
       setReturnToReview(true);
       setIssue(invalidBreaks);
-      return;
-    }
-    const invalidEmployeeIndex = report.employees.findIndex((employee) =>
-      Boolean(employeeError([employee])),
-    );
-    if (invalidEmployeeIndex >= 0) {
-      setCurrentStep(2);
-      setReturnToReview(true);
-      setEmployeePage(Math.floor(invalidEmployeeIndex / EMPLOYEE_PAGE_SIZE));
-      setIssue(employeeError([report.employees[invalidEmployeeIndex]!]));
       return;
     }
     if (!productionSummary) {
@@ -2206,62 +2235,22 @@ function CloseShiftWizard({
             fallbackClimates.length
               ? { fallbackClimateConditions: fallbackClimates }
               : {}),
-            employees: report.employees.map((employee) => {
-              const entry = employeeClose[employee.employmentId];
-              const automatic =
+            employees: report.employees.map((employee) => ({
+              employmentId: employee.employmentId,
+              overtimeConfirmed:
                 employee.attendanceStatus === "absent" ||
-                employee.overtimeEnabled === false;
-              const overtime = employeeOvertimeMinutes(
-                entry,
-                shiftBreaks,
+                employee.overtimeEnabled === false ||
+                employeeClose[employee.employmentId]?.overtimeConfirmed === true,
+            })),
+            breaks: shiftBreaks.map((interval) => {
+              const value = shiftBreakInterval(
+                interval,
                 day.reportDate,
                 report.shift,
-                report.activityWindow,
               );
-              const requiresOvertimeConfirmation =
-                overtime > 0 &&
-                employeeExceedsShiftEnd(
-                  entry,
-                  day.reportDate,
-                  report.shift,
-                  report.activityWindow,
-                );
               return {
-                employmentId: employee.employmentId,
-                checkInAt: automatic
-                  ? null
-                  : instantForEditableClock(
-                      day.reportDate,
-                      entry.checkIn,
-                      report.shift,
-                      employee.checkInAt ?? report.startedAt,
-                    ),
-                checkOutAt: automatic
-                  ? null
-                  : instantForEditableClock(
-                      day.reportDate,
-                      entry.checkOut,
-                      report.shift,
-                      employee.checkOutAt,
-                    ),
-                breaks:
-                  employee.attendanceStatus === "absent"
-                    ? []
-                    : shiftBreaks.map((interval) => {
-                        const value = shiftBreakInterval(
-                          interval,
-                          day.reportDate,
-                          report.shift,
-                        );
-                        return {
-                          startAt: value.startAt.toISOString(),
-                          endAt: value.endAt.toISOString(),
-                        };
-                      }),
-                overtimeConfirmed:
-                  automatic ||
-                  !requiresOvertimeConfirmation ||
-                  entry.overtimeConfirmed,
+                startAt: value.startAt.toISOString(),
+                endAt: value.endAt.toISOString(),
               };
             }),
             machines: report.machines.map((machine) => ({
@@ -2643,7 +2632,7 @@ function CloseShiftWizard({
           <section className="grid gap-4">
             <BatchHeading
               title="Frequência e horas extras"
-              description="Confirme a jornada e, quando houver excedente, a quantidade de horas extras de cada pessoa. Valores de remuneração não fazem parte deste fechamento."
+              description="A jornada é calculada pelas marcações de ponto. Confirme apenas a hora extra quando ela se aplicar."
               page={employeePage}
               pageSize={EMPLOYEE_PAGE_SIZE}
               total={report.employees.length}
@@ -2651,19 +2640,6 @@ function CloseShiftWizard({
             <div className="divide-y divide-border rounded-lg border border-border">
               {visibleEmployees.map((employee) => {
                 const entry = employeeClose[employee.employmentId];
-                const overtime = employeeOvertimeMinutes(
-                  entry,
-                  shiftBreaks,
-                  day.reportDate,
-                  report.shift,
-                  report.activityWindow,
-                );
-                const exceedsShiftEnd = employeeExceedsShiftEnd(
-                  entry,
-                  day.reportDate,
-                  report.shift,
-                  report.activityWindow,
-                );
                 return (
                   <div key={employee.employmentId} className="grid gap-4 p-4">
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-start sm:justify-between sm:gap-3">
@@ -2683,55 +2659,18 @@ function CloseShiftWizard({
                       <p className="text-sm text-muted-foreground">
                         Sem marcações de jornada neste turno.
                       </p>
-                    ) : employee.overtimeEnabled === false ? (
-                      <div className="rounded-md bg-secondary/45 px-3 py-2 text-sm leading-5">
-                        Entrada{" "}
-                        {report.startedAt ? clock(report.startedAt) : "—"}
-                        {" · "}saída {endedAtTime}
-                        {" · "}hora extra 00:00. Marcações automáticas conforme
-                        a regra da alocação.
-                      </div>
                     ) : (
                       <>
-                        <div className="grid gap-3 sm:grid-cols-2">
-                          <label className="grid gap-1 text-sm font-bold">
-                            Entrada
-                            <Input
-                              aria-label={`Entrada de ${employee.name}`}
-                              type="time"
-                              className="min-h-11 text-base tabular-nums"
-                              value={entry?.checkIn ?? ""}
-                              onChange={(event) =>
-                                setEmployeeClose((current) => ({
-                                  ...current,
-                                  [employee.employmentId]: {
-                                    ...current[employee.employmentId],
-                                    checkIn: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </label>
-                          <label className="grid gap-1 text-sm font-bold">
-                            Saída
-                            <Input
-                              aria-label={`Saída de ${employee.name}`}
-                              type="time"
-                              className="min-h-11 text-base tabular-nums"
-                              value={entry?.checkOut ?? ""}
-                              onChange={(event) =>
-                                setEmployeeClose((current) => ({
-                                  ...current,
-                                  [employee.employmentId]: {
-                                    ...current[employee.employmentId],
-                                    checkOut: event.target.value,
-                                  },
-                                }))
-                              }
-                            />
-                          </label>
+                        <div className="rounded-md bg-secondary/45 px-3 py-2 text-sm leading-5">
+                          {employee.timeClock?.status === "stopped"
+                            ? "Horário encerrado"
+                            : "Horário em andamento"}
+                          {" · total registrado até agora: "}
+                          <strong className="tabular-nums">
+                            {formatDuration(employee.timeClock?.workedMinutes ?? 0)}
+                          </strong>
                         </div>
-                        {overtime > 0 && exceedsShiftEnd && (
+                        {employee.overtimeEnabled !== false && (
                           <label className="flex min-h-11 items-center gap-3 rounded-md bg-secondary/55 px-3 text-sm font-bold">
                             <input
                               type="checkbox"
@@ -2747,7 +2686,7 @@ function CloseShiftWizard({
                                 }))
                               }
                             />
-                            Hora extra conferida: {formatDuration(overtime)}
+                            Confirmo as horas extras calculadas pelo ponto, se houver.
                           </label>
                         )}
                       </>
@@ -3169,8 +3108,6 @@ function Choice<T extends string>({
 type EmployeeCloseState = Record<
   string,
   {
-    checkIn: string;
-    checkOut: string;
     overtimeConfirmed: boolean;
   }
 >;
@@ -3187,6 +3124,25 @@ function localTimeValue(value: Date) {
     minute: "2-digit",
     hour12: false,
   }).format(value);
+}
+
+function dateTimeLocalValue(date: Date) {
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Sao_Paulo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(date);
+  const value = (type: Intl.DateTimeFormatPartTypes) =>
+    parts.find((part) => part.type === type)?.value ?? "";
+  return `${value("year")}-${value("month")}-${value("day")}T${value("hour")}:${value("minute")}`;
+}
+
+function instantForDateTime(value: string) {
+  return new Date(`${value}:00-03:00`).toISOString();
 }
 
 function normalizedDecimal(value: string | undefined) {
@@ -3215,66 +3171,6 @@ function instantForDayOffset(
   const date = new Date(`${reportDate}T12:00:00Z`);
   date.setUTCDate(date.getUTCDate() + dayOffset);
   return `${date.toISOString().slice(0, 10)}T${time}:00-03:00`;
-}
-
-function employeeOvertimeMinutes(
-  entry: EmployeeCloseState[string] | undefined,
-  breaks: ShiftBreak[],
-  reportDate: string,
-  shift: OperationalShift,
-  activityWindow: OperationalReport["activityWindow"],
-) {
-  if (!entry?.checkIn || !entry.checkOut) return 0;
-  const checkIn = new Date(
-    instantForClock(reportDate, entry.checkIn, shift),
-  ).getTime();
-  const checkOut = new Date(
-    instantForClock(reportDate, entry.checkOut, shift),
-  ).getTime();
-  const intervals = breaks.map((interval) =>
-    shiftBreakInterval(interval, reportDate, shift),
-  );
-  const breakMinutes = overlapMinutes(intervals, checkIn, checkOut);
-  const workedMinutes = Math.max(
-    0,
-    Math.round((checkOut - checkIn) / 60_000) - breakMinutes,
-  );
-  const plannedStart = new Date(
-    instantForClock(reportDate, activityWindow.startTime, shift),
-  ).getTime();
-  const plannedEnd = new Date(
-    instantForDayOffset(
-      reportDate,
-      activityWindow.endTime,
-      activityWindow.endDayOffset,
-    ),
-  ).getTime();
-  const plannedMinutes = Math.max(
-    0,
-    Math.round((plannedEnd - plannedStart) / 60_000) -
-      overlapMinutes(intervals, plannedStart, plannedEnd),
-  );
-  return Math.max(0, workedMinutes - plannedMinutes);
-}
-
-function employeeExceedsShiftEnd(
-  entry: EmployeeCloseState[string] | undefined,
-  reportDate: string,
-  shift: OperationalShift,
-  activityWindow: OperationalReport["activityWindow"],
-) {
-  if (!entry?.checkOut) return false;
-  const checkOut = new Date(
-    instantForClock(reportDate, entry.checkOut, shift),
-  ).getTime();
-  const plannedEnd = new Date(
-    instantForDayOffset(
-      reportDate,
-      activityWindow.endTime,
-      activityWindow.endDayOffset,
-    ),
-  ).getTime();
-  return checkOut > plannedEnd;
 }
 
 function shiftBreakInterval(
@@ -3324,15 +3220,4 @@ function instantForClock(
   return new Date(
     `${date.toISOString().slice(0, 10)}T${time}:00-03:00`,
   ).toISOString();
-}
-
-function instantForEditableClock(
-  reportDate: string,
-  time: string,
-  shift: OperationalShift,
-  originalAt?: string | null,
-) {
-  if (originalAt && localTimeValue(new Date(originalAt)) === time)
-    return originalAt;
-  return instantForClock(reportDate, time, shift);
 }

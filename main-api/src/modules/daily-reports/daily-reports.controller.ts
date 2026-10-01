@@ -112,11 +112,12 @@ const operationalStatusEventSchema = {
     {
       type: "object",
       additionalProperties: false,
-      required: ["type", "employmentId", "status"],
+      required: ["type", "employmentId", "action", "occurredAt"],
       properties: {
         type: { type: "string", const: "employee" },
         employmentId: uuid,
-        status: { type: "string", enum: ["working", "stopped", "unfit"] },
+        action: { type: "string", enum: ["start", "end"] },
+        occurredAt: dateTime,
       },
     },
     {
@@ -135,7 +136,7 @@ const operationalStatusEventSchema = {
 const operationalCloseSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["endedAt", "employees", "machines"],
+  required: ["endedAt", "employees", "breaks", "machines"],
   properties: {
     endedAt: dateTime,
     earlyClosureReason: nullableString,
@@ -151,28 +152,21 @@ const operationalCloseSchema = {
       items: {
         type: "object",
         additionalProperties: false,
-        required: [
-          "employmentId",
-          "checkInAt",
-          "checkOutAt",
-          "breaks",
-          "overtimeConfirmed",
-        ],
+        required: ["employmentId", "overtimeConfirmed"],
         properties: {
           employmentId: uuid,
-          checkInAt: { ...dateTime, nullable: true },
-          checkOutAt: { ...dateTime, nullable: true },
           overtimeConfirmed: { type: "boolean" },
-          breaks: {
-            type: "array",
-            items: {
-              type: "object",
-              additionalProperties: false,
-              required: ["startAt", "endAt"],
-              properties: { startAt: dateTime, endAt: dateTime },
-            },
-          },
         },
+      },
+    },
+    breaks: {
+      type: "array",
+      maxItems: 6,
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["startAt", "endAt"],
+        properties: { startAt: dateTime, endAt: dateTime },
       },
     },
     machines: {

@@ -191,7 +191,7 @@ describe("operational route params", () => {
 });
 
 describe("operational shift commands", () => {
-  it("accepts audited live statuses without a client timestamp", () => {
+  it("accepts audited employee time clock marks and server-timed live statuses", () => {
     expect(
       operationalStatusEventCommandSchema.safeParse({
         type: "shift",
@@ -202,7 +202,8 @@ describe("operational shift commands", () => {
       operationalStatusEventCommandSchema.safeParse({
         type: "employee",
         employmentId: id("1"),
-        status: "unfit",
+        action: "end",
+        occurredAt: "2026-09-24T12:00:00.000Z",
       }).success,
     ).toBe(true);
     expect(
@@ -214,7 +215,7 @@ describe("operational shift commands", () => {
     ).toBe(true);
   });
 
-  it("rejects live machine unfit and client-controlled event times", () => {
+  it("rejects live machine unfit and client-controlled shift event times", () => {
     expect(
       operationalStatusEventCommandSchema.safeParse({
         type: "machine",
@@ -277,15 +278,13 @@ describe("operational shift commands", () => {
         employees: [
           {
             employmentId: id("1"),
-            checkInAt: "2026-09-24T11:00:00.000Z",
-            checkOutAt: "2026-09-24T20:00:00.000Z",
-            breaks: [
-              {
-                startAt: "2026-09-24T15:00:00.000Z",
-                endAt: "2026-09-24T16:00:00.000Z",
-              },
-            ],
             overtimeConfirmed: true,
+          },
+        ],
+        breaks: [
+          {
+            startAt: "2026-09-24T15:00:00.000Z",
+            endAt: "2026-09-24T16:00:00.000Z",
           },
         ],
         machines: [{ machineId: id("3"), endMeterReadingValue: "2190.25" }],
@@ -301,15 +300,13 @@ describe("operational shift commands", () => {
         employees: [
           {
             employmentId: id("1"),
-            checkInAt: null,
-            checkOutAt: null,
-            breaks: [
-              {
-                startAt: "2026-09-24T15:00:00.000Z",
-                endAt: "2026-09-24T16:00:00.000Z",
-              },
-            ],
             overtimeConfirmed: false,
+          },
+        ],
+        breaks: [
+          {
+            startAt: "2026-09-24T15:00:00.000Z",
+            endAt: "2026-09-24T16:00:00.000Z",
           },
         ],
         machines: [],

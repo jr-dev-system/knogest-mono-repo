@@ -262,7 +262,8 @@ export const operationalStatusEventCommandSchema = z.discriminatedUnion(
       .object({
         type: z.literal("employee"),
         employmentId: uuid,
-        status: z.enum(["working", "stopped", "unfit"]),
+        action: z.enum(["start", "end"]),
+        occurredAt: operationalInstant,
       })
       .strict(),
     z
@@ -297,15 +298,13 @@ export const operationalShiftCloseSchema = z
         z
           .object({
             employmentId: uuid,
-            checkInAt: operationalInstant.nullable(),
-            checkOutAt: operationalInstant.nullable(),
-            breaks: z.array(operationalBreakSchema).max(6),
             overtimeConfirmed: z.boolean(),
           })
           .strict(),
       )
       .min(1)
       .max(200),
+    breaks: z.array(operationalBreakSchema).max(6),
     machines: z
       .array(
         z

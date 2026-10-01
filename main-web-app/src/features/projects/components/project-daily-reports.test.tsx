@@ -381,6 +381,7 @@ const draft: ProjectDailyReportDetail = {
       regularWorkedMinutes: 660,
       overtimeMinutes: 0,
       overtimeEnabled: true,
+      shiftCostBrl: null,
     },
   ],
   machines: [],

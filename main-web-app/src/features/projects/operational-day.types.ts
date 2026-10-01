@@ -9,7 +9,8 @@ export type OperationalStatusCommand =
   | {
       type: "employee";
       employmentId: string;
-      status: OperationalResourceStatus;
+      action: "start" | "end";
+      occurredAt: string;
     }
   | {
       type: "machine";
@@ -37,7 +38,13 @@ export type OperationalEmployee = {
   overtimeMinutes?: number;
   shiftCostBrl?: string | null;
   breaks?: Array<{ startAt: string; endAt: string }>;
-  liveState?: OperationalLiveState<OperationalMachineStatus> | null;
+  liveState?: OperationalLiveState<OperationalResourceStatus> | null;
+  timeClock?: {
+    status: "running" | "stopped";
+    lastMarkedAt: string | null;
+    workedMinutes: number;
+    calculatedAt: string;
+  };
 };
 
 export type OperationalMachine = {

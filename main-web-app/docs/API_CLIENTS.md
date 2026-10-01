@@ -75,17 +75,17 @@ finalização. O valor é calculado pela API a partir das taxas congeladas no RD
 o browser apenas formata a moeda.
 
 As mudanças de estado ao vivo usam a Server Action sobre `POST
-/projects/:projectId/operational-shifts/:reportId/status-events`. O browser envia
-somente o alvo e o novo estado; o instante e o ator são definidos pela API. A
-resposta recarrega o dia operacional para reconciliar snapshots. A consulta de
-produções permanece separada para permitir erro e nova tentativa sem desmontar
-o restante da Central. Estados finalizados e recursos ausentes ou não aptos são
-exibidos em modo somente leitura.
+/projects/:projectId/operational-shifts/:reportId/status-events`. Para turno e
+máquina, o browser envia o alvo e o estado e a API define instante e ator. Para
+ponto de funcionário, envia `action` (`start` ou `end`) e `occurredAt`; a API
+valida a janela do turno e a sequência de marcações, registra o ator e devolve
+o retrato atualizado. Estados finalizados e recursos ausentes permanecem em
+modo somente leitura.
 
 Cada turno habilitado devolve em `options.defaults.breakTemplates` os modelos
 de intervalo vigentes, com `id`, `name` e `durationMinutes`. O componente coleta
-o horário de início do intervalo geral e, no fechamento, envia a mesma lista de
-`breaks` para cada funcionário presente; ausentes continuam com lista vazia.
+o horário de início do intervalo geral e, no fechamento, envia a lista única de
+`breaks`; a API a aplica a cada funcionário presente ao calcular o ponto.
 
 O CTA de produção abre o assistente compartilhado sobre a própria Central e
 consulta as opções para a data e o turno do RDO. O comando recebe o supervisor
