@@ -10,7 +10,10 @@ import {
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { OperationalDay } from "../operational-day.types";
-import type { ProjectProductionOptions } from "../productions.types";
+import type {
+  ProjectDailyReportProductionSummary,
+  ProjectProductionOptions,
+} from "../productions.types";
 
 const push = vi.fn();
 const refresh = vi.fn();
@@ -21,6 +24,7 @@ vi.mock("../operational-day.actions", () => ({
   addOperationalInterferenceAction: vi.fn(),
   closeOperationalShiftAction: vi.fn(),
   confirmOperationalInterferenceAction: vi.fn(),
+  recordOperationalStatusAction: vi.fn(),
   saveOperationalRdoAction: vi.fn(),
   startOperationalShiftAction: vi.fn(),
 }));
@@ -42,6 +46,7 @@ vi.mock("../productions.actions", () => ({
 import { ProjectOperationalDay } from "./project-operational-day";
 import {
   closeOperationalShiftAction,
+  recordOperationalStatusAction,
   startOperationalShiftAction,
 } from "../operational-day.actions";
 import {
@@ -227,6 +232,12 @@ function runningOperationalDay(): OperationalDay {
     shift: "day",
     startedAt: "2026-09-24T11:00:00.000Z",
     finalizedAt: null,
+    liveState: {
+      status: "working",
+      changedAt: "2026-09-24T11:00:00.000Z",
+      changedBy: "operador@obra.com",
+    },
+    liveBreaks: [],
     activityWindow: { startTime: "08:00", endTime: "17:00", endDayOffset: 0 },
     schedulePeriods: [],
     supervisor: {
@@ -633,10 +644,10 @@ describe("ProjectOperationalDay", () => {
 
     expect(screen.getByText("1–6 de 7")).toBeTruthy();
     expect(screen.getByLabelText("Leitura final de Máquina 6")).toBeTruthy();
-    expect(screen.queryByText("Máquina 7")).toBeNull();
+    expect(screen.queryByLabelText("Leitura final de Máquina 7")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Próximas máquinas" }));
     expect(screen.getByText("7–7 de 7")).toBeTruthy();
-    expect(screen.getByText("Máquina 7")).toBeTruthy();
+    expect(screen.getByLabelText("Leitura final de Máquina 7")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Avançar" }));
 
     expect(screen.getByText("1–10 de 11")).toBeTruthy();
@@ -967,5 +978,116 @@ describe("ProjectOperationalDay", () => {
     expect(
       (screen.getByLabelText("Frente") as HTMLSelectElement).options,
     ).toHaveLength(0);
+  });
+
+  it("shows the live timer, explicit overtime, and every operational resource", async () => {
+    const value = closingOperationalDay(1, 1);
+    value.shifts[0]!.report!.startedAt = new Date(
+      Date.now() - 9 * 60 * 60 * 1_000,
+    ).toISOString();
+    value.shifts[0]!.report!.activityWindow = {
+      startTime: "08:00",
+      endTime: "16:00",
+      endDayOffset: 0,
+    };
+
+    render(
+      <ProjectOperationalDay
+        initialDay={value}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    expect(screen.getByText("Tempo trabalhado")).toBeTruthy();
+    expect(screen.getByText(/8h regulares \+ 1h extra/u)).toBeTruthy();
+    expect(screen.getByText("Funcionário 1")).toBeTruthy();
+    expect(screen.getByText("Máquina 1")).toBeTruthy();
+    expect(screen.getAllByRole("button", { name: "Em trabalho" }).length).toBe(
+      2,
+    );
+    await waitFor(() =>
+      expect(getDailyReportProductionsAction).toHaveBeenCalledWith(
+        "project-1",
+        "22222222-2222-4222-8222-222222222222",
+      ),
+    );
+  });
+
+  it("records a general interval through the audited status command", async () => {
+    const value = runningOperationalDay();
+    const paused = runningOperationalDay();
+    paused.shifts[0]!.report!.liveState = {
+      status: "paused",
+      changedAt: new Date().toISOString(),
+      changedBy: "operador@obra.com",
+    };
+    paused.shifts[0]!.report!.liveBreaks = [
+      { startAt: new Date().toISOString(), endAt: null },
+    ];
+    vi.mocked(recordOperationalStatusAction).mockResolvedValue({
+      kind: "success",
+      day: paused,
+    });
+
+    render(
+      <ProjectOperationalDay
+        initialDay={value}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Iniciar intervalo" }),
+    );
+
+    await waitFor(() =>
+      expect(recordOperationalStatusAction).toHaveBeenCalledWith({
+        projectId: "project-1",
+        reportDate: "2026-09-24",
+        reportId: "22222222-2222-4222-8222-222222222222",
+        data: { type: "shift", status: "paused" },
+      }),
+    );
+    expect(await screen.findByText("Turno pausado")).toBeTruthy();
+  });
+
+  it("preserves the command center when production loading fails and retries", async () => {
+    vi.mocked(getDailyReportProductionsAction)
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce({
+        reportId: "report-1",
+        productions: [
+          {
+            id: "production-1",
+            serviceCode: "cut",
+            unitCode: "M3",
+            officialQuantity: "125.000",
+            status: "approved",
+            location: "Estaca 10",
+            tripCount: 4,
+            equipmentCount: 2,
+          },
+        ],
+        groups: [],
+        hasDrafts: false,
+        hasPendingQuality: false,
+        needsReconfirmation: false,
+      } as unknown as ProjectDailyReportProductionSummary);
+
+    render(
+      <ProjectOperationalDay
+        initialDay={runningOperationalDay()}
+        projectId="project-1"
+        projectName="Obra Serra"
+      />,
+    );
+
+    expect(
+      await screen.findByText(/demais dados continuam disponíveis/u),
+    ).toBeTruthy();
+    expect(screen.getByText("Tempo trabalhado")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Tentar novamente" }));
+    expect(await screen.findByText("125.000 m³")).toBeTruthy();
   });
 });

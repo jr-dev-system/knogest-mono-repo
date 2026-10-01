@@ -195,10 +195,7 @@ export const operationalRdoCommandSchema = z
     activityEndTime: time,
     activityEndDayOffset: z.number().int().min(0).max(1),
     activityTypes: z.array(dailyReportActivityTypeSchema).min(1).max(3),
-    climateConditions: z
-      .array(dailyReportClimateConditionSchema)
-      .min(1)
-      .max(3),
+    climateConditions: z.array(dailyReportClimateConditionSchema).min(1).max(3),
     dailyRainfallMm: decimal,
     monthlyRainfallMm: decimal,
     supervisorEmploymentId: uuid,
@@ -251,6 +248,32 @@ export const operationalInterferenceCommandSchema = z
         new Date(command.startedAt).getTime(),
     { path: ["endedAt"], message: "End must be after start" },
   );
+
+export const operationalStatusEventCommandSchema = z.discriminatedUnion(
+  "type",
+  [
+    z
+      .object({
+        type: z.literal("shift"),
+        status: z.enum(["working", "paused"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("employee"),
+        employmentId: uuid,
+        status: z.enum(["working", "stopped", "unfit"]),
+      })
+      .strict(),
+    z
+      .object({
+        type: z.literal("machine"),
+        machineId: uuid,
+        status: z.enum(["working", "stopped", "maintenance"]),
+      })
+      .strict(),
+  ],
+);
 
 const operationalBreakSchema = z
   .object({ startAt: operationalInstant, endAt: operationalInstant })
@@ -445,11 +468,12 @@ export type DailyReportOptionsQuery = z.infer<
 export type OperationalShiftStartCommand = z.infer<
   typeof operationalShiftStartSchema
 >;
-export type OperationalRdoCommand = z.infer<
-  typeof operationalRdoCommandSchema
->;
+export type OperationalRdoCommand = z.infer<typeof operationalRdoCommandSchema>;
 export type OperationalInterferenceCommand = z.infer<
   typeof operationalInterferenceCommandSchema
+>;
+export type OperationalStatusEventCommand = z.infer<
+  typeof operationalStatusEventCommandSchema
 >;
 export type OperationalShiftCloseCommand = z.infer<
   typeof operationalShiftCloseSchema

@@ -590,6 +590,98 @@ describe("project daily reports", () => {
     });
   });
 
+  it("records scoped and audited live shift, employee, and machine statuses", async () => {
+    const scope = await setup();
+    const started = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/operational-days/${scope.reportDate}/shifts/day/start`,
+      headers: { authorization: scope.authorization },
+      payload: {
+        startedAt: `${scope.reportDate}T10:00:00.000Z`,
+        employees: [
+          {
+            employmentId: scope.employmentId,
+            status: "present",
+            absenceReason: null,
+          },
+        ],
+        machines: [
+          {
+            machineId: scope.machineId,
+            condition: "fit",
+            conditionNote: null,
+          },
+        ],
+      },
+    });
+    expect(started.statusCode, started.body).toBe(201);
+    const reportId = started.json().data.id as string;
+    expect(started.json().data).toMatchObject({
+      liveState: { status: "working" },
+      employees: [{ liveState: { status: "working" } }],
+      machines: [{ liveState: { status: "working" } }],
+    });
+
+    const transition = (payload: Record<string, string>) =>
+      app.inject({
+        method: "POST",
+        url: `/api/v1/projects/${scope.projectId}/operational-shifts/${reportId}/status-events`,
+        headers: { authorization: scope.authorization },
+        payload,
+      });
+    const paused = await transition({ type: "shift", status: "paused" });
+    expect(paused.statusCode, paused.body).toBe(201);
+    expect(paused.json().data.liveState.status).toBe("paused");
+    expect(paused.json().data.liveBreaks).toMatchObject([
+      { endAt: null },
+    ]);
+
+    const stopped = await transition({
+      type: "employee",
+      employmentId: scope.employmentId,
+      status: "stopped",
+    });
+    expect(stopped.statusCode, stopped.body).toBe(201);
+    expect(stopped.json().data.employees[0].liveState.status).toBe("stopped");
+
+    const maintenance = await transition({
+      type: "machine",
+      machineId: scope.machineId,
+      status: "maintenance",
+    });
+    expect(maintenance.statusCode, maintenance.body).toBe(201);
+    expect(maintenance.json().data.machines[0].liveState.status).toBe(
+      "maintenance",
+    );
+
+    const duplicate = await transition({ type: "shift", status: "paused" });
+    expect(duplicate.statusCode, duplicate.body).toBe(409);
+    expect(duplicate.json().code).toBe("OPERATIONAL_STATUS_CONFLICT");
+
+    const isolated = await app.inject({
+      method: "POST",
+      url: `/api/v1/projects/${scope.projectId}/operational-shifts/${reportId}/status-events`,
+      headers: { authorization: scope.otherAuthorization },
+      payload: { type: "shift", status: "working" },
+    });
+    expect(isolated.statusCode, isolated.body).toBe(404);
+
+    const events = await app.prisma.projectDailyReportStatusEvent.findMany({
+      where: { dailyReportId: reportId },
+      orderBy: [{ occurredAt: "asc" }, { id: "asc" }],
+    });
+    expect(events).toHaveLength(6);
+    expect(events.map((event) => event.type)).toEqual([
+      "SHIFT",
+      "EMPLOYEE",
+      "MACHINE",
+      "SHIFT",
+      "EMPLOYEE",
+      "MACHINE",
+    ]);
+    expect(events.every((event) => event.actorUserId)).toBe(true);
+  });
+
   it("finalizes atomically, creates meter references and becomes immutable", async () => {
     const scope = await setup();
     const created = await app.inject({

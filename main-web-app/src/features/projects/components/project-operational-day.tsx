@@ -13,11 +13,15 @@ import {
   Gauge,
   Loader2,
   Moon,
+  PackageCheck,
+  Pause,
   Pencil,
+  Play,
   Plus,
   RefreshCw,
   Sun,
   Trash2,
+  Users,
   Wrench,
   X,
 } from "lucide-react";
@@ -44,6 +48,7 @@ import {
   addOperationalInterferenceAction,
   closeOperationalShiftAction,
   confirmOperationalInterferenceAction,
+  recordOperationalStatusAction,
   startOperationalShiftAction,
 } from "../operational-day.actions";
 import {
@@ -55,6 +60,7 @@ import {
 import type {
   OperationalDay,
   OperationalReport,
+  OperationalStatusCommand,
   OperationalResult,
   OperationalShift,
 } from "../operational-day.types";
@@ -123,6 +129,15 @@ export function ProjectOperationalDay({
     shift: OperationalShift;
   } | null>(null);
   const [busy, setBusy] = React.useState(false);
+  const [now, setNow] = React.useState(() => new Date());
+  const [productionSummaries, setProductionSummaries] = React.useState<
+    Record<
+      string,
+      | { kind: "loading" }
+      | { kind: "failure" }
+      | { kind: "success"; data: ProjectDailyReportProductionSummary }
+    >
+  >({});
   const [production, setProduction] = React.useState<{
     shift: OperationalShift;
     responsibleEmploymentId: string;
@@ -156,6 +171,34 @@ export function ProjectOperationalDay({
       window.removeEventListener("focus", focus);
     };
   }, [refresh, refreshPaused]);
+  React.useEffect(() => {
+    if (!day.shifts.some((item) => item.report?.status === "draft")) return;
+    const tick = () => setNow(new Date());
+    tick();
+    const id = window.setInterval(tick, 1_000);
+    return () => window.clearInterval(id);
+  }, [day.shifts]);
+  const loadProductions = React.useCallback(
+    async (reportId: string) => {
+      setProductionSummaries((current) => ({
+        ...current,
+        [reportId]: { kind: "loading" },
+      }));
+      try {
+        const data = await getDailyReportProductionsAction(projectId, reportId);
+        setProductionSummaries((current) => ({
+          ...current,
+          [reportId]: { kind: "success", data },
+        }));
+      } catch {
+        setProductionSummaries((current) => ({
+          ...current,
+          [reportId]: { kind: "failure" },
+        }));
+      }
+    },
+    [projectId],
+  );
   async function run(
     work: () => Promise<
       ReturnType<typeof startOperationalShiftAction> extends Promise<infer T>
@@ -213,11 +256,30 @@ export function ProjectOperationalDay({
     (item) => item.enabled && item.report,
   );
   const startableOtherShift = day.shifts.find(
-    (item) =>
-      item.shift !== visibleItem.shift && item.enabled && !item.report,
+    (item) => item.shift !== visibleItem.shift && item.enabled && !item.report,
   );
   const visibleRunningReport =
     visibleItem.report?.status === "draft" ? visibleItem.report : null;
+  React.useEffect(() => {
+    const reportId = visibleItem.report?.id;
+    if (reportId && !productionSummaries[reportId])
+      void loadProductions(reportId);
+  }, [loadProductions, productionSummaries, visibleItem.report?.id]);
+  function changeStatus(
+    report: OperationalReport,
+    data: OperationalStatusCommand,
+  ) {
+    void run(
+      () =>
+        recordOperationalStatusAction({
+          projectId,
+          reportDate: day.reportDate,
+          reportId: report.id,
+          data,
+        }),
+      "Status operacional atualizado.",
+    );
+  }
   return (
     <main className="min-h-full bg-background">
       <header className="flex flex-col gap-4 border-b border-border bg-card px-4 py-5 sm:px-6 lg:flex-row lg:items-end lg:justify-between">
@@ -308,10 +370,22 @@ export function ProjectOperationalDay({
           <ShiftLane
             key={visibleItem.shift}
             item={visibleItem}
-            onAction={(kind) =>
-              setPanel({ kind, shift: visibleItem.shift })
+            now={now}
+            busy={busy}
+            productionState={
+              visibleItem.report
+                ? productionSummaries[visibleItem.report.id]
+                : undefined
             }
+            onAction={(kind) => setPanel({ kind, shift: visibleItem.shift })}
             onProduction={() => void openProduction(visibleItem)}
+            onRetryProductions={() => {
+              if (visibleItem.report)
+                void loadProductions(visibleItem.report.id);
+            }}
+            onStatus={(data) => {
+              if (visibleItem.report) changeStatus(visibleItem.report, data);
+            }}
           />
         </div>
         {visibleRunningReport && (
@@ -412,7 +486,13 @@ export function ProjectOperationalDay({
           onOpenChange={(open) => {
             if (!open) setProduction(null);
           }}
-          onSaved={() => refresh()}
+          onSaved={() => {
+            refresh();
+            const report = day.shifts.find(
+              (item) => item.shift === production.shift,
+            )?.report;
+            if (report) void loadProductions(report.id);
+          }}
           open
           options={production.options}
           preventDismissal
@@ -425,20 +505,36 @@ export function ProjectOperationalDay({
 
 function ShiftLane({
   item,
+  now,
+  busy,
+  productionState,
   onAction,
   onProduction,
+  onRetryProductions,
+  onStatus,
 }: {
   item: OperationalDay["shifts"][number];
+  now: Date;
+  busy: boolean;
+  productionState:
+    | { kind: "loading" }
+    | { kind: "failure" }
+    | { kind: "success"; data: ProjectDailyReportProductionSummary }
+    | undefined;
   onAction: (kind: "start" | "interference" | "close") => void;
   onProduction: () => void;
+  onRetryProductions: () => void;
+  onStatus: (command: OperationalStatusCommand) => void;
 }) {
   const report = item.report;
   const running = report?.status === "draft";
   const finalized = report?.status === "finalized";
+  const paused = report?.liveState?.status === "paused";
+  const metrics = report && running ? liveShiftMetrics(report, now) : null;
   const blockers = report
-    ? [
-        report.interferenceEntries.some((value) => !value.confirmedAt),
-      ].filter(Boolean).length
+    ? [report.interferenceEntries.some((value) => !value.confirmedAt)].filter(
+        Boolean,
+      ).length
     : 0;
   return (
     <article
@@ -467,6 +563,7 @@ function ShiftLane({
               running={running}
               finalized={finalized}
               enabled={item.enabled}
+              paused={paused}
             />
           </div>
           <p className="mt-1 text-sm font-semibold text-muted-foreground">
@@ -488,69 +585,91 @@ function ShiftLane({
       </div>
       {report && (
         <>
-          <div className="border-y border-border bg-secondary/30 px-5 py-5">
-            <div className="flex items-center justify-between gap-2">
-              {["Equipe", "Máquinas", "Operação", "Atividades", "Fechamento"].map(
-                (label, index) => {
-                  const done =
-                    finalized ||
-                    index < 2 ||
-                    (index === 2 &&
-                      (report.interferenceEntries.length > 0 ||
-                        report.executedActivities));
-                  const current = running && !done;
-                  return (
-                    <div
-                      key={label}
-                      className="flex min-w-0 flex-1 flex-col items-center text-center"
-                    >
-                      <span
-                        className={cn(
-                          "flex size-9 items-center justify-center rounded-full border text-sm font-bold",
-                          done
-                            ? "border-emerald-600 bg-emerald-600 text-white"
-                            : current
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-input bg-card text-muted-foreground",
-                        )}
-                      >
-                        {done ? <Check className="size-4" /> : index + 1}
-                      </span>
-                      <span className="mt-2 text-sm font-bold">{label}</span>
-                    </div>
-                  );
-                },
-              )}
+          {metrics && (
+            <div className="grid gap-px border-y border-border bg-border sm:grid-cols-3">
+              <Metric
+                label="Tempo trabalhado"
+                value={formatTimer(metrics.workedMs)}
+                detail={
+                  metrics.overtimeMs > 0
+                    ? `${formatHours(metrics.regularMs)} regulares + ${formatHours(metrics.overtimeMs)} extra`
+                    : `Jornada prevista: ${formatHours(metrics.plannedMs)}`
+                }
+              />
+              <Metric
+                label="Situação do turno"
+                value={paused ? "Em intervalo" : "Em andamento"}
+                detail={
+                  report.liveState?.changedAt
+                    ? `Desde ${clock(report.liveState.changedAt)}`
+                    : "Status atual"
+                }
+              />
+              <Metric
+                label="Início do turno"
+                value={report.startedAt ? clock(report.startedAt) : "—"}
+                detail={`${report.employees.length} funcionário(s) · ${report.machines.length} máquina(s)`}
+              />
             </div>
-          </div>
-          <div className="p-5">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+          )}
+          <div className="space-y-6 p-5">
+            {running && (
+              <div className="flex flex-col gap-3 rounded-xl border border-border bg-secondary/30 p-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="font-bold">
+                    {paused ? "Turno pausado" : "Turno em execução"}
+                  </p>
+                  <p className="text-sm text-muted-foreground">
+                    {paused
+                      ? "O temporizador de trabalho está congelado até a retomada."
+                      : "Pause para registrar um intervalo geral da equipe."}
+                  </p>
+                </div>
+                <Button
+                  variant={paused ? "default" : "outline"}
+                  className="min-h-12 font-bold"
+                  disabled={busy}
+                  onClick={() =>
+                    onStatus({
+                      type: "shift",
+                      status: paused ? "working" : "paused",
+                    })
+                  }
+                >
+                  {paused ? <Play /> : <Pause />}
+                  {paused ? "Retomar turno" : "Iniciar intervalo"}
+                </Button>
+              </div>
+            )}
+
+            <OperationalResources
+              report={report}
+              readOnly={!running || busy}
+              onStatus={onStatus}
+            />
+
+            <ProductionOverview
+              state={productionState}
+              onRetry={onRetryProductions}
+            />
+
+            <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-5">
               <div>
                 <p className="text-base font-bold">
                   {finalized
                     ? "Turno finalizado"
                     : blockers
                       ? `${blockers} pendência(s) para finalizar`
-                      : "Pronto para revisão final"}
+                      : "Operação atualizada"}
                 </p>
                 <p className="mt-1 text-sm text-muted-foreground">
-                  {
-                    report.employees.filter(
-                      (e) => e.attendanceStatus !== "absent",
-                    ).length
-                  }{" "}
-                  presentes ·{" "}
-                  {
-                    report.machines.filter(
-                      (m) => m.operationalCondition !== "unfit",
-                    ).length
-                  }{" "}
-                  máquinas aptas
+                  Estados operacionais e intervalos ficam registrados para
+                  auditoria.
                 </p>
               </div>
             </div>
             {running && (
-              <div className="mt-5 grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-2 gap-3">
                 <Action
                   icon={Gauge}
                   label="Adicionar produção"
@@ -560,15 +679,6 @@ function ShiftLane({
                   icon={AlertTriangle}
                   label="Registrar interferência"
                   onClick={() => onAction("interference")}
-                />
-                <Action
-                  icon={Wrench}
-                  label="Manutenção"
-                  onClick={() =>
-                    toast.info(
-                      "A rotina de manutenção estará disponível em breve.",
-                    )
-                  }
                 />
                 <Action
                   icon={Fuel}
@@ -593,14 +703,264 @@ function ShiftLane({
     </article>
   );
 }
+
+function Metric({
+  label,
+  value,
+  detail,
+}: {
+  label: string;
+  value: string;
+  detail: string;
+}) {
+  return (
+    <div className="bg-card p-5">
+      <p className="text-sm font-semibold text-muted-foreground">{label}</p>
+      <p className="mt-1 font-mono text-2xl font-extrabold tabular-nums">
+        {value}
+      </p>
+      <p className="mt-1 text-sm font-medium text-muted-foreground">{detail}</p>
+    </div>
+  );
+}
+
+function OperationalResources({
+  report,
+  readOnly,
+  onStatus,
+}: {
+  report: OperationalReport;
+  readOnly: boolean;
+  onStatus: (command: OperationalStatusCommand) => void;
+}) {
+  return (
+    <div className="grid gap-6 lg:grid-cols-2">
+      <section aria-labelledby="employees-title">
+        <div className="flex items-center gap-2">
+          <Users className="size-5 text-primary" />
+          <h3 id="employees-title" className="text-lg font-bold">
+            Funcionários ({report.employees.length})
+          </h3>
+        </div>
+        <div className="mt-3 space-y-3">
+          {report.employees.map((employee) => {
+            const absent = employee.attendanceStatus === "absent";
+            const status = absent
+              ? "stopped"
+              : (employee.liveState?.status ?? "working");
+            return (
+              <ResourceCard
+                key={employee.employmentId}
+                name={employee.name}
+                detail={
+                  absent
+                    ? `Ausente${employee.absenceReason ? ` · ${employee.absenceReason}` : ""}`
+                    : employee.jobRole
+                }
+                status={status}
+                statuses={[
+                  ["working", "Em trabalho"],
+                  ["stopped", "Parado"],
+                  ["unfit", "Não apto"],
+                ]}
+                readOnly={readOnly || absent}
+                onChange={(next) =>
+                  onStatus({
+                    type: "employee",
+                    employmentId: employee.employmentId,
+                    status: next as "working" | "stopped" | "unfit",
+                  })
+                }
+              />
+            );
+          })}
+        </div>
+      </section>
+      <section aria-labelledby="machines-title">
+        <div className="flex items-center gap-2">
+          <Wrench className="size-5 text-primary" />
+          <h3 id="machines-title" className="text-lg font-bold">
+            Máquinas ({report.machines.length})
+          </h3>
+        </div>
+        <div className="mt-3 space-y-3">
+          {report.machines.map((machine) => {
+            const unfit = machine.operationalCondition === "unfit";
+            const status = unfit
+              ? "unfit"
+              : (machine.liveState?.status ?? "working");
+            return (
+              <ResourceCard
+                key={machine.machineId}
+                name={machine.name}
+                detail={`${machine.manufacturer} · ${machine.model}`}
+                status={status}
+                statuses={[
+                  ["working", "Em trabalho"],
+                  ["stopped", "Parada"],
+                  ["maintenance", "Manutenção"],
+                ]}
+                readOnly={readOnly || unfit}
+                fixedLabel={unfit ? "Não apta" : undefined}
+                onChange={(next) =>
+                  onStatus({
+                    type: "machine",
+                    machineId: machine.machineId,
+                    status: next as "working" | "stopped" | "maintenance",
+                  })
+                }
+              />
+            );
+          })}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function ResourceCard({
+  name,
+  detail,
+  status,
+  statuses,
+  readOnly,
+  fixedLabel,
+  onChange,
+}: {
+  name: string;
+  detail: string;
+  status: string;
+  statuses: Array<[string, string]>;
+  readOnly: boolean;
+  fixedLabel?: string;
+  onChange: (status: string) => void;
+}) {
+  const activeLabel =
+    fixedLabel ?? statuses.find(([value]) => value === status)?.[1] ?? status;
+  return (
+    <article className="rounded-lg border border-border p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <div className="min-w-0">
+          <p className="truncate font-bold">{name}</p>
+          <p className="truncate text-sm text-muted-foreground">{detail}</p>
+        </div>
+        <span
+          className={cn(
+            "rounded-full px-2.5 py-1 text-xs font-bold",
+            status === "working" && "bg-emerald-100 text-emerald-800",
+            status === "stopped" && "bg-slate-200 text-slate-800",
+            status === "maintenance" && "bg-amber-100 text-amber-900",
+            status === "unfit" && "bg-red-100 text-red-800",
+          )}
+        >
+          {activeLabel}
+        </span>
+      </div>
+      {!readOnly && (
+        <div
+          className="mt-3 flex flex-wrap gap-2"
+          role="group"
+          aria-label={`Status de ${name}`}
+        >
+          {statuses.map(([value, label]) => (
+            <Button
+              key={value}
+              type="button"
+              size="sm"
+              variant={status === value ? "secondary" : "outline"}
+              className="min-h-10 flex-1 px-2 text-xs font-bold"
+              aria-pressed={status === value}
+              disabled={status === value}
+              onClick={() => onChange(value)}
+            >
+              {label}
+            </Button>
+          ))}
+        </div>
+      )}
+    </article>
+  );
+}
+
+function ProductionOverview({
+  state,
+  onRetry,
+}: {
+  state:
+    | { kind: "loading" }
+    | { kind: "failure" }
+    | { kind: "success"; data: ProjectDailyReportProductionSummary }
+    | undefined;
+  onRetry: () => void;
+}) {
+  return (
+    <section aria-labelledby="productions-title">
+      <div className="flex items-center gap-2">
+        <PackageCheck className="size-5 text-primary" />
+        <h3 id="productions-title" className="text-lg font-bold">
+          Produções realizadas
+        </h3>
+      </div>
+      {!state || state.kind === "loading" ? (
+        <div className="mt-3 flex items-center gap-2 rounded-lg border border-border p-4 text-sm text-muted-foreground">
+          <Loader2 className="size-4 animate-spin" /> Carregando produções…
+        </div>
+      ) : state.kind === "failure" ? (
+        <div className="mt-3 flex flex-col gap-3 rounded-lg border border-red-200 bg-red-50 p-4 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-semibold text-red-800">
+            Não foi possível carregar as produções. Os demais dados continuam
+            disponíveis.
+          </p>
+          <Button variant="outline" className="min-h-10" onClick={onRetry}>
+            <RefreshCw /> Tentar novamente
+          </Button>
+        </div>
+      ) : state.data.productions.length ? (
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          {state.data.productions.map((production) => (
+            <article
+              key={production.id}
+              className="rounded-lg border border-border p-4"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <p className="font-bold">
+                  {productionServiceLabel(production.serviceCode)}
+                </p>
+                <span className="rounded-full bg-secondary px-2 py-1 text-xs font-bold">
+                  {production.status.replaceAll("_", " ")}
+                </span>
+              </div>
+              <p className="mt-2 text-lg font-extrabold tabular-nums">
+                {production.officialQuantity}{" "}
+                {productionUnitLabel(production.unitCode)}
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {production.location ?? "Local não informado"} ·{" "}
+                {production.tripCount} viagem(ns) · {production.equipmentCount}{" "}
+                equipamento(s)
+              </p>
+            </article>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 rounded-lg border border-dashed border-border p-4 text-sm font-medium text-muted-foreground">
+          Nenhuma produção registrada neste turno.
+        </p>
+      )}
+    </section>
+  );
+}
+
 function Status({
   running,
   finalized,
   enabled,
+  paused,
 }: {
   running: boolean;
   finalized: boolean;
   enabled: boolean;
+  paused: boolean;
 }) {
   const cls = finalized
     ? "bg-emerald-100 text-emerald-800"
@@ -612,7 +972,9 @@ function Status({
       {finalized
         ? "Finalizado"
         : running
-          ? "Em andamento"
+          ? paused
+            ? "Em intervalo"
+            : "Em andamento"
           : enabled
             ? "Não iniciado"
             : "Indisponível"}
@@ -735,8 +1097,8 @@ function OperationalPanel({
               {panel.kind === "start"
                 ? "Iniciar turno"
                 : panel.kind === "interference"
-                    ? "Registrar interferência"
-                    : "Revisar e finalizar turno"}
+                  ? "Registrar interferência"
+                  : "Revisar e finalizar turno"}
             </h2>
             <p className="mt-1 text-base text-muted-foreground">
               Turno {panel.shift === "day" ? "diurno" : "noturno"}
@@ -2302,9 +2664,11 @@ function CloseShiftWizard({
                         />
                         <ActivityDatum
                           label="Clima"
-                          value={production.climateConditions
-                            .map((value) => climateLabels[value])
-                            .join(", ") || "Pendente"}
+                          value={
+                            production.climateConditions
+                              .map((value) => climateLabels[value])
+                              .join(", ") || "Pendente"
+                          }
                         />
                       </dl>
                     </article>
@@ -2659,6 +3023,49 @@ function activityWindowMinutes(window: OperationalReport["activityWindow"]) {
       window.endDayOffset * 24 * 60 -
       clockMinutes(window.startTime),
   );
+}
+
+function liveShiftMetrics(report: OperationalReport, now: Date) {
+  const startedAt = report.startedAt
+    ? new Date(report.startedAt).getTime()
+    : now.getTime();
+  const effectiveNow = Math.max(startedAt, now.getTime());
+  const breakMs = report.liveBreaks.reduce((total, interval) => {
+    const start = Math.max(startedAt, new Date(interval.startAt).getTime());
+    const end = Math.min(
+      effectiveNow,
+      interval.endAt ? new Date(interval.endAt).getTime() : effectiveNow,
+    );
+    return total + Math.max(0, end - start);
+  }, 0);
+  const plannedMs = Math.max(
+    0,
+    activityWindowMinutes(report.activityWindow) * 60_000 - breakMs,
+  );
+  const workedMs = Math.max(0, effectiveNow - startedAt - breakMs);
+  return {
+    workedMs,
+    plannedMs,
+    regularMs: Math.min(workedMs, plannedMs),
+    overtimeMs: Math.max(0, workedMs - plannedMs),
+  };
+}
+
+function formatTimer(milliseconds: number) {
+  const totalSeconds = Math.max(0, Math.floor(milliseconds / 1_000));
+  const hours = Math.floor(totalSeconds / 3_600);
+  const minutes = Math.floor((totalSeconds % 3_600) / 60);
+  const seconds = totalSeconds % 60;
+  return [hours, minutes, seconds]
+    .map((value) => String(value).padStart(2, "0"))
+    .join(":");
+}
+
+function formatHours(milliseconds: number) {
+  const minutes = Math.max(0, Math.round(milliseconds / 60_000));
+  const hours = Math.floor(minutes / 60);
+  const remainder = minutes % 60;
+  return remainder ? `${hours}h ${remainder}min` : `${hours}h`;
 }
 
 function instantForDayOffset(

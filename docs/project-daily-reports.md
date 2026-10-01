@@ -35,12 +35,26 @@ cria o RDO em rascunho e registra a entrada dos presentes e a leitura inicial
 das máquinas de forma automática.
 
 Com o turno aberto, a central atualiza a cada 30 segundos e ao retomar foco.
+Entre essas reconciliações, o cronômetro do turno avança localmente a cada
+segundo. O painel mostra início, estado atual, tempo trabalhado líquido e, ao
+ultrapassar a jornada planejada líquida, separa explicitamente horas regulares
+e extras. Um intervalo geral pausa o cronômetro de trabalho; cada pausa e
+retomada registra ator e instante no servidor.
+
+A mesma tela lista todas as produções do turno, sem ocultar os demais blocos
+quando a consulta falhar, e oferece nova tentativa isolada. Também lista todos
+os funcionários e máquinas. Funcionários presentes podem ficar **Em trabalho**,
+**Parado** ou **Não apto**. Máquinas aptas podem ficar **Em trabalho**,
+**Parada** ou **Manutenção**; uma máquina marcada como não apta no checklist é
+somente leitura e não recebe comando ao vivo. Esses estados são operacionais e
+auditáveis, mas não alteram frequência, horas, medidores nem criam ordem de
+manutenção. Abastecimento continua fora do escopo desta versão.
+
 Ela permite abrir o lançamento de produção em modal sem sair da Central,
 registrar e confirmar interferências e revisar o encerramento. Não existe mais
 um modal separado para completar o RDO. A produção herda data, turno e
 supervisor do RDO, não solicita uma janela de horas própria e exige que o clima
-observado seja registrado no próprio lançamento. Manutenção e abastecimento
-aparecem como ações táteis, mas ainda não persistem dados nesta versão.
+observado seja registrado no próprio lançamento.
 
 Os modais da Central não são descartados por `Esc` nem por clique fora. O
 usuário encerra o formulário somente pelas ações explícitas de fechar ou
@@ -99,6 +113,12 @@ Se qualquer item estiver incompleto, o turno continua em andamento. Quando a
 operação é confirmada, o RDO, as jornadas e os medidores são finalizados juntos
 e tornam-se imutáveis. A frequência é derivada dessas entradas e saídas e fica
 disponível em **Relatórios → Frequência**.
+
+Se o fechamento ocorrer durante um intervalo ao vivo, a API encerra a pausa no
+mesmo instante de `endedAt` e registra a retomada automática antes de finalizar.
+Intervalos manuais e intervalos ao vivo são unidos por sobreposição para evitar
+desconto duplicado e o limite final continua sendo seis. O encerramento não pode
+ser anterior ao evento operacional mais recente.
 
 ## Identidade e ciclo de vida
 
@@ -212,6 +232,7 @@ As operações da central usam:
 - `PUT /projects/:projectId/operational-shifts/:reportId/rdo`;
 - `POST /projects/:projectId/operational-shifts/:reportId/interferences`;
 - `POST /projects/:projectId/operational-shifts/:reportId/interferences/:interferenceId/confirm`;
+- `POST /projects/:projectId/operational-shifts/:reportId/status-events`;
 - `POST /projects/:projectId/operational-shifts/:reportId/close`;
 - `GET /projects/:projectId/frequency`.
 

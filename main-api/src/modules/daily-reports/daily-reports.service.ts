@@ -11,10 +11,12 @@ import type {
   FrequencyListQuery,
   OperationalInterferenceCommand,
   OperationalRdoCommand,
+  OperationalStatusEventCommand,
   OperationalShiftCloseCommand,
   OperationalShiftStartCommand,
 } from "./daily-reports.dto";
 import {
+  appendOperationalStatusEventHandler,
   confirmOperationalInterferenceHandler,
   createOperationalInterferenceHandler,
   createProjectDailyReportHandler,
@@ -24,6 +26,7 @@ import {
   findProjectDailyReportContextHandler,
   findProjectDailyReportHandler,
   findProjectDailyReportStateHandler,
+  initializeOperationalStatusEventsHandler,
   latestMachineReadingHandler,
   listProjectFrequencyHandler,
   listProjectDailyReportsHandler,
@@ -197,6 +200,7 @@ export class DailyReportsService {
       executedActivities: "",
       interferences: null,
       startedAt,
+      liveStatus: "WORKING",
       schedulePeriods: options.defaults.schedulePeriods,
       technicalResponsibilities: technicalIds.map((employmentId) => ({
         employmentId,
@@ -218,6 +222,7 @@ export class DailyReportsService {
           absenceReason: item.absenceReason,
           checkInAt: item.status === "present" ? startedAt : null,
           overtimeConfirmed: false,
+          liveStatus: item.status === "present" ? "WORKING" : "STOPPED",
         };
       }),
       machines: command.machines.map((item) => {
@@ -240,20 +245,147 @@ export class DailyReportsService {
           endMeterReadingValue: machine.startMeterReading.value,
           operationalCondition: item.condition === "fit" ? "FIT" : "UNFIT",
           conditionNote: item.conditionNote,
+          liveStatus: item.condition === "fit" ? "WORKING" : "UNFIT",
         };
       }),
     };
     try {
-      const record = await createProjectDailyReportHandler(
-        this.context,
-        scope,
-        projectId,
-        data,
-      );
-      return toDetailDto(record);
+      return await this.context.transaction(async (transactionContext) => {
+        const record = await createProjectDailyReportHandler(
+          transactionContext,
+          scope,
+          projectId,
+          data,
+        );
+        await initializeOperationalStatusEventsHandler(
+          transactionContext,
+          scope,
+          projectId,
+          record.id,
+          startedAt,
+        );
+        const initialized = await findProjectDailyReportHandler(
+          transactionContext,
+          scope,
+          projectId,
+          record.id,
+        );
+        if (!initialized) throw notFound();
+        return toDetailDto(initialized);
+      });
     } catch (error) {
       throw mapUniqueConflict(error);
     }
+  }
+
+  async recordStatusEvent(
+    scope: DailyReportScope,
+    projectId: string,
+    reportId: string,
+    command: OperationalStatusEventCommand,
+  ) {
+    return runSerializableWithRetry(() =>
+      this.context.transaction(
+        async (transactionContext) => {
+          await lockProjectDailyReportHandler(
+            transactionContext,
+            scope,
+            projectId,
+            reportId,
+          );
+          const record = await findProjectDailyReportHandler(
+            transactionContext,
+            scope,
+            projectId,
+            reportId,
+          );
+          if (!record) throw notFound();
+          if (record.status !== "DRAFT" || !record.startedAt) throw immutable();
+          const occurredAt = new Date();
+
+          let transition:
+            | Parameters<typeof appendOperationalStatusEventHandler>[4]
+            | null = null;
+          if (command.type === "shift") {
+            const current = record.liveStatus ?? "WORKING";
+            const next = command.status.toUpperCase() as "WORKING" | "PAUSED";
+            if (current === next) throw statusConflict("shift");
+            if (
+              next === "PAUSED" &&
+              record.statusEvents.filter(
+                (event) =>
+                  event.type === "SHIFT" && event.toStatus === "PAUSED",
+              ).length >= 6
+            )
+              throw statusConflict("break-limit");
+            transition = {
+              type: "SHIFT",
+              fromStatus: current,
+              toStatus: next,
+              occurredAt,
+            };
+          } else if (command.type === "employee") {
+            const entry = record.employeeEntries.find(
+              (item) => item.employmentId === command.employmentId,
+            );
+            if (!entry) throw resourceUnavailable("employee");
+            if (entry.attendanceStatus === "ABSENT")
+              throw statusConflict("absent-employee");
+            const current = entry.liveStatus ?? "WORKING";
+            const next = command.status.toUpperCase() as
+              | "WORKING"
+              | "STOPPED"
+              | "UNFIT";
+            if (current === next) throw statusConflict("employee");
+            transition = {
+              type: "EMPLOYEE",
+              entryId: entry.id,
+              fromStatus: current,
+              toStatus: next,
+              occurredAt,
+            };
+          } else {
+            const entry = record.machineEntries.find(
+              (item) => item.machineId === command.machineId,
+            );
+            if (!entry) throw resourceUnavailable("machine");
+            if (entry.operationalCondition === "UNFIT")
+              throw statusConflict("unfit-machine");
+            const current = entry.liveStatus ?? "WORKING";
+            const next = command.status.toUpperCase() as
+              | "WORKING"
+              | "STOPPED"
+              | "MAINTENANCE";
+            if (current === next || current === "UNFIT")
+              throw statusConflict("machine");
+            transition = {
+              type: "MACHINE",
+              entryId: entry.id,
+              fromStatus: current,
+              toStatus: next,
+              occurredAt,
+            };
+          }
+          const changed = await appendOperationalStatusEventHandler(
+            transactionContext,
+            scope,
+            projectId,
+            reportId,
+            transition,
+          );
+          if (!changed) throw statusConflict("concurrent-transition");
+          const updated = await findProjectDailyReportHandler(
+            transactionContext,
+            scope,
+            projectId,
+            reportId,
+          );
+          if (!updated) throw notFound();
+          return toDetailDto(updated);
+        },
+        { isolationLevel: "Serializable" },
+      ),
+    );
   }
 
   async saveOperationalRdo(
@@ -384,11 +516,29 @@ export class DailyReportsService {
             command.employees.map((item) => [item.employmentId, item]),
           );
           const endedAt = new Date(command.endedAt);
+          const latestEventAt = record.statusEvents.at(-1)?.occurredAt;
           if (
             endedAt < record.startedAt ||
+            (latestEventAt && endedAt < latestEventAt) ||
             endedAt.getTime() > Date.now() + 60_000
           )
             throw incomplete("shift-end");
+          const liveBreaks = liveBreakIntervals(record.statusEvents, endedAt);
+          if (record.liveStatus === "PAUSED") {
+            const resumed = await appendOperationalStatusEventHandler(
+              transactionContext,
+              scope,
+              projectId,
+              reportId,
+              {
+                type: "SHIFT",
+                fromStatus: "PAUSED",
+                toStatus: "WORKING",
+                occurredAt: endedAt,
+              },
+            );
+            if (!resumed) throw statusConflict("concurrent-transition");
+          }
           for (const entry of record.employeeEntries) {
             const item = employeeCommands.get(entry.employmentId);
             if (!item) throw incomplete("employees");
@@ -407,8 +557,7 @@ export class DailyReportsService {
               ? record.startedAt
               : submittedStart &&
                   submittedStart < record.startedAt &&
-                  record.startedAt.getTime() - submittedStart.getTime() <
-                    60_000
+                  record.startedAt.getTime() - submittedStart.getTime() < 60_000
                 ? record.startedAt
                 : submittedStart;
             const end = fixedAttendance
@@ -417,7 +566,16 @@ export class DailyReportsService {
                 ? new Date(item.checkOutAt)
                 : null;
             const breaks =
-              entry.attendanceStatus === "PRESENT" ? item.breaks : [];
+              entry.attendanceStatus === "PRESENT"
+                ? mergeBreakIntervals([
+                    ...item.breaks.map((value) => ({
+                      startAt: new Date(value.startAt),
+                      endAt: new Date(value.endAt),
+                    })),
+                    ...liveBreaks,
+                  ])
+                : [];
+            if (breaks.length > 6) throw incomplete("employee-breaks");
             if (
               (start && end && end <= start) ||
               (start && start < record.startedAt) ||
@@ -444,10 +602,7 @@ export class DailyReportsService {
               )
                 throw incomplete("employee-breaks");
             }
-            const breakIntervals = breaks.map((current) => ({
-              startAt: new Date(current.startAt),
-              endAt: new Date(current.endAt),
-            }));
+            const breakIntervals = breaks;
             const breakMinutes =
               start && end ? overlapMinutes(breakIntervals, start, end) : 0;
             const worked =
@@ -494,10 +649,7 @@ export class DailyReportsService {
                 overtimeConfirmed: entry.overtimeEnabled
                   ? item.overtimeConfirmed
                   : true,
-                breaks: breaks.map((value) => ({
-                  startAt: new Date(value.startAt),
-                  endAt: new Date(value.endAt),
-                })),
+                breaks,
               },
             );
           }
@@ -1270,12 +1422,25 @@ export class DailyReportsService {
 }
 
 function toDetailDto(record: DailyReportRecord) {
+  const latestShiftEvent = [...record.statusEvents]
+    .reverse()
+    .find((event) => event.type === "SHIFT");
   return {
     id: record.id,
     projectId: record.projectId,
     reportDate: civilDate(record.reportDate),
     shift: record.shift.toLowerCase(),
     status: record.status.toLowerCase(),
+    liveState: record.liveStatus
+      ? {
+          status: record.liveStatus.toLowerCase(),
+          changedAt:
+            latestShiftEvent?.occurredAt.toISOString() ??
+            record.startedAt?.toISOString() ??
+            null,
+          changedBy: latestShiftEvent?.actor.email ?? null,
+        }
+      : null,
     project: {
       name: record.projectNameSnapshot,
       municipality: record.municipalitySnapshot,
@@ -1310,46 +1475,80 @@ function toDetailDto(record: DailyReportRecord) {
       dailyMm: record.dailyRainfallMm.toFixed(2),
       monthlyMm: record.monthlyRainfallMm.toFixed(2),
     },
-    employees: record.employeeEntries.map((item) => ({
-      employmentId: item.employmentId,
-      name: item.employeeNameSnapshot,
-      jobRole: item.jobRoleSnapshot,
-      completedFullShift: item.completedFullShift,
-      regularWorkedMinutes: item.regularWorkedMinutes,
-      overtimeMinutes: item.overtimeMinutes,
-      overtimeEnabled: item.overtimeEnabled,
-      attendanceStatus: item.attendanceStatus.toLowerCase(),
-      absenceReason: item.absenceReason,
-      checkInAt: item.checkInAt?.toISOString() ?? null,
-      checkOutAt: item.checkOutAt?.toISOString() ?? null,
-      overtimeConfirmed: item.overtimeConfirmed,
-      breaks: item.breaks.map((value) => ({
-        startAt: value.startAt.toISOString(),
-        endAt: value.endAt.toISOString(),
-      })),
-    })),
-    machines: record.machineEntries.map((item) => ({
-      machineId: item.machineId,
-      name: item.machineNameSnapshot,
-      manufacturer: item.manufacturerSnapshot,
-      model: item.modelSnapshot,
-      meterType: item.meterTypeSnapshot.toLowerCase(),
-      identifier: item.identifierValueSnapshot
-        ? {
-            kind: item.identifierKindSnapshot!.toLowerCase(),
-            value: item.identifierValueSnapshot,
-          }
-        : null,
-      startMeterReading: {
-        id: item.startMeterReadingId,
-        value: item.startMeterReadingValue.toFixed(2),
-      },
-      endMeterReading: {
-        id: item.endMeterReadingId,
-        value: item.endMeterReadingValue.toFixed(2),
-      },
-      operationalCondition: item.operationalCondition.toLowerCase(),
-      conditionNote: item.conditionNote,
+    employees: record.employeeEntries.map((item) => {
+      const event = [...record.statusEvents]
+        .reverse()
+        .find((candidate) => candidate.employeeEntryId === item.id);
+      return {
+        employmentId: item.employmentId,
+        name: item.employeeNameSnapshot,
+        jobRole: item.jobRoleSnapshot,
+        completedFullShift: item.completedFullShift,
+        regularWorkedMinutes: item.regularWorkedMinutes,
+        overtimeMinutes: item.overtimeMinutes,
+        overtimeEnabled: item.overtimeEnabled,
+        attendanceStatus: item.attendanceStatus.toLowerCase(),
+        absenceReason: item.absenceReason,
+        checkInAt: item.checkInAt?.toISOString() ?? null,
+        checkOutAt: item.checkOutAt?.toISOString() ?? null,
+        overtimeConfirmed: item.overtimeConfirmed,
+        liveState: item.liveStatus
+          ? {
+              status: item.liveStatus.toLowerCase(),
+              changedAt:
+                event?.occurredAt.toISOString() ??
+                record.startedAt?.toISOString() ??
+                null,
+              changedBy: event?.actor.email ?? null,
+            }
+          : null,
+        breaks: item.breaks.map((value) => ({
+          startAt: value.startAt.toISOString(),
+          endAt: value.endAt.toISOString(),
+        })),
+      };
+    }),
+    machines: record.machineEntries.map((item) => {
+      const event = [...record.statusEvents]
+        .reverse()
+        .find((candidate) => candidate.machineEntryId === item.id);
+      return {
+        machineId: item.machineId,
+        name: item.machineNameSnapshot,
+        manufacturer: item.manufacturerSnapshot,
+        model: item.modelSnapshot,
+        meterType: item.meterTypeSnapshot.toLowerCase(),
+        identifier: item.identifierValueSnapshot
+          ? {
+              kind: item.identifierKindSnapshot!.toLowerCase(),
+              value: item.identifierValueSnapshot,
+            }
+          : null,
+        startMeterReading: {
+          id: item.startMeterReadingId,
+          value: item.startMeterReadingValue.toFixed(2),
+        },
+        endMeterReading: {
+          id: item.endMeterReadingId,
+          value: item.endMeterReadingValue.toFixed(2),
+        },
+        operationalCondition: item.operationalCondition.toLowerCase(),
+        conditionNote: item.conditionNote,
+        liveState: item.liveStatus
+          ? {
+              status: item.liveStatus.toLowerCase(),
+              changedAt:
+                event?.occurredAt.toISOString() ??
+                record.startedAt?.toISOString() ??
+                null,
+              changedBy: event?.actor.email ?? null,
+            }
+          : null,
+      };
+    }),
+    liveBreaks: liveBreakIntervals(record.statusEvents).map((item) => ({
+      startAt: item.startAt.toISOString(),
+      endAt: item.endAt?.toISOString() ?? null,
     })),
     executedActivities: record.executedActivities,
     interferences: record.interferences,
@@ -1524,6 +1723,48 @@ function overlapMinutes(
   }, 0);
 }
 
+type ShiftStatusEvent = {
+  type: string;
+  toStatus: string;
+  occurredAt: Date;
+};
+
+function liveBreakIntervals(
+  events: ShiftStatusEvent[],
+  closeAt: Date,
+): Array<{ startAt: Date; endAt: Date }>;
+function liveBreakIntervals(
+  events: ShiftStatusEvent[],
+): Array<{ startAt: Date; endAt: Date | null }>;
+function liveBreakIntervals(events: ShiftStatusEvent[], closeAt?: Date) {
+  const intervals: Array<{ startAt: Date; endAt: Date | null }> = [];
+  let openStart: Date | null = null;
+  for (const event of events) {
+    if (event.type !== "SHIFT") continue;
+    if (event.toStatus === "PAUSED" && !openStart) openStart = event.occurredAt;
+    if (event.toStatus === "WORKING" && openStart) {
+      intervals.push({ startAt: openStart, endAt: event.occurredAt });
+      openStart = null;
+    }
+  }
+  if (openStart) intervals.push({ startAt: openStart, endAt: closeAt ?? null });
+  return intervals;
+}
+
+function mergeBreakIntervals(intervals: Array<{ startAt: Date; endAt: Date }>) {
+  const ordered = [...intervals].sort(
+    (left, right) => left.startAt.getTime() - right.startAt.getTime(),
+  );
+  const merged: Array<{ startAt: Date; endAt: Date }> = [];
+  for (const interval of ordered) {
+    const previous = merged.at(-1);
+    if (previous && interval.startAt <= previous.endAt) {
+      if (interval.endAt > previous.endAt) previous.endAt = interval.endAt;
+    } else merged.push({ ...interval });
+  }
+  return merged;
+}
+
 function normalizeDecimal(value: string) {
   const [integer, fraction = ""] = value.split(".");
   return `${BigInt(integer!).toString()}.${fraction.padEnd(2, "0").slice(0, 2)}`;
@@ -1575,6 +1816,15 @@ function resourceUnavailable(resource: string) {
   return new AppError({
     code: "DAILY_REPORT_RESOURCE_UNAVAILABLE",
     message: "Daily report resource is unavailable",
+    statusCode: 409,
+    data: { resource },
+  });
+}
+
+function statusConflict(resource: string) {
+  return new AppError({
+    code: "OPERATIONAL_STATUS_CONFLICT",
+    message: "Operational status transition is not available",
     statusCode: 409,
     data: { resource },
   });

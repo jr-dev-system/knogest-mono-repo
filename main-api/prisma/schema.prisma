@@ -154,6 +154,30 @@ enum ProjectDailyReportInterferenceCategory {
   @@map("project_daily_report_interference_category")
 }
 
+enum ProjectDailyReportLiveStatus {
+  WORKING
+  PAUSED
+
+  @@map("project_daily_report_live_status")
+}
+
+enum ProjectDailyReportResourceStatus {
+  WORKING
+  STOPPED
+  MAINTENANCE
+  UNFIT
+
+  @@map("project_daily_report_resource_status")
+}
+
+enum ProjectDailyReportStatusEventType {
+  SHIFT
+  EMPLOYEE
+  MACHINE
+
+  @@map("project_daily_report_status_event_type")
+}
+
 enum ProjectProductionStatus {
   DRAFT
   SUBMITTED
@@ -420,6 +444,7 @@ model User {
   createdProjectDailyReports            ProjectDailyReport[]                 @relation("ProjectDailyReportCreatedBy")
   finalizedProjectDailyReports          ProjectDailyReport[]                 @relation("ProjectDailyReportFinalizedBy")
   confirmedDailyReportInterferences     ProjectDailyReportInterference[]     @relation("ProjectDailyReportInterferenceConfirmedBy")
+  dailyReportStatusEvents               ProjectDailyReportStatusEvent[]      @relation("ProjectDailyReportStatusEventActor")
   createdProjectEmployeeAllocations     ProjectEmployeeAllocation[]          @relation("ProjectEmployeeAllocationCreatedBy")
   endedProjectEmployeeAllocations       ProjectEmployeeAllocation[]          @relation("ProjectEmployeeAllocationEndedBy")
   createdProjectMachineAllocations      ProjectMachineAllocation[]           @relation("ProjectMachineAllocationCreatedBy")
@@ -1549,6 +1574,7 @@ model ProjectDailyReport {
   executedActivities        String                                      @map("executed_activities") @db.Text
   interferences             String?                                     @db.Text
   startedAt                 DateTime?                                   @map("started_at") @db.Timestamptz(3)
+  liveStatus                ProjectDailyReportLiveStatus?               @map("live_status")
   earlyClosureReason        String?                                     @map("early_closure_reason") @db.VarChar(500)
   createdByUserId           String                                      @map("created_by_user_id") @db.Uuid
   finalizedByUserId         String?                                     @map("finalized_by_user_id") @db.Uuid
@@ -1564,6 +1590,7 @@ model ProjectDailyReport {
   employeeEntries           ProjectDailyReportEmployee[]
   machineEntries            ProjectDailyReportMachine[]
   interferenceEntries       ProjectDailyReportInterference[]
+  statusEvents              ProjectDailyReportStatusEvent[]
 
   @@unique([corporationId, companyId, projectId, id], map: "pdr_scope_id_uq")
   @@unique([corporationId, companyId, projectId, reportDate, shift], map: "pdr_project_date_shift_uq")
@@ -1625,9 +1652,11 @@ model ProjectDailyReportEmployee {
   checkOutAt           DateTime?                          @map("check_out_at") @db.Timestamptz(3)
   overtimeConfirmed    Boolean                            @default(false) @map("overtime_confirmed")
   overtimeEnabled      Boolean                            @default(true) @map("overtime_enabled")
+  liveStatus           ProjectDailyReportResourceStatus?  @map("live_status")
   dailyReport          ProjectDailyReport                 @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdre_report_fkey")
   employment           Employment                         @relation("ProjectDailyReportEmployeeEmployment", fields: [corporationId, companyId, employmentId], references: [corporationId, companyId, id], onDelete: Restrict, map: "pdre_employment_fkey")
   breaks               ProjectDailyReportEmployeeBreak[]
+  statusEvents         ProjectDailyReportStatusEvent[]
 
   @@unique([dailyReportId, employmentId], map: "project_daily_report_employees_report_employment_key")
   @@index([corporationId, companyId, projectId, employmentId, dailyReportId], map: "project_daily_report_employees_scope_idx")
@@ -1653,10 +1682,12 @@ model ProjectDailyReportMachine {
   endMeterReadingValue    Decimal                            @map("end_meter_reading_value") @db.Decimal(14, 2)
   operationalCondition    ProjectDailyReportMachineCondition @default(FIT) @map("operational_condition")
   conditionNote           String?                            @map("condition_note") @db.VarChar(500)
+  liveStatus              ProjectDailyReportResourceStatus?  @map("live_status")
   dailyReport             ProjectDailyReport                 @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdrm_report_fkey")
   machine                 Machine                            @relation(fields: [corporationId, machineId], references: [corporationId, id], onDelete: Restrict, map: "pdrm_machine_fkey")
   startMeterReading       MachineMeterReading                @relation("ProjectDailyReportMachineStartReading", fields: [corporationId, companyId, machineId, startMeterReadingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "pdrm_start_reading_fkey")
   endMeterReading         MachineMeterReading?               @relation("ProjectDailyReportMachineEndReading", fields: [corporationId, companyId, machineId, endMeterReadingId], references: [corporationId, companyId, machineId, id], onDelete: Restrict, map: "pdrm_end_reading_fkey")
+  statusEvents            ProjectDailyReportStatusEvent[]
 
   @@unique([dailyReportId, machineId], map: "project_daily_report_machines_report_machine_key")
   @@index([corporationId, companyId, projectId, machineId, dailyReportId], map: "project_daily_report_machines_scope_idx")
@@ -1700,6 +1731,31 @@ model ProjectDailyReportInterference {
 
   @@index([corporationId, companyId, projectId, dailyReportId, startedAt, id], map: "pdri_scope_started_idx")
   @@map("project_daily_report_interferences")
+}
+
+model ProjectDailyReportStatusEvent {
+  id              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  corporationId   String                            @map("corporation_id") @db.Uuid
+  companyId       String                            @map("company_id") @db.Uuid
+  projectId       String                            @map("project_id") @db.Uuid
+  dailyReportId   String                            @map("daily_report_id") @db.Uuid
+  employeeEntryId String?                           @map("employee_entry_id") @db.Uuid
+  machineEntryId  String?                           @map("machine_entry_id") @db.Uuid
+  type            ProjectDailyReportStatusEventType
+  fromStatus      String?                           @map("from_status") @db.VarChar(20)
+  toStatus        String                            @map("to_status") @db.VarChar(20)
+  occurredAt      DateTime                          @map("occurred_at") @db.Timestamptz(3)
+  actorUserId     String                            @map("actor_user_id") @db.Uuid
+  createdAt       DateTime                          @default(now()) @map("created_at") @db.Timestamptz(3)
+  dailyReport     ProjectDailyReport                @relation(fields: [corporationId, companyId, projectId, dailyReportId], references: [corporationId, companyId, projectId, id], onDelete: Cascade, map: "pdrse_report_fkey")
+  employeeEntry   ProjectDailyReportEmployee?       @relation(fields: [employeeEntryId], references: [id], onDelete: Cascade, map: "pdrse_employee_fkey")
+  machineEntry    ProjectDailyReportMachine?        @relation(fields: [machineEntryId], references: [id], onDelete: Cascade, map: "pdrse_machine_fkey")
+  actor           User                              @relation("ProjectDailyReportStatusEventActor", fields: [corporationId, actorUserId], references: [corporationId, id], onDelete: Restrict, map: "pdrse_actor_fkey")
+
+  @@index([corporationId, companyId, projectId, dailyReportId, occurredAt, id], map: "pdrse_report_occurred_idx")
+  @@index([dailyReportId, employeeEntryId, occurredAt, id], map: "pdrse_employee_occurred_idx")
+  @@index([dailyReportId, machineEntryId, occurredAt, id], map: "pdrse_machine_occurred_idx")
+  @@map("project_daily_report_status_events")
 }
 
 model ProjectProduction {

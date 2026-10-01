@@ -19,6 +19,7 @@ import {
   operationalInterferenceCommandSchema,
   operationalReportParamsSchema,
   operationalRdoCommandSchema,
+  operationalStatusEventCommandSchema,
   operationalShiftCloseSchema,
   operationalShiftStartSchema,
 } from "./daily-reports.dto";
@@ -39,26 +40,105 @@ const status = { type: "string", enum: ["draft", "finalized"] } as const;
 const dateTime = { type: "string", format: "date-time" } as const;
 
 const operationalStartSchema = {
-  type: "object", additionalProperties: false,
+  type: "object",
+  additionalProperties: false,
   required: ["startedAt", "employees", "machines"],
   properties: {
     startedAt: dateTime,
-    employees: { type: "array", items: { type: "object", additionalProperties: false, required: ["employmentId", "status"], properties: { employmentId: uuid, status: { type: "string", enum: ["present", "absent"] }, absenceReason: nullableString } } },
-    machines: { type: "array", items: { type: "object", additionalProperties: false, required: ["machineId", "condition"], properties: { machineId: uuid, condition: { type: "string", enum: ["fit", "unfit"] }, conditionNote: nullableString } } },
+    employees: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["employmentId", "status"],
+        properties: {
+          employmentId: uuid,
+          status: { type: "string", enum: ["present", "absent"] },
+          absenceReason: nullableString,
+        },
+      },
+    },
+    machines: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["machineId", "condition"],
+        properties: {
+          machineId: uuid,
+          condition: { type: "string", enum: ["fit", "unfit"] },
+          conditionNote: nullableString,
+        },
+      },
+    },
   },
 } as const;
 
 const operationalInterferenceSchema = {
-  type: "object", additionalProperties: false,
+  type: "object",
+  additionalProperties: false,
   required: ["category", "description", "impact", "startedAt"],
-  properties: { category: { type: "string", enum: ["weather", "crew", "equipment", "material_logistics", "external", "safety", "other"] }, description: { type: "string" }, impact: { type: "string" }, startedAt: dateTime, endedAt: { ...dateTime, nullable: true } },
+  properties: {
+    category: {
+      type: "string",
+      enum: [
+        "weather",
+        "crew",
+        "equipment",
+        "material_logistics",
+        "external",
+        "safety",
+        "other",
+      ],
+    },
+    description: { type: "string" },
+    impact: { type: "string" },
+    startedAt: dateTime,
+    endedAt: { ...dateTime, nullable: true },
+  },
+} as const;
+
+const operationalStatusEventSchema = {
+  oneOf: [
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["type", "status"],
+      properties: {
+        type: { type: "string", const: "shift" },
+        status: { type: "string", enum: ["working", "paused"] },
+      },
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["type", "employmentId", "status"],
+      properties: {
+        type: { type: "string", const: "employee" },
+        employmentId: uuid,
+        status: { type: "string", enum: ["working", "stopped", "unfit"] },
+      },
+    },
+    {
+      type: "object",
+      additionalProperties: false,
+      required: ["type", "machineId", "status"],
+      properties: {
+        type: { type: "string", const: "machine" },
+        machineId: uuid,
+        status: { type: "string", enum: ["working", "stopped", "maintenance"] },
+      },
+    },
+  ],
 } as const;
 
 const operationalCloseSchema = {
-  type: "object", additionalProperties: false,
+  type: "object",
+  additionalProperties: false,
   required: ["endedAt", "employees", "machines"],
   properties: {
-    endedAt: dateTime, earlyClosureReason: nullableString,
+    endedAt: dateTime,
+    earlyClosureReason: nullableString,
     activityNotes: { type: "string", nullable: true, maxLength: 10_000 },
     fallbackClimateConditions: {
       type: "array",
@@ -66,8 +146,47 @@ const operationalCloseSchema = {
       uniqueItems: true,
       items: { type: "string", enum: ["rain", "dry", "waterlogged_soil"] },
     },
-    employees: { type: "array", items: { type: "object", additionalProperties: false, required: ["employmentId", "checkInAt", "checkOutAt", "breaks", "overtimeConfirmed"], properties: { employmentId: uuid, checkInAt: { ...dateTime, nullable: true }, checkOutAt: { ...dateTime, nullable: true }, overtimeConfirmed: { type: "boolean" }, breaks: { type: "array", items: { type: "object", additionalProperties: false, required: ["startAt", "endAt"], properties: { startAt: dateTime, endAt: dateTime } } } } } },
-    machines: { type: "array", items: { type: "object", additionalProperties: false, required: ["machineId", "endMeterReadingValue"], properties: { machineId: uuid, endMeterReadingValue: { ...decimal, nullable: true } } } },
+    employees: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: [
+          "employmentId",
+          "checkInAt",
+          "checkOutAt",
+          "breaks",
+          "overtimeConfirmed",
+        ],
+        properties: {
+          employmentId: uuid,
+          checkInAt: { ...dateTime, nullable: true },
+          checkOutAt: { ...dateTime, nullable: true },
+          overtimeConfirmed: { type: "boolean" },
+          breaks: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["startAt", "endAt"],
+              properties: { startAt: dateTime, endAt: dateTime },
+            },
+          },
+        },
+      },
+    },
+    machines: {
+      type: "array",
+      items: {
+        type: "object",
+        additionalProperties: false,
+        required: ["machineId", "endMeterReadingValue"],
+        properties: {
+          machineId: uuid,
+          endMeterReadingValue: { ...decimal, nullable: true },
+        },
+      },
+    },
   },
 } as const;
 
@@ -113,7 +232,11 @@ const operationalDayResponseSchema = {
               },
             },
           },
-          report: { type: "object", nullable: true, additionalProperties: true },
+          report: {
+            type: "object",
+            nullable: true,
+            additionalProperties: true,
+          },
         },
       },
     },
@@ -263,18 +386,33 @@ const dailyReportCommandOpenApiSchema = {
 const operationalRdoSchema = {
   type: "object",
   additionalProperties: false,
-  required: ["schedulePeriods", "activityStartTime", "activityEndTime", "activityEndDayOffset", "activityTypes", "climateConditions", "dailyRainfallMm", "monthlyRainfallMm", "supervisorEmploymentId", "technicalResponsibilityEmploymentIds", "executedActivities"],
+  required: [
+    "schedulePeriods",
+    "activityStartTime",
+    "activityEndTime",
+    "activityEndDayOffset",
+    "activityTypes",
+    "climateConditions",
+    "dailyRainfallMm",
+    "monthlyRainfallMm",
+    "supervisorEmploymentId",
+    "technicalResponsibilityEmploymentIds",
+    "executedActivities",
+  ],
   properties: {
     schedulePeriods: dailyReportCommandOpenApiSchema.properties.schedulePeriods,
     activityStartTime: time,
     activityEndTime: time,
     activityEndDayOffset: { type: "integer", minimum: 0, maximum: 1 },
     activityTypes: dailyReportCommandOpenApiSchema.properties.activityTypes,
-    climateConditions: dailyReportCommandOpenApiSchema.properties.climateConditions,
+    climateConditions:
+      dailyReportCommandOpenApiSchema.properties.climateConditions,
     dailyRainfallMm: decimal,
     monthlyRainfallMm: decimal,
     supervisorEmploymentId: uuid,
-    technicalResponsibilityEmploymentIds: dailyReportCommandOpenApiSchema.properties.technicalResponsibilityEmploymentIds,
+    technicalResponsibilityEmploymentIds:
+      dailyReportCommandOpenApiSchema.properties
+        .technicalResponsibilityEmploymentIds,
     executedActivities: { type: "string", minLength: 1, maxLength: 10000 },
   },
 } as const;
@@ -636,62 +774,330 @@ const commonErrors = {
 export const v1DailyReportsController = async (app: FastifyInstance) => {
   const service = new DailyReportsService(app.handlerContext);
 
-  app.get("/projects/:projectId/operational-days/:reportDate", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalDayParamsSchema)],
-    schema: { tags: ["Project operations"], summary: "Get the operational command center for a project day", security: [{ bearerAuth: [] }], params: { type: "object", additionalProperties: false, required: ["projectId", "reportDate"], properties: { projectId: uuid, reportDate: { type: "string", format: "date" } } }, response: { 200: successSchema(operationalDayResponseSchema), ...commonErrors } },
-  }, async (request, reply) => {
-    const { projectId, reportDate } = request.params as z.infer<typeof operationalDayParamsSchema>;
-    return jsonResponse.success({ reply, data: await service.operationalDay(scopeFromRequest(request), projectId, reportDate) });
-  });
+  app.get(
+    "/projects/:projectId/operational-days/:reportDate",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(operationalDayParamsSchema),
+      ],
+      schema: {
+        tags: ["Project operations"],
+        summary: "Get the operational command center for a project day",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["projectId", "reportDate"],
+          properties: {
+            projectId: uuid,
+            reportDate: { type: "string", format: "date" },
+          },
+        },
+        response: {
+          200: successSchema(operationalDayResponseSchema),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId, reportDate } = request.params as z.infer<
+        typeof operationalDayParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        data: await service.operationalDay(
+          scopeFromRequest(request),
+          projectId,
+          reportDate,
+        ),
+      });
+    },
+  );
 
-  app.post("/projects/:projectId/operational-days/:reportDate/shifts/:shift/start", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalDayParamsSchema), validateBody(operationalShiftStartSchema)],
-    schema: { tags: ["Project operations"], summary: "Start an operational shift and its RDO draft", security: [{ bearerAuth: [] }], params: { type: "object", additionalProperties: false, required: ["projectId", "reportDate", "shift"], properties: { projectId: uuid, reportDate: { type: "string", format: "date" }, shift } }, body: operationalStartSchema, response: { 201: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
-  }, async (request, reply) => {
-    const { projectId, reportDate, shift: selectedShift } = request.params as z.infer<typeof operationalDayParamsSchema>;
-    const data = await service.startOperationalShift(scopeFromRequest(request), projectId, reportDate, selectedShift!, request.body as z.infer<typeof operationalShiftStartSchema>);
-    return jsonResponse.success({ reply, data, statusCode: 201 });
-  });
+  app.post(
+    "/projects/:projectId/operational-days/:reportDate/shifts/:shift/start",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(operationalDayParamsSchema),
+        validateBody(operationalShiftStartSchema),
+      ],
+      schema: {
+        tags: ["Project operations"],
+        summary: "Start an operational shift and its RDO draft",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["projectId", "reportDate", "shift"],
+          properties: {
+            projectId: uuid,
+            reportDate: { type: "string", format: "date" },
+            shift,
+          },
+        },
+        body: operationalStartSchema,
+        response: {
+          201: successSchema({ type: "object", additionalProperties: true }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const {
+        projectId,
+        reportDate,
+        shift: selectedShift,
+      } = request.params as z.infer<typeof operationalDayParamsSchema>;
+      const data = await service.startOperationalShift(
+        scopeFromRequest(request),
+        projectId,
+        reportDate,
+        selectedShift!,
+        request.body as z.infer<typeof operationalShiftStartSchema>,
+      );
+      return jsonResponse.success({ reply, data, statusCode: 201 });
+    },
+  );
 
-  app.put("/projects/:projectId/operational-shifts/:reportId/rdo", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalReportParamsSchema), validateBody(operationalRdoCommandSchema)],
-    schema: { tags: ["Project operations"], summary: "Save RDO answers for an open shift", security: [{ bearerAuth: [] }], params: reportParamsSchema, body: operationalRdoSchema, response: { 200: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
-  }, async (request, reply) => {
-    const { projectId, reportId } = request.params as z.infer<typeof operationalReportParamsSchema>;
-    return jsonResponse.success({ reply, data: await service.saveOperationalRdo(scopeFromRequest(request), projectId, reportId, request.body as z.infer<typeof operationalRdoCommandSchema>) });
-  });
+  app.put(
+    "/projects/:projectId/operational-shifts/:reportId/rdo",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(operationalReportParamsSchema),
+        validateBody(operationalRdoCommandSchema),
+      ],
+      schema: {
+        tags: ["Project operations"],
+        summary: "Save RDO answers for an open shift",
+        security: [{ bearerAuth: [] }],
+        params: reportParamsSchema,
+        body: operationalRdoSchema,
+        response: {
+          200: successSchema({ type: "object", additionalProperties: true }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId, reportId } = request.params as z.infer<
+        typeof operationalReportParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        data: await service.saveOperationalRdo(
+          scopeFromRequest(request),
+          projectId,
+          reportId,
+          request.body as z.infer<typeof operationalRdoCommandSchema>,
+        ),
+      });
+    },
+  );
 
-  app.post("/projects/:projectId/operational-shifts/:reportId/interferences", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalReportParamsSchema), validateBody(operationalInterferenceCommandSchema)],
-    schema: { tags: ["Project operations"], summary: "Record an interference during an open shift", security: [{ bearerAuth: [] }], params: reportParamsSchema, body: operationalInterferenceSchema, response: { 201: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
-  }, async (request, reply) => {
-    const { projectId, reportId } = request.params as z.infer<typeof operationalReportParamsSchema>;
-    return jsonResponse.success({ reply, statusCode: 201, data: await service.addInterference(scopeFromRequest(request), projectId, reportId, request.body as z.infer<typeof operationalInterferenceCommandSchema>) });
-  });
+  app.post(
+    "/projects/:projectId/operational-shifts/:reportId/interferences",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(operationalReportParamsSchema),
+        validateBody(operationalInterferenceCommandSchema),
+      ],
+      schema: {
+        tags: ["Project operations"],
+        summary: "Record an interference during an open shift",
+        security: [{ bearerAuth: [] }],
+        params: reportParamsSchema,
+        body: operationalInterferenceSchema,
+        response: {
+          201: successSchema({ type: "object", additionalProperties: true }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId, reportId } = request.params as z.infer<
+        typeof operationalReportParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        statusCode: 201,
+        data: await service.addInterference(
+          scopeFromRequest(request),
+          projectId,
+          reportId,
+          request.body as z.infer<typeof operationalInterferenceCommandSchema>,
+        ),
+      });
+    },
+  );
 
-  app.post("/projects/:projectId/operational-shifts/:reportId/interferences/:interferenceId/confirm", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalInterferenceParamsSchema)],
-    schema: { tags: ["Project operations"], summary: "Confirm an operational interference", security: [{ bearerAuth: [] }], params: { type: "object", additionalProperties: false, required: ["projectId", "reportId", "interferenceId"], properties: { projectId: uuid, reportId: uuid, interferenceId: uuid } }, response: { 200: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
-  }, async (request, reply) => {
-    const { projectId, reportId, interferenceId } = request.params as z.infer<typeof operationalInterferenceParamsSchema>;
-    return jsonResponse.success({ reply, data: await service.confirmInterference(scopeFromRequest(request), projectId, reportId, interferenceId) });
-  });
+  app.post(
+    "/projects/:projectId/operational-shifts/:reportId/interferences/:interferenceId/confirm",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(operationalInterferenceParamsSchema),
+      ],
+      schema: {
+        tags: ["Project operations"],
+        summary: "Confirm an operational interference",
+        security: [{ bearerAuth: [] }],
+        params: {
+          type: "object",
+          additionalProperties: false,
+          required: ["projectId", "reportId", "interferenceId"],
+          properties: { projectId: uuid, reportId: uuid, interferenceId: uuid },
+        },
+        response: {
+          200: successSchema({ type: "object", additionalProperties: true }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId, reportId, interferenceId } = request.params as z.infer<
+        typeof operationalInterferenceParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        data: await service.confirmInterference(
+          scopeFromRequest(request),
+          projectId,
+          reportId,
+          interferenceId,
+        ),
+      });
+    },
+  );
 
-  app.post("/projects/:projectId/operational-shifts/:reportId/close", {
-    preHandler: [app.requireCompanyScope, validateParams(operationalReportParamsSchema), validateBody(operationalShiftCloseSchema)],
-    schema: { tags: ["Project operations"], summary: "Close a shift and finalize its RDO atomically", security: [{ bearerAuth: [] }], params: reportParamsSchema, body: operationalCloseSchema, response: { 200: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
-  }, async (request, reply) => {
-    const { projectId, reportId } = request.params as z.infer<typeof operationalReportParamsSchema>;
-    return jsonResponse.success({ reply, data: await service.closeOperationalShift(scopeFromRequest(request), projectId, reportId, request.body as z.infer<typeof operationalShiftCloseSchema>) });
-  });
+  app.post(
+    "/projects/:projectId/operational-shifts/:reportId/status-events",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(operationalReportParamsSchema),
+        validateBody(operationalStatusEventCommandSchema),
+      ],
+      schema: {
+        tags: ["Project operations"],
+        summary: "Record an audited operational status transition",
+        security: [{ bearerAuth: [] }],
+        params: reportParamsSchema,
+        body: operationalStatusEventSchema,
+        response: {
+          201: successSchema({ type: "object", additionalProperties: true }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId, reportId } = request.params as z.infer<
+        typeof operationalReportParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        statusCode: 201,
+        data: await service.recordStatusEvent(
+          scopeFromRequest(request),
+          projectId,
+          reportId,
+          request.body as z.infer<typeof operationalStatusEventCommandSchema>,
+        ),
+      });
+    },
+  );
 
-  app.get("/projects/:projectId/frequency", {
-    preHandler: [app.requireCompanyScope, validateParams(dailyReportParamsSchema), validateQuery(frequencyListQuerySchema)],
-    schema: { tags: ["Project operations"], summary: "List finalized employee frequency by shift", security: [{ bearerAuth: [] }], params: projectParamsSchema, querystring: { type: "object", additionalProperties: false, properties: { limit: { type: "integer", minimum: 1, maximum: 100, default: 25 }, cursor: { type: "string" }, shift, sortBy: { type: "string", enum: ["reportDate"], default: "reportDate" }, sortDirection: { type: "string", enum: ["asc", "desc"], default: "desc" } } }, response: { 200: successSchema({ type: "object", additionalProperties: true }), ...commonErrors } },
-  }, async (request, reply) => {
-    const { projectId } = request.params as z.infer<typeof dailyReportParamsSchema>;
-    return jsonResponse.success({ reply, data: await service.frequency(scopeFromRequest(request), projectId, request.query as z.infer<typeof frequencyListQuerySchema>) });
-  });
+  app.post(
+    "/projects/:projectId/operational-shifts/:reportId/close",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(operationalReportParamsSchema),
+        validateBody(operationalShiftCloseSchema),
+      ],
+      schema: {
+        tags: ["Project operations"],
+        summary: "Close a shift and finalize its RDO atomically",
+        security: [{ bearerAuth: [] }],
+        params: reportParamsSchema,
+        body: operationalCloseSchema,
+        response: {
+          200: successSchema({ type: "object", additionalProperties: true }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId, reportId } = request.params as z.infer<
+        typeof operationalReportParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        data: await service.closeOperationalShift(
+          scopeFromRequest(request),
+          projectId,
+          reportId,
+          request.body as z.infer<typeof operationalShiftCloseSchema>,
+        ),
+      });
+    },
+  );
+
+  app.get(
+    "/projects/:projectId/frequency",
+    {
+      preHandler: [
+        app.requireCompanyScope,
+        validateParams(dailyReportParamsSchema),
+        validateQuery(frequencyListQuerySchema),
+      ],
+      schema: {
+        tags: ["Project operations"],
+        summary: "List finalized employee frequency by shift",
+        security: [{ bearerAuth: [] }],
+        params: projectParamsSchema,
+        querystring: {
+          type: "object",
+          additionalProperties: false,
+          properties: {
+            limit: { type: "integer", minimum: 1, maximum: 100, default: 25 },
+            cursor: { type: "string" },
+            shift,
+            sortBy: {
+              type: "string",
+              enum: ["reportDate"],
+              default: "reportDate",
+            },
+            sortDirection: {
+              type: "string",
+              enum: ["asc", "desc"],
+              default: "desc",
+            },
+          },
+        },
+        response: {
+          200: successSchema({ type: "object", additionalProperties: true }),
+          ...commonErrors,
+        },
+      },
+    },
+    async (request, reply) => {
+      const { projectId } = request.params as z.infer<
+        typeof dailyReportParamsSchema
+      >;
+      return jsonResponse.success({
+        reply,
+        data: await service.frequency(
+          scopeFromRequest(request),
+          projectId,
+          request.query as z.infer<typeof frequencyListQuerySchema>,
+        ),
+      });
+    },
+  );
 
   app.get(
     "/projects/:projectId/daily-reports",

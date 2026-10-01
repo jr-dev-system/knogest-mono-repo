@@ -49,6 +49,9 @@ RDO usa `409` para conflitos esperados e mantém códigos públicos estáveis:
   ou impede finalização retroativa.
 - `PROJECT_SHIFT_NOT_ENABLED`: o turno solicitado não está habilitado na obra.
 - `OPERATIONAL_SHIFT_NOT_STARTED`: uma ação operacional exige um turno aberto;
+- `OPERATIONAL_STATUS_CONFLICT`: a transição ao vivo repete o estado atual,
+  excede seis intervalos, tenta alterar recurso somente leitura ou perdeu uma
+  atualização concorrente;
 - `OPERATIONAL_SHIFT_INCOMPLETE`: o início ou fechamento ainda possui um grupo
   obrigatório pendente, identificado em `details.resource`.
 

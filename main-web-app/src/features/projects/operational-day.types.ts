@@ -1,4 +1,27 @@
 export type OperationalShift = "day" | "night";
+export type OperationalResourceStatus = "working" | "stopped" | "unfit";
+export type OperationalMachineStatus =
+  | OperationalResourceStatus
+  | "maintenance";
+
+export type OperationalStatusCommand =
+  | { type: "shift"; status: "working" | "paused" }
+  | {
+      type: "employee";
+      employmentId: string;
+      status: OperationalResourceStatus;
+    }
+  | {
+      type: "machine";
+      machineId: string;
+      status: "working" | "stopped" | "maintenance";
+    };
+
+export type OperationalLiveState<T extends string> = {
+  status: T;
+  changedAt: string | null;
+  changedBy: string | null;
+};
 
 export type OperationalEmployee = {
   employmentId: string;
@@ -13,6 +36,7 @@ export type OperationalEmployee = {
   regularWorkedMinutes?: number;
   overtimeMinutes?: number;
   breaks?: Array<{ startAt: string; endAt: string }>;
+  liveState?: OperationalLiveState<OperationalMachineStatus> | null;
 };
 
 export type OperationalMachine = {
@@ -25,6 +49,7 @@ export type OperationalMachine = {
   endMeterReading?: { id: string | null; value: string };
   operationalCondition?: "fit" | "unfit";
   conditionNote?: string | null;
+  liveState?: OperationalLiveState<OperationalResourceStatus> | null;
 };
 
 export type OperationalReport = {
@@ -33,6 +58,7 @@ export type OperationalReport = {
   shift: OperationalShift;
   startedAt: string | null;
   finalizedAt: string | null;
+  liveState: OperationalLiveState<"working" | "paused"> | null;
   activityWindow: { startTime: string; endTime: string; endDayOffset: number };
   schedulePeriods: Array<{
     startTime: string;
@@ -48,6 +74,7 @@ export type OperationalReport = {
   executedActivities: string;
   employees: OperationalEmployee[];
   machines: OperationalMachine[];
+  liveBreaks: Array<{ startAt: string; endAt: string | null }>;
   interferenceEntries: Array<{
     id: string;
     category: string;

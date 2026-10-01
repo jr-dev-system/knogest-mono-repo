@@ -4,6 +4,7 @@ import {
   dailyReportCommandSchema,
   operationalInterferenceParamsSchema,
   operationalReportParamsSchema,
+  operationalStatusEventCommandSchema,
   operationalShiftCloseSchema,
   operationalShiftStartSchema,
 } from "./daily-reports.dto";
@@ -190,6 +191,46 @@ describe("operational route params", () => {
 });
 
 describe("operational shift commands", () => {
+  it("accepts audited live statuses without a client timestamp", () => {
+    expect(
+      operationalStatusEventCommandSchema.safeParse({
+        type: "shift",
+        status: "paused",
+      }).success,
+    ).toBe(true);
+    expect(
+      operationalStatusEventCommandSchema.safeParse({
+        type: "employee",
+        employmentId: id("1"),
+        status: "unfit",
+      }).success,
+    ).toBe(true);
+    expect(
+      operationalStatusEventCommandSchema.safeParse({
+        type: "machine",
+        machineId: id("2"),
+        status: "maintenance",
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects live machine unfit and client-controlled event times", () => {
+    expect(
+      operationalStatusEventCommandSchema.safeParse({
+        type: "machine",
+        machineId: id("2"),
+        status: "unfit",
+      }).success,
+    ).toBe(false);
+    expect(
+      operationalStatusEventCommandSchema.safeParse({
+        type: "shift",
+        status: "paused",
+        occurredAt: "2026-09-24T12:00:00.000Z",
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts complete start checklists", () => {
     expect(
       operationalShiftStartSchema.safeParse({
