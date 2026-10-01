@@ -570,15 +570,15 @@ function Section({
   title: string;
 }) {
   return (
-    <section className="overflow-hidden rounded-lg border border-border bg-card">
-      <div className="flex flex-wrap items-start justify-between gap-3 border-b border-border bg-secondary/35 px-4 py-4">
+    <section className="overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="flex flex-wrap items-start justify-between gap-4 border-b border-border bg-muted/30 px-4 py-4 sm:px-5">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="mt-0.5 inline-flex size-9 shrink-0 items-center justify-center rounded-md bg-secondary text-secondary-foreground">
-            <Icon className="size-4" />
+          <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-md bg-slate-800 text-slate-50 dark:bg-slate-200 dark:text-slate-950">
+            <Icon className="size-5" />
           </span>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
-              <h2 className="text-base font-bold">{title}</h2>
+              <h2 className="text-lg font-extrabold leading-tight">{title}</h2>
               {status && (
                 <span
                   className={cn(
@@ -604,7 +604,7 @@ function Section({
         </div>
         {action}
       </div>
-      <div className="px-4 py-4">{children}</div>
+      <div className="p-4 sm:p-5">{children}</div>
     </section>
   );
 }
@@ -696,7 +696,7 @@ function ProjectNavigationItem({
       aria-label={collapsed ? `${label}: ${status.label}` : undefined}
       title={collapsed ? `${label}: ${status.label}` : undefined}
       className={cn(
-        "group flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm font-semibold transition-colors outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30",
+        "group flex min-h-10 w-full items-center gap-2.5 rounded-lg px-2.5 py-2 text-left text-sm font-semibold transition-colors outline-none hover:bg-secondary focus-visible:ring-3 focus-visible:ring-ring/30",
         collapsed && "justify-center px-0",
         nested && !collapsed && "ml-3 w-[calc(100%-0.75rem)]",
         active && "bg-background text-foreground ring-1 ring-border",
@@ -705,8 +705,10 @@ function ProjectNavigationItem({
     >
       <span
         className={cn(
-          "inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors group-hover:text-primary",
-          active && "bg-primary/10 text-primary",
+          "inline-flex size-7 shrink-0 items-center justify-center rounded-sm text-muted-foreground transition-colors",
+          !active && "group-hover:text-primary",
+          active &&
+            "bg-slate-800 text-slate-50 group-hover:text-slate-50 dark:bg-slate-200 dark:text-slate-950 dark:group-hover:text-slate-950",
         )}
       >
         <Icon aria-hidden="true" className="size-4" />
@@ -3510,7 +3512,8 @@ export function ProjectDetail({
       setFrontIssues([
         {
           location: "Frente",
-          message: "Informe o nome e ao menos um quantitativo distribuído para a frente.",
+          message:
+            "Informe o nome e ao menos um quantitativo distribuído para a frente.",
         },
       ]);
       return;
@@ -3845,7 +3848,7 @@ export function ProjectDetail({
   };
 
   return (
-    <article className="space-y-4">
+    <article className="space-y-5">
       <Link
         className="inline-flex min-h-10 items-center gap-2 rounded-md text-sm font-semibold text-primary hover:underline focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/30"
         href="/home/obras"
@@ -3854,8 +3857,8 @@ export function ProjectDetail({
         Voltar para obras
       </Link>
 
-      <header className="overflow-hidden rounded-lg border border-border bg-card">
-        <div className="flex flex-col gap-4 border-b border-border bg-secondary/40 px-4 py-4 xl:flex-row xl:items-start xl:justify-between">
+      <header className="overflow-hidden rounded-2xl border border-border bg-card">
+        <div className="flex flex-col gap-4 border-b border-border bg-muted/30 px-4 py-5 sm:px-5 xl:flex-row xl:items-start xl:justify-between">
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <span
@@ -3973,7 +3976,7 @@ export function ProjectDetail({
           )}
         </div>
 
-        <dl className="grid gap-3 px-4 py-4 sm:grid-cols-2 xl:grid-cols-4">
+        <dl className="grid gap-4 px-4 py-4 sm:grid-cols-2 sm:px-5 xl:grid-cols-4">
           <SummaryItem
             label="Contrato"
             value={project.contractNumber ?? "Não informado"}
@@ -3995,7 +3998,7 @@ export function ProjectDetail({
 
       <div
         className={cn(
-          "grid gap-4 md:items-start",
+          "grid gap-5 md:items-start",
           isProjectNavigationExpanded
             ? "md:grid-cols-[15rem_minmax(0,1fr)]"
             : "md:grid-cols-[3.5rem_minmax(0,1fr)]",
@@ -4004,7 +4007,7 @@ export function ProjectDetail({
         <aside className="min-w-0 md:sticky md:top-20">
           <nav
             aria-label="Navegação da obra"
-            className="w-full max-h-[min(54svh,30rem)] overflow-x-hidden overflow-y-auto rounded-lg border border-border bg-card p-2 md:max-h-[calc(100dvh-5.75rem)]"
+            className="w-full max-h-[min(54svh,30rem)] overflow-x-hidden overflow-y-auto rounded-2xl border border-border bg-card p-2 md:max-h-[calc(100dvh-5.75rem)]"
           >
             <div
               className={cn(
@@ -4243,10 +4246,10 @@ export function ProjectDetail({
           </nav>
         </aside>
 
-        <section className="min-h-[calc(100dvh-7rem)] min-w-0 overflow-hidden rounded-lg border border-border bg-card">
-          <div className="p-4">
+        <section className="min-h-[calc(100dvh-7rem)] min-w-0">
+          <div className="grid gap-5">
             {activeTab === "overview" && (
-              <div className="grid gap-4 lg:grid-cols-2">
+              <div className="grid gap-5 lg:grid-cols-2">
                 <Section
                   icon={Gauge}
                   title="Quantitativos de referência"
@@ -4371,7 +4374,7 @@ export function ProjectDetail({
             )}
 
             {activeTab === "planning" && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <Section
                   icon={CalendarDays}
                   title="Datas planejadas"
@@ -4526,7 +4529,7 @@ export function ProjectDetail({
             )}
 
             {activeTab === "fronts" && (
-              <div className="space-y-4">
+              <div className="space-y-5">
                 <Section
                   icon={HardHat}
                   title="Frentes de serviço"

@@ -24,6 +24,7 @@ import type {
   ProjectMachineMobilizationMember,
   ProjectMachineMobilizationMembersPage,
 } from "../projects.types";
+import { ProjectResourceCard } from "./project-resource-card";
 
 const machineTypeLabel = (type: ProjectMachineMobilizationMember["type"]) =>
   type === "YELLOW_LINE" ? "Linha amarela" : "Linha branca";
@@ -57,55 +58,6 @@ const readingLabel = (machine: ProjectMachineMobilizationMember) =>
         machine.meterType as MeterType,
       )
     : "Não informada";
-
-function MachineIdentity({
-  machine,
-}: {
-  machine: ProjectMachineMobilizationMember;
-}) {
-  const tone = machineTypeTone(machine.type);
-
-  return (
-    <header className="border-b border-border bg-muted/30 px-4 py-3.5 text-foreground">
-      <div className="flex min-w-0 flex-wrap items-start gap-3">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "inline-flex size-10 shrink-0 items-center justify-center rounded-md",
-            tone.icon,
-          )}
-        >
-          <Truck className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3
-            id={`machine-${machine.id}-name`}
-            className="break-words text-lg font-extrabold leading-tight sm:text-xl"
-          >
-            {machine.name}
-          </h3>
-          <p className="mt-1 flex flex-wrap gap-x-2 gap-y-1 text-sm font-semibold text-muted-foreground">
-            <span>Leitura {readingLabel(machine)}</span>
-            {identifiersLabel(machine) && (
-              <>
-                <span aria-hidden="true">·</span>
-                <span>{identifiersLabel(machine)}</span>
-              </>
-            )}
-          </p>
-        </div>
-        <span
-          className={cn(
-            "inline-flex min-h-7 shrink-0 items-center rounded-md px-2.5 text-xs font-extrabold",
-            tone.badge,
-          )}
-        >
-          {machineTypeLabel(machine.type)}
-        </span>
-      </div>
-    </header>
-  );
-}
 
 function MachineSpecifications({
   machine,
@@ -286,10 +238,10 @@ export function ProjectMachineView({
   };
 
   return (
-    <div className="grid gap-4">
+    <div className="grid gap-5">
       <section
         aria-label="Filtros de máquinas mobilizadas"
-        className="grid gap-2 rounded-lg border border-border bg-muted/30 p-3 sm:p-4"
+        className="grid gap-2 rounded-xl border border-border bg-muted/30 p-4 sm:p-5"
       >
         <label className="grid gap-1.5 text-sm font-semibold">
           <span>Buscar máquina</span>
@@ -325,7 +277,7 @@ export function ProjectMachineView({
             <Loader2 className="size-4 animate-spin" />
             {hasFilters ? "Atualizando resultados…" : "Carregando máquinas…"}
           </div>
-          <div className="grid gap-2" aria-hidden="true">
+          <div className="grid gap-3" aria-hidden="true">
             {[0, 1, 2].map((item) => (
               <div
                 key={item}
@@ -345,7 +297,7 @@ export function ProjectMachineView({
           </div>
         </div>
       ) : error && !page ? (
-        <div className="grid min-h-40 place-items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-5 text-center">
+        <div className="grid min-h-40 place-items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-center">
           <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
             <AlertCircle className="size-4" />
             {error}
@@ -362,27 +314,33 @@ export function ProjectMachineView({
         <div className="grid gap-3">
           <div className="grid gap-3">
             {page.data.map((machine) => (
-              <article
+              <ProjectResourceCard
                 key={machine.id}
-                aria-labelledby={`machine-${machine.id}-name`}
+                titleId={`machine-${machine.id}-name`}
+                title={machine.name}
+                subtitle={
+                  <>
+                    <span>Leitura {readingLabel(machine)}</span>
+                    {identifiersLabel(machine) ? (
+                      <>
+                        <span aria-hidden="true">·</span>
+                        <span>{identifiersLabel(machine)}</span>
+                      </>
+                    ) : null}
+                  </>
+                }
+                subtitleClassName="flex flex-wrap gap-x-2 gap-y-1"
+                icon={Truck}
+                iconClassName={machineTypeTone(machine.type).icon}
+                badge={machineTypeLabel(machine.type)}
+                badgeClassName={machineTypeTone(machine.type).badge}
+                accentClassName={machineTypeTone(machine.type).card}
+                bodyClassName="sm:grid-cols-[minmax(0,1.5fr)_minmax(13rem,0.8fr)_auto]"
                 data-machine-type={machine.type}
-                className={cn(
-                  "overflow-hidden rounded-2xl border border-l-[6px] border-input bg-background",
-                  machineTypeTone(machine.type).card,
-                )}
-              >
-                <MachineIdentity machine={machine} />
-                <div className="grid sm:grid-cols-[minmax(0,1.5fr)_minmax(13rem,0.8fr)_auto] sm:items-stretch">
-                  <MachineSpecifications machine={machine} />
-                  <div className="border-t border-border sm:border-l sm:border-t-0">
-                    <MachineOperators machine={machine} />
-                  </div>
-                  {canEdit && (
-                    <div
-                      role="group"
-                      aria-label={`Ações para ${machine.name}`}
-                      className="flex items-center justify-end gap-2 border-t border-border bg-muted/80 p-3 sm:justify-center sm:border-l sm:border-t-0"
-                    >
+                actionsLabel={`Ações para ${machine.name}`}
+                actions={
+                  canEdit ? (
+                    <>
                       <Button
                         type="button"
                         variant="outline"
@@ -409,13 +367,18 @@ export function ProjectMachineView({
                       >
                         <Cog className="size-4" />
                       </Button>
-                    </div>
-                  )}
+                    </>
+                  ) : undefined
+                }
+              >
+                <MachineSpecifications machine={machine} />
+                <div className="border-t border-border sm:border-l sm:border-t-0">
+                  <MachineOperators machine={machine} />
                 </div>
-              </article>
+              </ProjectResourceCard>
             ))}
           </div>
-          <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+          <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
             <p className="text-xs font-semibold text-muted-foreground">
               Página {pageIndex + 1} · até 15 máquinas
             </p>
@@ -443,7 +406,7 @@ export function ProjectMachineView({
           </div>
         </div>
       ) : (
-        <div className="grid min-h-40 place-items-center rounded-lg border border-dashed border-border bg-muted/30 p-5 text-center">
+        <div className="grid min-h-40 place-items-center rounded-xl border border-dashed border-border bg-muted/30 p-5 text-center">
           <div>
             <Truck className="mx-auto mb-2 size-6 text-muted-foreground" />
             <p className="font-bold">

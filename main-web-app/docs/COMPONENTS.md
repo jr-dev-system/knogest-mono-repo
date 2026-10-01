@@ -117,3 +117,15 @@ já carregado por turno e use transições curtas que respeitem
 `prefers-reduced-motion`, sem redimensionar o diálogo durante a troca de
 conteúdo. A seção aberta e o turno visível usam os parâmetros de URL `section`
 e `teamShift`, para que um recarregamento restaure o mesmo contexto.
+
+## Recurso operacional da obra
+
+`src/features/projects/components/project-resource-card.tsx` é a casca
+compartilhada das listagens de máquinas e funcionários da obra. Ela centraliza
+a semântica de `article`, o cabeçalho de identidade, a faixa de classificação,
+a etiqueta e o trilho opcional de ações. Dados específicos continuam nos
+componentes de domínio e são passados pelos slots de conteúdo.
+
+Não copie sua estrutura manualmente. Novos recursos operacionais devem informar
+o ID do título, ícone, cor já aprovada, etiqueta, corpo e ações acessíveis. As
+regras visuais e de uso ficam em `docs/STYLING.md`.

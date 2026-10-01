@@ -27,6 +27,7 @@ import type {
   ProjectTeamMember,
   ProjectTeamMembersPage,
 } from "../projects.types";
+import { ProjectResourceCard } from "./project-resource-card";
 
 type Shift = "day" | "night";
 
@@ -61,56 +62,13 @@ const formatCurrency = (value: string) =>
     currency: "BRL",
   }).format(Number(value));
 
-function TeamMemberIdentity({ member }: { member: ProjectTeamMember }) {
-  const tone = shiftTone(member.shift);
-
-  return (
-    <header className="border-b border-border bg-muted/30 px-4 py-3.5 text-foreground">
-      <div className="flex min-w-0 flex-wrap items-start gap-3">
-        <span
-          aria-hidden="true"
-          className={cn(
-            "inline-flex size-10 shrink-0 items-center justify-center rounded-md",
-            tone.icon,
-          )}
-        >
-          <UsersRound className="size-5" />
-        </span>
-        <div className="min-w-0 flex-1">
-          <h3
-            id={`team-member-${member.id}-name`}
-            className="break-words text-lg font-extrabold leading-tight sm:text-xl"
-          >
-            {member.name}
-          </h3>
-          <p className="mt-1 break-words text-sm font-semibold text-muted-foreground">
-            {member.jobRole}
-          </p>
-        </div>
-        <span
-          className={cn(
-            "inline-flex min-h-7 shrink-0 items-center rounded-md px-2.5 text-xs font-extrabold",
-            tone.badge,
-          )}
-        >
-          {tone.label}
-        </span>
-      </div>
-    </header>
-  );
-}
-
 function TeamMemberDetails({ member }: { member: ProjectTeamMember }) {
   return (
     <section
       aria-label={`Jornada e remuneração de ${member.name}`}
       className="bg-card p-4"
     >
-      <div className="mb-3 flex items-center gap-2 text-sm font-bold text-foreground">
-        <Clock3 className="size-4 text-primary" />
-        Jornada e remuneração
-      </div>
-      <dl className="grid grid-cols-2 gap-x-5 gap-y-3 border-t border-foreground/15 pt-3 text-sm sm:grid-cols-3">
+      <dl className="grid grid-cols-2 gap-x-5 gap-y-3 pt-3 text-sm sm:grid-cols-3">
         <div>
           <dt className="text-xs font-semibold text-muted-foreground">
             Carga mensal
@@ -276,8 +234,8 @@ export function ProjectTeamView({
   };
 
   return (
-    <div className="grid gap-4">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <div className="grid gap-5">
+      <div className="flex flex-col gap-3 border-b border-border pb-4 lg:flex-row lg:items-center lg:justify-between">
         <OperationTabs
           ariaLabel="Turno da equipe"
           idPrefix="project-team-shift"
@@ -293,11 +251,11 @@ export function ProjectTeamView({
           ]}
         />
         {canEdit && (
-          <div className="flex shrink-0 flex-wrap gap-2">
+          <div className="grid gap-2 sm:flex sm:shrink-0 sm:flex-wrap sm:justify-end">
             <Button
               type="button"
               variant="outline"
-              className="min-h-10"
+              className="min-h-11"
               onClick={() => onEditShift(activeShift)}
             >
               <Pencil className="size-4" />
@@ -305,7 +263,7 @@ export function ProjectTeamView({
             </Button>
             <Button
               type="button"
-              className="min-h-10"
+              className="min-h-11"
               onClick={() => onAddShift(activeShift)}
             >
               <Plus className="size-4" />
@@ -315,7 +273,7 @@ export function ProjectTeamView({
               <Button
                 type="button"
                 variant="outline"
-                className="min-h-10"
+                className="min-h-11"
                 onClick={() => onEditShift("night")}
               >
                 <Pencil className="size-4" />
@@ -328,7 +286,7 @@ export function ProjectTeamView({
 
       <section
         aria-label="Filtros da equipe"
-        className="grid gap-3 rounded-lg border border-border bg-muted/30 p-3 sm:p-4"
+        className="grid gap-3 rounded-xl border border-border bg-muted/30 p-4 sm:p-5"
       >
         <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_16rem]">
           <label className="grid gap-1.5 text-sm font-semibold">
@@ -378,7 +336,6 @@ export function ProjectTeamView({
             </select>
           </div>
         </div>
-        <p className="text-xs leading-5 text-muted-foreground"></p>
       </section>
 
       {(["day", "night"] as const).map((shift) => (
@@ -395,7 +352,7 @@ export function ProjectTeamView({
                 <Loader2 className="size-4 animate-spin" />
                 {hasFilters ? "Atualizando resultados…" : "Carregando equipe…"}
               </div>
-              <div className="grid gap-2" aria-hidden="true">
+              <div className="grid gap-3" aria-hidden="true">
                 {[0, 1, 2].map((item) => (
                   <div
                     key={item}
@@ -418,7 +375,7 @@ export function ProjectTeamView({
               </div>
             </div>
           ) : errors[shift] && !page ? (
-            <div className="grid min-h-40 place-items-center gap-3 rounded-lg border border-destructive/30 bg-destructive/5 p-5 text-center">
+            <div className="grid min-h-40 place-items-center gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-5 text-center">
               <div className="flex items-center gap-2 text-sm font-semibold text-destructive">
                 <AlertCircle className="size-4" />
                 {errors[shift]}
@@ -437,24 +394,22 @@ export function ProjectTeamView({
             <div className="grid gap-3">
               <div className="grid gap-3">
                 {page.data.map((member) => (
-                  <article
+                  <ProjectResourceCard
                     key={member.id}
-                    aria-labelledby={`team-member-${member.id}-name`}
+                    titleId={`team-member-${member.id}-name`}
+                    title={member.name}
+                    subtitle={member.jobRole}
+                    icon={UsersRound}
+                    iconClassName={shiftTone(member.shift).icon}
+                    badge={shiftTone(member.shift).label}
+                    badgeClassName={shiftTone(member.shift).badge}
+                    accentClassName={shiftTone(member.shift).card}
+                    bodyClassName="sm:grid-cols-[minmax(0,1fr)_auto]"
                     data-shift={member.shift}
-                    className={cn(
-                      "overflow-hidden rounded-2xl border border-l-[6px] border-input bg-background",
-                      shiftTone(member.shift).card,
-                    )}
-                  >
-                    <TeamMemberIdentity member={member} />
-                    <div className="grid sm:grid-cols-[minmax(0,1fr)_auto] sm:items-stretch">
-                      <TeamMemberDetails member={member} />
-                      {canEdit && (
-                        <div
-                          role="group"
-                          aria-label={`Ações para ${member.name}`}
-                          className="flex items-center justify-end gap-2 border-t border-border bg-muted/80 p-3 sm:justify-center sm:border-l sm:border-t-0"
-                        >
+                    actionsLabel={`Ações para ${member.name}`}
+                    actions={
+                      canEdit ? (
+                        <>
                           <Button
                             type="button"
                             variant="outline"
@@ -475,13 +430,15 @@ export function ProjectTeamView({
                           >
                             <Trash2 className="size-4" />
                           </Button>
-                        </div>
-                      )}
-                    </div>
-                  </article>
+                        </>
+                      ) : undefined
+                    }
+                  >
+                    <TeamMemberDetails member={member} />
+                  </ProjectResourceCard>
                 ))}
               </div>
-              <div className="flex items-center justify-between gap-3 border-t border-border pt-3">
+              <div className="flex flex-col gap-3 rounded-xl border border-border bg-muted/30 p-3 sm:flex-row sm:items-center sm:justify-between">
                 <p className="text-xs font-semibold text-muted-foreground">
                   Página {pageIndex + 1} · até 15 funcionários
                 </p>
@@ -514,7 +471,7 @@ export function ProjectTeamView({
               </div>
             </div>
           ) : (
-            <div className="grid min-h-40 place-items-center rounded-lg border border-dashed border-border bg-muted/30 p-5 text-center">
+            <div className="grid min-h-40 place-items-center rounded-xl border border-dashed border-border bg-muted/30 p-5 text-center">
               <div>
                 <UsersRound className="mx-auto mb-2 size-6 text-muted-foreground" />
                 <p className="font-bold">

@@ -30,7 +30,9 @@ Tokens oficiais:
 - Cores: OKLCH em `src/app/globals.css`; base clara mineral/azul, estados operacionais em verde, âmbar, vermelho e azul. Verde é reservado para estados positivos/ativos, não para identidade de marca.
 - Tipografia: Inter/Geist via `next/font`, escala fixa em rem para produto.
 - Espaçamento: escala Tailwind com densidade robusta para campo/celular.
-- Radius: 10px base; cards e painéis até `rounded-lg`.
+- Radius: 10px base; controles e blocos internos usam até `rounded-lg`.
+  Painéis principais e cartões de recursos operacionais usam `rounded-2xl`
+  para separar entidades completas de linhas e controles auxiliares.
 - Sombras: evitar sombra decorativa; profundidade por borda, contraste e hierarquia.
 
 Componentes auditados:
@@ -144,3 +146,28 @@ Contrato técnico:
   tarefa. Abas não substituem etapas sequenciais de um wizard.
 - Quando houver um seletor de turno acima das abas, mantenha hierarquia e
   espaçamento distintos para evitar que os dois controles pareçam duplicados.
+
+### Cartão de recurso operacional
+
+Use o cartão de recurso operacional nas listagens em que cada registro reúne
+identidade, classificação, dados de operação e ações próprias, como máquinas
+mobilizadas e funcionários da equipe da obra. Ele existe para permitir leitura
+rápida em campo sem transformar a listagem em uma tabela genérica.
+
+Contrato visual:
+
+- Casca `rounded-2xl`, borda neutra e faixa lateral de 6 px como âncora de
+  classificação.
+- Cabeçalho em superfície neutra suave (`bg-muted/30`), nunca preenchido com a
+  cor da classificação.
+- A cor da faixa é repetida somente no bloco do ícone e na etiqueta curta.
+- Linha branca e funcionários usam o azul-ardósia existente; âmbar é exclusivo
+  da linha amarela. Não crie variações intermediárias dessas cores.
+- Conteúdo e ações são separados por divisores. A área de ações usa contraste
+  discreto e mantém alvos de toque de pelo menos 40 px.
+- Cartões consecutivos usam 12 px de intervalo; filtros, paginação e outros
+  blocos estruturais mantêm separação maior.
+
+Na página da obra, o cartão vive dentro de uma única seção principal. Não
+adicione outra moldura de card ao redor do conteúdo da aba: cabeçalho da obra,
+navegação contextual e seções já estabelecem a hierarquia necessária.
