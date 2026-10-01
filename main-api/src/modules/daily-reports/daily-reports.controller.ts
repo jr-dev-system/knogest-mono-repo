@@ -236,6 +236,20 @@ const operationalDayResponseSchema = {
             type: "object",
             nullable: true,
             additionalProperties: true,
+            properties: {
+              employees: {
+                type: "array",
+                items: {
+                  type: "object",
+                  additionalProperties: true,
+                  required: ["employmentId", "shiftCostBrl"],
+                  properties: {
+                    employmentId: uuid,
+                    shiftCostBrl: { ...decimal, nullable: true },
+                  },
+                },
+              },
+            },
           },
         },
       },
@@ -519,6 +533,7 @@ const reportDetailSchema = {
           "regularWorkedMinutes",
           "overtimeMinutes",
           "overtimeEnabled",
+          "shiftCostBrl",
         ],
         properties: {
           employmentId: uuid,
@@ -528,6 +543,7 @@ const reportDetailSchema = {
           regularWorkedMinutes: { type: "integer" },
           overtimeMinutes: { type: "integer" },
           overtimeEnabled: { type: "boolean" },
+          shiftCostBrl: { ...decimal, nullable: true },
         },
       },
     },

@@ -56,6 +56,8 @@ export type DailyReportWriteData = {
     checkInAt?: Date | null;
     overtimeConfirmed?: boolean;
     overtimeEnabled?: boolean;
+    regularHourlyRateSnapshot?: string | null;
+    overtimeHourlyRateSnapshot?: string | null;
     liveStatus?: "WORKING" | "STOPPED" | "MAINTENANCE" | "UNFIT" | null;
   }>;
   machines: Array<{
@@ -163,6 +165,10 @@ export async function findProjectDailyReportContextHandler(
       select: {
         employmentId: true,
         jobRole: true,
+        monthlyWorkloadHours: true,
+        compensationMode: true,
+        compensationValue: true,
+        overtimeRate: true,
         overtimeEnabled: true,
       },
     }),

@@ -2011,6 +2011,7 @@ export function toDetailDto(record: ProductionRecord) {
 
 function toSummaryDto(record: ProductionRecord) {
   const detail = toDetailDto(record);
+  const equipmentCount = countDistinctProductionMachines(detail);
   return {
     id: detail.id,
     kind: detail.kind,
@@ -2035,13 +2036,23 @@ function toSummaryDto(record: ProductionRecord) {
     officialQuantity: detail.metrics.officialQuantity,
     operationalVolumeM3: detail.metrics.operationalVolumeM3,
     tripCount: detail.metrics.tripCount,
-    equipmentCount: detail.equipment.length,
+    equipmentCount,
     needsApproval: !["approved", "released", "measured"].includes(
       detail.status,
     ),
     rdo: detail.rdo,
     updatedAt: detail.updatedAt,
   };
+}
+
+export function countDistinctProductionMachines(input: {
+  equipment: Array<{ machineId: string }>;
+  truckSummaries: Array<{ machineId: string }>;
+}) {
+  return new Set([
+    ...input.equipment.map((item) => item.machineId),
+    ...input.truckSummaries.map((item) => item.machineId),
+  ]).size;
 }
 
 function calculateOfficialQuantity(

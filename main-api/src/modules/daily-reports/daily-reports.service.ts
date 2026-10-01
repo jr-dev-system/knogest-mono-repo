@@ -149,6 +149,7 @@ export class DailyReportsService {
       projectId,
       { reportDate, shift },
       startedAt,
+      true,
     );
     const employeeMap = new Map(
       options.employeeOptions.map((item) => [item.id, item]),
@@ -215,6 +216,10 @@ export class DailyReportsService {
           employeeNameSnapshot: employee.name,
           jobRoleSnapshot: employee.jobRole,
           overtimeEnabled: employee.overtimeEnabled,
+          regularHourlyRateSnapshot:
+            employee.regularHourlyRateSnapshot ?? null,
+          overtimeHourlyRateSnapshot:
+            employee.overtimeHourlyRateSnapshot ?? null,
           completedFullShift: false,
           regularWorkedMinutes: 0,
           overtimeMinutes: 0,
@@ -871,6 +876,7 @@ export class DailyReportsService {
     projectId: string,
     query: DailyReportOptionsQuery,
     referenceAt?: Date,
+    includeCostSnapshots = false,
   ) {
     const broadInterval = intervalForOptions(query.reportDate, query.shift);
     const broadContext = await findProjectDailyReportContextHandler(
@@ -935,6 +941,23 @@ export class DailyReportsService {
                 name: employment.person.displayName,
                 jobRole: allocation.jobRole,
                 overtimeEnabled: allocation.overtimeEnabled,
+                ...(includeCostSnapshots
+                  ? {
+                      regularHourlyRateSnapshot: regularHourlyRate({
+                        compensationMode: allocation.compensationMode,
+                        compensationValue: allocation.compensationValue.toFixed(
+                          2,
+                        ),
+                        monthlyWorkloadHours:
+                          allocation.monthlyWorkloadHours,
+                        workingDaysPerWeek: context.scheduleDays.filter(
+                          (item) => item.isWorking,
+                        ).length,
+                      }),
+                      overtimeHourlyRateSnapshot:
+                        allocation.overtimeRate.toFixed(4),
+                    }
+                  : {}),
               },
             ]
           : [];
@@ -1339,6 +1362,15 @@ export class DailyReportsService {
         completedFullShift: entry.completedFullShift,
         regularWorkedMinutes,
         overtimeMinutes: entry.overtimeMinutes,
+        regularHourlyRateSnapshot: regularHourlyRate({
+          compensationMode: allocation.compensationMode,
+          compensationValue: allocation.compensationValue.toFixed(2),
+          monthlyWorkloadHours: allocation.monthlyWorkloadHours,
+          workingDaysPerWeek: resolved.scheduleDays.filter(
+            (item) => item.isWorking,
+          ).length,
+        }),
+        overtimeHourlyRateSnapshot: allocation.overtimeRate.toFixed(4),
       };
     });
 
@@ -1492,6 +1524,17 @@ function toDetailDto(record: DailyReportRecord) {
         checkInAt: item.checkInAt?.toISOString() ?? null,
         checkOutAt: item.checkOutAt?.toISOString() ?? null,
         overtimeConfirmed: item.overtimeConfirmed,
+        shiftCostBrl:
+          record.status === "FINALIZED"
+            ? employeeShiftCost({
+                regularWorkedMinutes: item.regularWorkedMinutes,
+                overtimeMinutes: item.overtimeMinutes,
+                regularHourlyRateSnapshot:
+                  item.regularHourlyRateSnapshot?.toFixed(4) ?? null,
+                overtimeHourlyRateSnapshot:
+                  item.overtimeHourlyRateSnapshot?.toFixed(4) ?? null,
+              })
+            : null,
         liveState: item.liveStatus
           ? {
               status: item.liveStatus.toLowerCase(),
@@ -1569,6 +1612,70 @@ function toDetailDto(record: DailyReportRecord) {
     createdAt: record.createdAt.toISOString(),
     updatedAt: record.updatedAt.toISOString(),
   };
+}
+
+function regularHourlyRate(input: {
+  compensationMode: string;
+  compensationValue: string;
+  monthlyWorkloadHours: number;
+  workingDaysPerWeek: number;
+}) {
+  const amountCents = scaledDecimal(input.compensationValue, 2);
+  const baseNumerator = amountCents * 100n;
+  if (input.compensationMode === "hourly")
+    return formatScaledDecimal(baseNumerator, 4);
+  if (input.monthlyWorkloadHours <= 0) return "0.0000";
+
+  const ratio =
+    input.compensationMode === "daily"
+      ? { numerator: BigInt(input.workingDaysPerWeek * 52), denominator: 12n }
+      : input.compensationMode === "weekly"
+        ? { numerator: 52n, denominator: 12n }
+        : input.compensationMode === "fortnightly"
+          ? { numerator: 26n, denominator: 12n }
+          : { numerator: 1n, denominator: 1n };
+  const denominator = ratio.denominator * BigInt(input.monthlyWorkloadHours);
+  return formatScaledDecimal(
+    roundedDivide(baseNumerator * ratio.numerator, denominator),
+    4,
+  );
+}
+
+function employeeShiftCost(input: {
+  regularWorkedMinutes: number;
+  overtimeMinutes: number;
+  regularHourlyRateSnapshot: string | null;
+  overtimeHourlyRateSnapshot: string | null;
+}) {
+  if (
+    input.regularHourlyRateSnapshot === null ||
+    input.overtimeHourlyRateSnapshot === null
+  )
+    return null;
+  const numerator =
+    BigInt(input.regularWorkedMinutes) *
+      scaledDecimal(input.regularHourlyRateSnapshot, 4) +
+    BigInt(input.overtimeMinutes) *
+      scaledDecimal(input.overtimeHourlyRateSnapshot, 4);
+  const costCents = roundedDivide(numerator, 6_000n);
+  return formatScaledDecimal(costCents, 2);
+}
+
+function scaledDecimal(value: string, scale: number) {
+  const [whole = "0", fraction = ""] = value.split(".");
+  return (
+    BigInt(whole || "0") * 10n ** BigInt(scale) +
+    BigInt(fraction.padEnd(scale, "0").slice(0, scale) || "0")
+  );
+}
+
+function formatScaledDecimal(value: bigint, scale: number) {
+  const digits = value.toString().padStart(scale + 1, "0");
+  return `${digits.slice(0, -scale)}.${digits.slice(-scale)}`;
+}
+
+function roundedDivide(numerator: bigint, denominator: bigint) {
+  return (numerator + denominator / 2n) / denominator;
 }
 
 function assertProjectAvailable(

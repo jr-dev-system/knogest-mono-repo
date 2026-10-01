@@ -523,6 +523,15 @@ describe("project daily reports", () => {
     });
     expect(started.statusCode, started.body).toBe(201);
     const reportId = started.json().data.id as string;
+    expect(started.json().data.employees[0].shiftCostBrl).toBeNull();
+
+    await app.prisma.projectEmployeeAllocation.updateMany({
+      where: {
+        projectId: scope.projectId,
+        employmentId: scope.employmentId,
+      },
+      data: { compensationValue: "9900.00", overtimeRate: "75.00" },
+    });
 
     const rdo = await app.inject({
       method: "PUT",
@@ -581,6 +590,7 @@ describe("project daily reports", () => {
     expect(closed.json().data.employees[0]).toMatchObject({
       regularWorkedMinutes: 600,
       overtimeMinutes: 0,
+      shiftCostBrl: "227.27",
       breaks: [
         {
           startAt: `${scope.reportDate}T15:00:00.000Z`,
